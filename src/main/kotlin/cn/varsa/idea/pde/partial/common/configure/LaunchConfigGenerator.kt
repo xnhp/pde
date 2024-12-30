@@ -93,14 +93,19 @@ object LaunchConfigGenerator {
           .append(',').appendLine(configService.isAutoStartUp(name).toString())
       }
 
-      data class Bundle(val name: String, val version: Version, val file: File, val level : Int?)
+      data class Bundle(val name: String, val version: Version, val file: File, val level: Int?)
+
       val bundles: MutableList<Bundle> = mutableListOf()
       configService.libraries.forEach { bundle ->
         configService.getManifest(bundle)?.also {
-          bundles += Bundle(it.bundleSymbolicName?.key ?: bundle.nameWithoutExtension,
-                            it.bundleVersion,
-                            bundle,
-                            it.eclipseSourceBundle?.let { -1 })
+          val bundleName = it.bundleSymbolicName?.key ?: bundle.nameWithoutExtension
+          if (!inDevModules(bundleName, configService)) {
+            bundles += Bundle(
+              bundleName,
+              it.bundleVersion,
+              bundle,
+              it.eclipseSourceBundle?.let { -1 })
+          }
         }
       }
 
@@ -121,6 +126,10 @@ object LaunchConfigGenerator {
       }
     }
   }
+
+  private fun inDevModules(
+    myBundleSymbolicName: String, configService: ConfigService
+  ) = configService.devModules.any { it.bundleSymbolicName == myBundleSymbolicName }
 
   private fun stripPathInformation(osgiBundles: String, configService: ConfigService): String =
     osgiBundles.splitToSequence(',').map { it.replace("\\\\:|/:".toRegex(), ":") }.map { token ->
