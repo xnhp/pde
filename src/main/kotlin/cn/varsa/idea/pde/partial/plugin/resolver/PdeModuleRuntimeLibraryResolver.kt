@@ -76,14 +76,24 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         }.forEach { model.findModuleOrderEntry(it) ?: model.addModuleOrderEntry(it) }
       }
 
-      project.libraryTable().libraries.filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
+      val pdeModuleNames = project.allPDEModules(area).map {t -> t.name}.toSet()
+      project.libraryTable().libraries
+        .filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
+        .filter { it ->
+            // see also PdeProjectLibraryResolver#resolve `filterNot {moduleNames.contains(it.bundleSymbolicName)`
+            val symbolicName =  it.name?.substringAfterLast(ProjectLibraryNamePrefix) // e.g. "Partial: "
+              ?.substringBefore("-") // version after dash
+            symbolicName !in pdeModuleNames
+        }
         .forEach { depLibrary ->
           depLibrary.name?.substringAfter(ProjectLibraryNamePrefix)
-            ?.let { managementService.getBundleByBCN(it) }?.dependencyScope?.also {
-              (model.findLibraryOrderEntry(depLibrary) ?: model.addLibraryEntry(depLibrary)).apply {
-                scope = it
-                isExported = false
-              }
+            ?.let { managementService.getBundleByBCN(it) }
+            ?.dependencyScope
+            ?.also {
+                (model.findLibraryOrderEntry(depLibrary) ?: model.addLibraryEntry(depLibrary)).apply {
+                  scope = it
+                  isExported = false
+                }
             }
         }
     }

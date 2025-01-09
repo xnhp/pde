@@ -37,7 +37,8 @@ class PdeProjectLibraryResolver : TargetPlatformLibraryResolver {
     if (pdeModules.isEmpty()) return
 
     val moduleNames = area.allPDEModulesSymbolicName()
-    BundleManagementService.getInstance(area).getBundles().filterNot { moduleNames.contains(it.bundleSymbolicName) }
+    BundleManagementService.getInstance(area).getBundles()
+      .filterNot { moduleNames.contains(it.bundleSymbolicName) }
       .also { bundles ->
         val model = LibraryTablesRegistrar.getInstance().getLibraryTable(area).modifiableModel
         val map = hashMapOf<BundleDefinition, Library>()
