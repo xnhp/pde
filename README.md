@@ -1,3 +1,10 @@
+# To-Do
+- [ ] obtain vmargs from .target file and merge w/ those specified in run config (PDETargetRunConfiguration.kt, parameters.vmParametersList)
+
+Original contents
+
+---
+
 # Eclipse PDE Partial IDEA Plugin
 
 [![Apache License](https://img.shields.io/badge/license-Apache%20License%202.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
