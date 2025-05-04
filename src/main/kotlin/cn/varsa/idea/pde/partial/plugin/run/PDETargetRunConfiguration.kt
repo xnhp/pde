@@ -48,6 +48,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
 
   var product: String? = "com.teamcenter.rac.aifrcp.product"
   var application: String? = "com.teamcenter.rac.aifrcp.application"
+  var splashBundlePath: String = "org.knime.product"
   var dataDirectory: String = File(
     compiler?.compilerOutputPointer?.presentableUrl ?: project.presentableUrl, "partial-runtime"
   ).absolutePath
@@ -112,6 +113,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     element.getOrCreateChild("partial").apply {
       setAttribute("product", product ?: "")
       setAttribute("application", application ?: "")
+      setAttribute("splashBundlePath", splashBundlePath)
       setAttribute("dataDirectory", dataDirectory)
       setAttribute("cleanRuntimeDir", cleanRuntimeDir.toString())
       setAttribute("additionalClasspath", additionalClasspath)
@@ -124,6 +126,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     element.getChild("partial")?.also {
       product = it.getAttributeValue("product") ?: ""
       application = it.getAttributeValue("application") ?: ""
+      splashBundlePath = it.getAttributeValue("splashBundlePath") ?: ""
       dataDirectory = it.getAttributeValue("dataDirectory") ?: File(
         compiler?.compilerOutputPointer?.presentableUrl ?: project.presentableUrl, "partial-runtime"
       ).absolutePath
@@ -245,6 +248,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
   private val configServiceDelegate = object : ConfigService {
     override val product: String get() = this@PDETargetRunConfiguration.product ?: ""
     override val application: String get() = this@PDETargetRunConfiguration.application ?: ""
+    override val splashBundlePath: String get() = this@PDETargetRunConfiguration.splashBundlePath
     private val configurationMap = mutableMapOf<String, Map<String, Int>>()
 
     private fun getPluginConfiguration() : Map<String, Int>? {

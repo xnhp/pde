@@ -48,8 +48,18 @@ object LaunchConfigGenerator {
     properties.getProperty("osgi.framework")?.let { stripPathInformation(it, configService) }?.substringBefore('@')
       ?.let(bundleUrlPath)?.also { properties["osgi.framework"] = it }
 
-    properties.getProperty("osgi.splashPath")?.let { stripPathInformation(it, configService) }?.substringBefore('@')
-      ?.let(bundleUrlPath)?.also { properties["osgi.splashPath"] = it }
+
+    // note: this will (?) always take the bundle from the libraries (effectively bundle pool) and not from a devModule
+    //  if one is present in the project
+    val splashBundle = bundleUrlPath(configService.splashBundlePath)
+    if (splashBundle != null && !splashBundle.isEmpty()) {
+      // resolves to location of versioned bundle in bundle pool
+      properties["osgi.splashPath"] = splashBundle
+    } else {
+      properties.getProperty("osgi.splashPath")?.let { stripPathInformation(it, configService) }?.substringBefore('@')
+        ?.let(bundleUrlPath)?.also { properties["osgi.splashPath"] = it }
+    }
+
 
     properties.getProperty("osgi.framework.extensions")?.splitToSequence(',')
       ?.map { stripPathInformation(it, configService) }?.map { it.substringBefore('@') }?.mapNotNull(bundleUrlPath)

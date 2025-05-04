@@ -5,18 +5,18 @@ import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.support.*
 import com.intellij.execution.ui.*
-import com.intellij.icons.AllIcons
+import com.intellij.icons.*
+import com.intellij.ide.*
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.options.*
 import com.intellij.openapi.ui.*
 import com.intellij.ui.*
 import com.intellij.ui.components.*
+import com.intellij.ui.dsl.builder.*
 import com.intellij.util.execution.*
 import com.intellij.util.ui.*
 import java.awt.*
 import javax.swing.*
-
-import com.intellij.ui.dsl.builder.panel
 
 class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) :
   SettingsEditor<PDETargetRunConfiguration>(), PanelWithAnchor {
@@ -32,12 +32,28 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
     renderer = ColoredListCellRendererWithSpeedSearch.stringRender()
     ComboboxSpeedSearch.installOn(this).setClearSearchOnNavigateNoMatch(true)
   }
+  private val splashBundlePathField = JBTextField()
   private val dataDirectoryField = JBTextField()
 
   private val productComponent =
     LabeledComponent.create(productField, message("run.local.config.tab.configuration.product"), BorderLayout.WEST)
   private val applicationComponent = LabeledComponent.create(
     applicationField, message("run.local.config.tab.configuration.application"), BorderLayout.WEST
+  )
+  private val splashBundlePathPanel = JPanel(BorderLayout()).apply {
+    add(splashBundlePathField, BorderLayout.CENTER)
+    val infoPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0))
+    val helpIcon = JLabel(AllIcons.General.ContextHelp)
+    HelpTooltip()
+      .setDescription(message("run.local.config.tab.configuration.splashBundleHelp"))
+      .setTitle(message("run.local.config.tab.configuration.splashBundleName"))
+      .installOn(helpIcon)
+    infoPanel.add(helpIcon)
+    add(infoPanel, BorderLayout.EAST)
+  }
+
+  private val splashBundlePathComponent = LabeledComponent.create(
+    splashBundlePathPanel, message("run.local.config.tab.configuration.splashBundleName"), BorderLayout.WEST
   )
   private val dataDirectoryComponent = LabeledComponent.create(
     dataDirectoryField, message("run.local.config.tab.configuration.dataDirectory"), BorderLayout.WEST
@@ -59,6 +75,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
   init {
     panel.add(productComponent)
     panel.add(applicationComponent)
+    panel.add(splashBundlePathComponent)
     panel.add(dataDirectoryComponent)
     panel.add(JSeparator())
     panel.add(jrePath)
@@ -86,6 +103,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
       dataDirectoryComponent,
       jrePath,
       javaParameters,
+      splashBundlePathComponent,
       additionalClasspathComponent
     )
   }
@@ -166,6 +184,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
       managementService.getApplications().sorted().forEach(this::addItem)
       item = configuration.application
     }
+    splashBundlePathField.text = configuration.splashBundlePath
     dataDirectoryField.text = configuration.dataDirectory
 
     configuration.mainClassName = "org.eclipse.equinox.launcher.Main"
@@ -186,6 +205,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
 
     configuration.product = productField.item
     configuration.application = applicationField.item
+    configuration.splashBundlePath = splashBundlePathField.text
     configuration.dataDirectory = dataDirectoryField.text
 
     configuration.mainClassName = "org.eclipse.equinox.launcher.Main"
@@ -204,6 +224,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
 
     productComponent.anchor = anchor
     applicationComponent.anchor = anchor
+    splashBundlePathComponent.anchor = anchor
     dataDirectoryComponent.anchor = anchor
     jrePath.anchor = anchor
     javaParameters.anchor = anchor

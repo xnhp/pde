@@ -11,6 +11,11 @@ interface ConfigService {
   val application: String
 
   /**
+   * Bundle path for splash screen
+   */
+  val splashBundlePath: String
+
+  /**
    * Runtime resource will store into this directory
    */
   val dataPath: File
