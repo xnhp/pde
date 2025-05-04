@@ -68,16 +68,7 @@ class PdeProjectLibraryResolver : TargetPlatformLibraryResolver {
 
         applicationInvokeAndWait { writeRun { model.commit() } }
 
-        pdeModules.forEach { module ->
-          module.updateModel { model ->
-            map.forEach { (bundle, library) ->
-              (model.findLibraryOrderEntry(library) ?: model.addLibraryEntry(library)).apply {
-                scope = bundle.dependencyScope
-                isExported = false
-              }
-            }
-          }
-        }
+
       }
   }
 }
