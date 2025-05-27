@@ -1,5 +1,6 @@
 package cn.varsa.idea.pde.partial.plugin.config
 
+import cn.varsa.idea.pde.partial.common.domain.BundleManifest
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.dom.config.*
@@ -17,6 +18,7 @@ import org.osgi.framework.*
 import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.collections.set
+import kotlin.text.get
 
 @Service(Service.Level.PROJECT)
 class BundleManagementService : BackgroundResolvable {
@@ -37,6 +39,10 @@ class BundleManagementService : BackgroundResolvable {
     bundlePath2Bundle.clear()
     libReExportRequiredSymbolName.clear()
     jarPathInnerBundle.clear()
+  }
+
+  fun getBundleManifestBySymbolicName(symbolicName: String): BundleManifest? {
+    return bundles[symbolicName]?.values?.firstOrNull()?.manifest
   }
 
   override fun resolve(project: Project, indicator: ProgressIndicator) {
@@ -130,19 +136,14 @@ class BundleManagementService : BackgroundResolvable {
           indicator.text2 = "Reset module settings"
           val allPDEModules = project.allPDEModules()
 
-          project.modules.forEach { module ->
-            val allFacets = FacetManager.getInstance(module).allFacets.joinToString { "${it.typeId}-$it" }
-            logger.warn("Module: ${module.name}, In FacetByType: ${module in allPDEModules}, All Facets: $allFacets")
-          }
-
           val definitionService = TargetDefinitionService.getInstance(project)
 
-          logger.warn("All PDE Modules: ${allPDEModules.size}, Locations: ${definitionService.locations.size}, Bundles: ${bundles.size}")
           if (allPDEModules.isNotEmpty() && definitionService.locations.isNotEmpty() && bundles.isNotEmpty()) {
             val step = 0.5 / (allPDEModules.size + 1)
             allPDEModules.forEach {
               indicator.checkCanceled()
 
+              // todo duplicated w/ PdeFacet#initFacet
               ModuleHelper.resetCompileOutputPath(it)
               ModuleHelper.resetCompileArtifact(it)
               PdeLibraryResolverRegistry.instance.resolveModule(it, indicator)
@@ -157,6 +158,7 @@ class BundleManagementService : BackgroundResolvable {
     })
   }
 
+  // TODO this already looks like transitive dependency gathering, can we reuse that?
   private tailrec fun fillDependencies(
     symbolName: String,
     reExport: HashMap<String, VersionRange>,

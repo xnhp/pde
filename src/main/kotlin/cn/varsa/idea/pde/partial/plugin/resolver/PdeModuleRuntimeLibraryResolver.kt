@@ -11,6 +11,7 @@ import cn.varsa.idea.pde.partial.plugin.openapi.resolver.*
 import cn.varsa.idea.pde.partial.plugin.support.*
 import com.intellij.openapi.module.*
 import com.intellij.openapi.roots.*
+import com.intellij.openapi.roots.libraries.*
 import com.intellij.util.containers.ContainerUtil.*
 
 class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
@@ -20,11 +21,12 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     PDEFacet.getInstance(area) ?: return
 
     area.updateModel { model ->
-      model.orderEntries.filter { it is ModuleOrderEntry || it.presentableName.startsWith(ProjectLibraryNamePrefix) }
+      model.orderEntries.filter { it is ModuleOrderEntry || it.presentableName.startsWith(ProjectLibraryNamePrefix) || it.presentableName.equals(ModuleLibraryName) }
         .forEach { model.removeOrderEntry(it) }
     }
   }
 
+  // TODO can we introduce an action that modifies _only_ this module? does this make sense?
   override fun resolve(area: Module) {
     PDEFacet.getInstance(area) ?: return
 
@@ -37,14 +39,44 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       area.moduleRootManager.contentRoots.mapNotNull { it.findFileByRelativePath(binaryName) }
     }?.map { it.protocolUrl }?.distinct() ?: emptyList()
 
+    fun bsnOfLibraryName(name: String): String? {
+      // e.g. "Partial: org.eclipse.birt.report.designer.ui.preview.web-4.15.0.v202403260939"
+      return name.substringAfterLast(ProjectLibraryNamePrefix).substringBeforeLast(BundleDefinition.canonicalNameSeparator)
+    }
+
+    fun bsnOfLibrary(it: Library): String? {
+      return it.name?.let { bsnOfLibraryName(it) }
+    }
+
+    fun resolveTransitiveDependencies(requiredBundles: Set<String>, resolvedBundles: MutableSet<String>) {
+      // TODO share sub-results (DP)
+      val newDependencies = mutableSetOf<String>()
+      requiredBundles.forEach { bsn ->
+        if (bsn !in resolvedBundles) {
+          val manifest = managementService.getBundleManifestBySymbolicName(bsn)
+          manifest?.requireBundle?.keys?.let { newDependencies.addAll(it) }
+          resolvedBundles.add(bsn)
+        }
+      }
+      if (newDependencies.isNotEmpty()) {
+        resolveTransitiveDependencies(newDependencies, resolvedBundles)
+      }
+    }
+
     area.updateModel { model ->
+
+      fun addModuleDependency(moduleToAdd: Module): ModuleOrderEntry {
+        model.moduleDependencies.contains(moduleToAdd)
+        return model.findModuleOrderEntry(moduleToAdd) ?: model.addModuleOrderEntry(moduleToAdd)
+      }
+
       val libraryTableModel = model.moduleLibraryTable.modifiableModel
 
       applicationInvokeAndWait {
+        // "Partial-Runtime"
         val library = libraryTableModel.getLibraryByName(ModuleLibraryName) ?: writeCompute {
           libraryTableModel.createLibrary(ModuleLibraryName)
         }
-
         model.findLibraryOrderEntry(library)?.apply {
           scope = DependencyScope.COMPILE
           isExported = true
@@ -64,37 +96,97 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val orderedList = bundleManifest.bundleRequiredOrFromReExportOrderedList(project, area)
       val importedList = bundleManifest.importedPackageAndVersion()
       val hostAndRange = bundleManifest.fragmentHostAndVersionRange()
-
       applicationInvokeAndWait {
+
         project.allPDEModules(area).filter { module ->
           val manifest = cacheService.getManifest(module)
           val bsn = manifest?.bundleSymbolicName?.key
           val version = manifest?.bundleVersion
           val range = manifest?.fragmentHostAndVersionRange()
-          (bsn == hostAndRange?.first && version in hostAndRange?.second) || orderedList.any { (it.first == bsn && version == it.second) || (it.first == range?.first && it.second in range.second) } || manifest?.exportedPackageAndVersion()
-            ?.any { (packageName, version) -> version in importedList[packageName] } == true
-        }.forEach { model.findModuleOrderEntry(it) ?: model.addModuleOrderEntry(it) }
+
+          (bsn == hostAndRange?.first && version in hostAndRange?.second)  // add fragment host as module dependency
+              || orderedList.any { //
+            (it.first == bsn && version == it.second)  //
+                || (it.first == range?.first && it.second in range.second)
+          }
+              || manifest?.exportedPackageAndVersion()?.any {
+              (packageName, version) -> version in importedList[packageName]
+          } == true
+        }.forEach {
+          model.addModuleOrderEntry(it)
+        }
       }
 
-      val pdeModuleNames = project.allPDEModules(area).map {t -> t.name}.toSet()
-      project.libraryTable().libraries
-        .filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
-        .filter { it ->
-            // see also PdeProjectLibraryResolver#resolve `filterNot {moduleNames.contains(it.bundleSymbolicName)`
-            val symbolicName =  it.name?.substringAfterLast(ProjectLibraryNamePrefix) // e.g. "Partial: "
-              ?.substringBefore("-") // version after dash
-            symbolicName !in pdeModuleNames
+      bundleManifest.fragmentHostAndVersionRange()
+        ?.let { (hostSymbolicName, hostVersionRange) ->
+        // Find the host module in the project that matches the Fragment-Host symbolic name + version range
+        val hostModule = project.allPDEModules(area).find { candidate ->
+          val man = cacheService.getManifest(candidate)
+          val bsn = man?.bundleSymbolicName?.key
+          val ver = man?.bundleVersion
+
+          bsn == hostSymbolicName && (ver in hostVersionRange)
         }
-        .forEach { depLibrary ->
-          depLibrary.name?.substringAfter(ProjectLibraryNamePrefix)
-            ?.let { managementService.getBundleByBCN(it) }
-            ?.dependencyScope
-            ?.also {
-                (model.findLibraryOrderEntry(depLibrary) ?: model.addLibraryEntry(depLibrary)).apply {
-                  scope = it
-                  isExported = false
-                }
+        if (hostModule != null) {
+          // 2) Also inherit the host’s direct dependencies (modules & libraries)
+          // This merges the host's classpath entries into the fragment.
+          val hostOrderEntries = hostModule.moduleRootManager.orderEntries
+          // Inherit host’s module dependencies
+          hostOrderEntries.filterIsInstance<ModuleOrderEntry>().forEach { entry ->
+            entry.module?.let { depModule ->
+              // Prevent adding the same module as a dependency to itself
+              if (depModule != area) {
+                addModuleDependency(depModule)
+              }
             }
+          }
+          // Inherit host’s library dependencies
+          hostOrderEntries.filterIsInstance<LibraryOrderEntry>().forEach { entry ->
+            entry.library?.let { lib ->
+              model.addLibraryEntry(lib)
+            }
+          }
+        }
+      }
+
+
+
+      // initial seed
+      val requiredBundles = bundleManifest.requireBundle?.map { it.key }?.toSet() ?: emptySet()
+      val seeds = requiredBundles
+      // accumulator for transitive dependencies
+      val resolvedBundles = mutableSetOf<String>()
+      resolveTransitiveDependencies(seeds, resolvedBundles)
+      val imported = bundleManifest.importPackage?.map { it.key }?.toSet() ?: emptySet()
+      val needed = resolvedBundles.union(imported)
+
+      // add module dependency if there is such a module in the project
+      project.allPDEModules(area).filter { module ->
+        val manifest = cacheService.getManifest(module)
+        val bsn = manifest?.bundleSymbolicName?.key
+        needed.contains(bsn)
+      }.forEach {
+        model.addModuleOrderEntry(it)
+      }
+
+      val libraryWhitelist: Set<String> = setOf(
+        "org.eclipse.jdt.annotation",
+        "org.eclipse.io"
+      )
+
+      val pdeModuleNames = project.allPDEModules(area).map { t -> t.name }.toSet()
+      project.libraryTable().libraries
+        // only consider "Partial: " libraries
+        .filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
+        .filter { bsnOfLibrary(it) in needed
+            || bsnOfLibrary(it) in libraryWhitelist
+            // e.g. org.eclipse.swt.gtk.linux.x86_64
+            || bsnOfLibrary(it)?.startsWith("org.eclipse.swt.") == true
+        }
+        // do not add libraries for bundles that are already represented by modules in project
+        .filter { bsnOfLibrary(it) !in pdeModuleNames }
+        .forEach { depLibrary ->
+          model.addLibraryEntry(depLibrary)
         }
     }
   }

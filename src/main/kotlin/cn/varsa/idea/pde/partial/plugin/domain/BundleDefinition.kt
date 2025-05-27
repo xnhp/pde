@@ -66,7 +66,12 @@ data class BundleDefinition(
 
   var sourceBundle: BundleDefinition? = null
 
-  val canonicalName: String get() = "$bundleSymbolicName-$bundleVersion"
+  companion object {
+    // both bsn and version may have dashes in them -- assume we can use `@` as a separator that can
+    const val canonicalNameSeparator: String = "@"
+  }
+
+  val canonicalName: String get() = "$bundleSymbolicName${canonicalNameSeparator}$bundleVersion"
   override fun toString(): String = canonicalName
 }
 
