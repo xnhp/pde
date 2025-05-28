@@ -158,30 +158,26 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val resolvedBundles = mutableSetOf<String>()
       resolveTransitiveDependencies(seeds, resolvedBundles)
       val imported = bundleManifest.importPackage?.map { it.key }?.toSet() ?: emptySet()
-      val needed = resolvedBundles.union(imported)
+      val bundleDependencies = resolvedBundles.union(imported)
 
       // add module dependency if there is such a module in the project
       project.allPDEModules(area).filter { module ->
         val manifest = cacheService.getManifest(module)
         val bsn = manifest?.bundleSymbolicName?.key
-        needed.contains(bsn)
+        bundleDependencies.contains(bsn)
       }.forEach {
         model.addModuleOrderEntry(it)
       }
 
-      val libraryWhitelist: Set<String> = setOf(
-        "org.eclipse.jdt.annotation",
-        "org.eclipse.io"
-      )
+      val whitelistedBundles: Set<String> = PreferenceService.getInstance(project).libraryWhitelist
 
       val pdeModuleNames = project.allPDEModules(area).map { t -> t.name }.toSet()
       project.libraryTable().libraries
         // only consider "Partial: " libraries
         .filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
-        .filter { bsnOfLibrary(it) in needed
-            || bsnOfLibrary(it) in libraryWhitelist
-            // e.g. org.eclipse.swt.gtk.linux.x86_64
-            || bsnOfLibrary(it)?.startsWith("org.eclipse.swt.") == true
+        .filter {
+          bsnOfLibrary(it) in bundleDependencies
+            || whitelistedBundles.any { prefix -> bsnOfLibrary(it)?.startsWith(prefix) == true }
         }
         // do not add libraries for bundles that are already represented by modules in project
         .filter { bsnOfLibrary(it) !in pdeModuleNames }

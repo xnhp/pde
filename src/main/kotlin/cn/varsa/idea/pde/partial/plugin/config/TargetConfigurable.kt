@@ -22,6 +22,7 @@ import com.intellij.util.ui.*
 import com.intellij.util.ui.components.*
 import com.jetbrains.rd.swing.*
 import com.jetbrains.rd.util.reactive.*
+import jdk.internal.org.jline.utils.AttributedStringBuilder.append
 import org.osgi.framework.*
 import org.osgi.framework.Constants.*
 import java.awt.*
@@ -139,6 +140,10 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     sourceVersionField, message("config.content.sourceVersion"), BorderLayout.WEST
   )
 
+  // Advanced tab components
+  private val whitelistModel = DefaultListModel<String>()
+  private val whitelistList = JBList(whitelistModel)
+
   init {
     // Target tab
     val reloadActionButton = object : AnAction(message("config.target.reload"), null, AllIcons.Actions.Refresh) {
@@ -233,6 +238,49 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
 
     panel.addTab(message("config.content.tab"), contentPanel)
 
+    // Advanced tab
+    val preferenceService = PreferenceService.getInstance(project)
+    preferenceService.libraryWhitelist.forEach { whitelistModel.addElement(it) }
+
+
+    // Create a label with placeholder text that wraps
+    val whitelistDescriptionLabel = JBLabel().apply {
+      text = "<html><div style='width:500px;'>${message("config.advanced.whitelist.description")}</div></html>"
+    }
+
+    whitelistList.apply {
+      setEmptyText(message("config.advanced.whitelist.empty"))
+      cellRenderer = ColoredListCellRendererWithSpeedSearch<String> { value ->
+        value?.let {
+          append(it, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+        }
+      }
+      object : DoubleClickListener() {
+        override fun onDoubleClick(event: MouseEvent): Boolean {
+          val selection = !isSelectionEmpty
+          if (selection) editWhitelistItem()
+          return selection
+        }
+      }.installOn(this)
+      ListSpeedSearch.installOn(this).setClearSearchOnNavigateNoMatch(true)
+    }
+
+    val whitelistPanel = BorderLayoutPanel().withBorder(
+      IdeBorderFactory.createTitledBorder(
+        message("config.advanced.whitelist.borderHint"), false, JBUI.insetsTop(8)
+      ).setShowLine(true)
+    ).addToTop(
+      whitelistDescriptionLabel
+    ).addToCenter(
+      ToolbarDecorator.createDecorator(whitelistList)
+        .setAddAction { addWhitelistItem() }
+        .setRemoveAction { removeWhitelistItem() }
+        .setEditAction { editWhitelistItem() }
+        .createPanel()
+    )
+
+    panel.addTab(message("config.advanced.tab"), whitelistPanel)
+
 
     // Anchor
     launcherAnchor = UIUtil.mergeComponentsWithAnchor(launcherJar, launcher)
@@ -264,6 +312,13 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     service.startupLevels.entries.run { mapIndexed { index, entry -> startups[index].run { first != entry.key || second != entry.value } } }
       .any { it }.ifTrue { return true }
 
+    // Check if whitelist is modified
+    val preferenceService = PreferenceService.getInstance(project)
+    val currentWhitelist = whitelistModel.elements().toList().toSet()
+    if (currentWhitelist != preferenceService.libraryWhitelist) {
+      return true
+    }
+
     ShadowLocationRoot.locations.any { it.isModify }.ifTrue { return true }
 
     return false
@@ -282,6 +337,10 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
       it.clear()
       it += startupModel.elements().toList()
     }
+
+    // Save whitelist preferences
+    val preferenceService = PreferenceService.getInstance(project)
+    preferenceService.libraryWhitelist = whitelistModel.elements().toList().toSet()
 
     ShadowLocationRoot.locations.forEach(ShadowLocation::apply)
 
@@ -308,10 +367,48 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     }
     service.startupLevels.forEach { startupModel.addElement(it.toPair()) }
 
+    // Reset whitelist
+    val preferenceService = PreferenceService.getInstance(project)
+    whitelistModel.clear()
+    preferenceService.libraryWhitelist.forEach { whitelistModel.addElement(it) }
+
     updateComboBox()
     reloadContentList()
     ShadowLocationRoot.sort()
     contentTreeModel.reload()
+  }
+
+  private fun addWhitelistItem() {
+    val dialog = EditWhitelistItemDialog()
+    if (dialog.showAndGet()) {
+      val item = dialog.getItem()
+      if (item.isNotBlank()) {
+        whitelistModel.addElement(item)
+        whitelistList.setSelectedValue(item, true)
+      }
+    }
+  }
+
+  private fun editWhitelistItem() {
+    if (!whitelistList.isSelectionEmpty) {
+      val index = whitelistList.selectedIndex
+      val oldValue = whitelistList.selectedValue
+
+      val dialog = EditWhitelistItemDialog(oldValue)
+      if (dialog.showAndGet()) {
+        val newValue = dialog.getItem()
+        if (newValue.isNotBlank()) {
+          whitelistModel.set(index, newValue)
+          whitelistList.setSelectedValue(newValue, true)
+        }
+      }
+    }
+  }
+
+  private fun removeWhitelistItem() {
+    if (!whitelistList.isSelectionEmpty) {
+      whitelistModel.removeElement(whitelistList.selectedValue)
+    }
   }
 
   private fun reloadContentList() {
@@ -536,6 +633,27 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     }
 
     fun getNewLevel(): Pair<String, Int> = Pair(nameTextField.text, levelSpinner.number)
+  }
+
+  inner class EditWhitelistItemDialog(
+    private val initialValue: String = "",
+    title: String = message("config.advanced.whitelist.dialog.title")
+  ) : DialogWrapper(project) {
+
+    private val textField = JBTextField(initialValue).apply {
+      columns = 40
+    }
+
+    init {
+      setTitle(title)
+      init()
+    }
+
+    override fun createCenterPanel(): JComponent = LabeledComponent.create(
+      textField, "description", BorderLayout.WEST
+    )
+
+    fun getItem(): String = textField.text.trim()
   }
 
   inner class ValidateAndResolveBundleDependencies : DialogWrapper(project) {
