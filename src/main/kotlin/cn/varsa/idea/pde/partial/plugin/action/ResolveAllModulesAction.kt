@@ -12,27 +12,25 @@ import com.intellij.openapi.project.*
 import com.intellij.openapi.ui.*
 
 // see also ResolveManifestAction, does the same thing triggered from MANIFEST.MF files
-class ResolveModuleAction : AnAction() {
+class ResolveAllModulesAction : AnAction() {
 
   override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
 
   override fun actionPerformed(e: AnActionEvent) {
-
     val project: Project? = e.project
-    val module: Module? = e.getData(LangDataKeys.MODULE)
-
-    if (project == null || module == null) {
-      Messages.showMessageDialog(project, "Invalid event parameters", "${project}, ${module}", Messages.getErrorIcon())
+    if (project == null) {
+      Messages.showMessageDialog(project, "Invalid event parameters", "${project}", Messages.getErrorIcon())
+      return
     }
-
-    resolveModule(project, module)
+    project.allPDEModules().forEach { module -> resolveModule(project, module)
+    }
 
   }
 
   override fun update(e: AnActionEvent) {
     e.presentation.apply {
-      text = EclipsePDEPartialBundles.message("action.resolveModule.text")
+      text = EclipsePDEPartialBundles.message("action.resolveAllModules.text")
       isEnabledAndVisible = e.project?.run {
         moduleFromEvent(e)?.let { PDEFacet.getInstance(it) != null }
       } == true
@@ -40,22 +38,3 @@ class ResolveModuleAction : AnAction() {
   }
 }
 
-fun resolveModule(project: Project?, module: Module?) {
-  project?.run {
-    module?.also {
-      ModuleHelper.resetCompileOutputPath(it)
-      ModuleHelper.resetCompileArtifact(it)
-      object : BackgroundResolvable {
-        override fun resolve(project: Project, indicator: ProgressIndicator) {
-          indicator.checkCanceled()
-          indicator.text = "Resolving module ${it.name}"
-          PdeLibraryResolverRegistry.instance.resolveModule(it, indicator)
-        }
-      }.backgroundResolve(this)
-    }
-  }
-}
-
-fun moduleFromEvent(e: AnActionEvent) : Module? {
-  return e.getData(LangDataKeys.MODULE)
-}
