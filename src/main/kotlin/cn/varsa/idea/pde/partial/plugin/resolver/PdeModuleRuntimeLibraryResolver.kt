@@ -116,9 +116,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
               || manifest?.exportedPackageAndVersion()?.any {
               (packageName, version) -> version in importedList[packageName]
           } == true
-        }.forEach {
-          model.addModuleOrderEntry(it)
-        }
+        }.forEach(::addModuleDependency)
       }
 
       // Collect host dependencies for fragments without directly adding
@@ -163,9 +161,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         val manifest = cacheService.getManifest(module)
         val bsn = manifest?.bundleSymbolicName?.key
         bundleDependencies.contains(bsn)
-      }.forEach {
-        model.addModuleOrderEntry(it)
-      }
+      }.forEach(::addModuleDependency)
 
       val whitelistedBundles: Set<String> =
         PreferenceService.getInstance(project).libraryWhitelist
