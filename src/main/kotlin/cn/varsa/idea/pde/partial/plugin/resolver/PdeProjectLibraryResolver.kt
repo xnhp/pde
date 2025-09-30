@@ -9,6 +9,7 @@ import cn.varsa.idea.pde.partial.plugin.support.*
 import com.intellij.openapi.project.*
 import com.intellij.openapi.roots.*
 import com.intellij.openapi.roots.libraries.*
+import cn.varsa.idea.pde.partial.plugin.config.ProjectLibraryIndexService
 
 class PdeProjectLibraryResolver : TargetPlatformLibraryResolver {
   override val displayName: String = message("resolver.pde.projectLibrary")
@@ -67,6 +68,9 @@ class PdeProjectLibraryResolver : TargetPlatformLibraryResolver {
         }
 
         applicationInvokeAndWait { writeRun { model.commit() } }
+
+        // Rebuild project-level library index for faster module resolves
+        ProjectLibraryIndexService.getInstance(area).rebuild(area)
 
 
       }

@@ -13,6 +13,8 @@ import com.intellij.openapi.module.*
 import com.intellij.openapi.roots.*
 import com.intellij.openapi.roots.libraries.*
 import com.intellij.util.containers.ContainerUtil.*
+import org.osgi.framework.Version
+import cn.varsa.idea.pde.partial.plugin.config.ProjectLibraryIndexService
 
 class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
   override val displayName: String = message("resolver.pde.moduleRuntime")
@@ -93,12 +95,14 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         }
       }
 
-      val orderedList = bundleManifest.bundleRequiredOrFromReExportOrderedList(project, area)
+      val orderedList =
+        bundleManifest.bundleRequiredOrFromReExportOrderedList(project, area)
       val importedList = bundleManifest.importedPackageAndVersion()
       val hostAndRange = bundleManifest.fragmentHostAndVersionRange()
+      // Cache PDE modules once to avoid repeated scans
+      val allPdeModules = project.allPDEModules(area)
       applicationInvokeAndWait {
-
-        project.allPDEModules(area).filter { module ->
+        allPdeModules.filter { module ->
           val manifest = cacheService.getManifest(module)
           val bsn = manifest?.bundleSymbolicName?.key
           val version = manifest?.bundleVersion
@@ -117,37 +121,31 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         }
       }
 
+      // Collect host dependencies for fragments without directly adding
+      // libraries here; they will be merged and de-duplicated later.
+      val hostLibraries: MutableList<Library> = mutableListOf()
       bundleManifest.fragmentHostAndVersionRange()
         ?.let { (hostSymbolicName, hostVersionRange) ->
-        // Find the host module in the project that matches the Fragment-Host symbolic name + version range
-        val hostModule = project.allPDEModules(area).find { candidate ->
-          val man = cacheService.getManifest(candidate)
-          val bsn = man?.bundleSymbolicName?.key
-          val ver = man?.bundleVersion
-
-          bsn == hostSymbolicName && (ver in hostVersionRange)
-        }
-        if (hostModule != null) {
-          // 2) Also inherit the host’s direct dependencies (modules & libraries)
-          // This merges the host's classpath entries into the fragment.
-          val hostOrderEntries = hostModule.moduleRootManager.orderEntries
-          // Inherit host’s module dependencies
-          hostOrderEntries.filterIsInstance<ModuleOrderEntry>().forEach { entry ->
-            entry.module?.let { depModule ->
-              // Prevent adding the same module as a dependency to itself
-              if (depModule != area) {
-                addModuleDependency(depModule)
+          val hostModule = allPdeModules.find { candidate ->
+            val man = cacheService.getManifest(candidate)
+            val bsn = man?.bundleSymbolicName?.key
+            val ver = man?.bundleVersion
+            bsn == hostSymbolicName && (ver in hostVersionRange)
+          }
+          if (hostModule != null) {
+            val hostOrderEntries = hostModule.moduleRootManager.orderEntries
+            // Inherit host’s module dependencies
+            hostOrderEntries.filterIsInstance<ModuleOrderEntry>().forEach { entry ->
+              entry.module?.let { depModule ->
+                if (depModule != area) addModuleDependency(depModule)
               }
             }
-          }
-          // Inherit host’s library dependencies
-          hostOrderEntries.filterIsInstance<LibraryOrderEntry>().forEach { entry ->
-            entry.library?.let { lib ->
-              model.addLibraryEntry(lib)
+            // Record host’s library dependencies for later selection
+            hostOrderEntries.filterIsInstance<LibraryOrderEntry>().forEach { entry ->
+              entry.library?.let { lib -> hostLibraries += lib }
             }
           }
         }
-      }
 
 
 
@@ -161,7 +159,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val bundleDependencies = resolvedBundles.union(imported)
 
       // add module dependency if there is such a module in the project
-      project.allPDEModules(area).filter { module ->
+      allPdeModules.filter { module ->
         val manifest = cacheService.getManifest(module)
         val bsn = manifest?.bundleSymbolicName?.key
         bundleDependencies.contains(bsn)
@@ -169,21 +167,134 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         model.addModuleOrderEntry(it)
       }
 
-      val whitelistedBundles: Set<String> = PreferenceService.getInstance(project).libraryWhitelist
+      val whitelistedBundles: Set<String> =
+        PreferenceService.getInstance(project).libraryWhitelist
 
-      val pdeModuleNames = project.allPDEModules(area).map { t -> t.name }.toSet()
-      project.libraryTable().libraries
-        // only consider "Partial: " libraries
-        .filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
-        .filter {
-          bsnOfLibrary(it) in bundleDependencies
-            || whitelistedBundles.any { prefix -> bsnOfLibrary(it)?.startsWith(prefix) == true }
+      // Exclude bundles that are represented by modules (by BSN, not module name)
+      val pdeModuleBSNs: Set<String> = allPdeModules.mapNotNull {
+        cacheService.getManifest(it)?.bundleSymbolicName?.key
+      }.toSet()
+
+      // Group available project libraries by BSN and capture their versions
+      data class LibVer(val lib: Library, val ver: Version)
+
+      fun versionOfLibraryName(name: String): Version? {
+        val tail = name.substringAfterLast(ProjectLibraryNamePrefix)
+        val versionText =
+          tail.substringAfterLast(BundleDefinition.canonicalNameSeparator)
+        return try { Version.parseVersion(versionText) } catch (e: Exception) {
+          null
         }
-        // do not add libraries for bundles that are already represented by modules in project
-        .filter { bsnOfLibrary(it) !in pdeModuleNames }
-        .forEach { depLibrary ->
-          model.addLibraryEntry(depLibrary)
+      }
+
+      val index = ProjectLibraryIndexService.getInstance(project).getIndex()
+
+      val libsByBsn: Map<String, List<LibVer>> = if (index.isNotEmpty()) {
+        index.mapValues { (_, nav) ->
+          nav.entries.map { LibVer(it.value, it.key) }
         }
+      } else {
+        // Fallback: build ad-hoc map if index is not ready
+        val projectLibs = project.libraryTable().libraries
+          .filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
+        projectLibs.mapNotNull { lib ->
+          val name = lib.name ?: return@mapNotNull null
+          val bsn = bsnOfLibraryName(name) ?: return@mapNotNull null
+          val ver = versionOfLibraryName(name) ?: return@mapNotNull null
+          bsn to LibVer(lib, ver)
+        }.groupBy({ it.first }, { it.second })
+      }
+
+      // Build selection of BSN -> exact Version.
+      // Prefer direct Require-Bundle constraints over re-exports to avoid
+      // older transitive versions overriding a module's explicit version
+      // requirement. We first resolve exact versions only for directly
+      // required bundles, and then fall back to re-exported/transitive
+      // results (orderedList) for BSNs that remain unspecified.
+      val requiredBsnToVersion: LinkedHashMap<String, Version> = linkedMapOf()
+      val availableBundles = managementService.getBundles()
+
+      // 1) Direct Require-Bundle: resolve to an exact, highest-in-range
+      //    version available in the target platform. This establishes the
+      //    authoritative version for the BSN when both direct and re-export
+      //    information exist.
+      bundleManifest.requiredBundleAndVersion().forEach { (bsn, range) ->
+        managementService.getBundlesByBSN(bsn, range)?.bundleVersion?.let { v ->
+          requiredBsnToVersion.putIfAbsent(bsn, v)
+        }
+      }
+
+      // 1a) Import-Package: choose bundles that export the requested
+      //     packages within the declared version range. This covers the
+      //     case where manifest only imports packages (no Require-Bundle)
+      //     and ensures we still attach the provider bundle/library.
+      importedList.forEach { (packageName, range) ->
+        val candidate = availableBundles.asSequence()
+          .mapNotNull { candidateBundle ->
+            val exportedVersion =
+              candidateBundle.manifest?.exportedPackageAndVersion()?.get(packageName)
+                ?: return@mapNotNull null
+            if (!(range contains exportedVersion)) return@mapNotNull null
+            candidateBundle to exportedVersion
+          }
+          .maxWithOrNull(compareBy({ it.second }, { it.first.bundleVersion }))
+        candidate?.first?.let { bundle ->
+          requiredBsnToVersion.putIfAbsent(bundle.bundleSymbolicName, bundle.bundleVersion)
+        }
+      }
+
+      // 2) Re-exports and other transitives from the ordered list are only
+      //    used to fill in BSNs that do not have a direct constraint.
+      orderedList.forEach { (bsn, ver) ->
+        requiredBsnToVersion.putIfAbsent(bsn, ver)
+      }
+
+      // Seed BSNs to consider with required ones
+      val bsnsToConsider: MutableSet<String> = requiredBsnToVersion.keys.toMutableSet()
+
+      // Include host libraries’ BSNs
+      hostLibraries.forEach { lib ->
+        val name = lib.name
+        if (name != null && name.startsWith(ProjectLibraryNamePrefix)) {
+          bsnOfLibraryName(name)?.let { bsnsToConsider += it }
+        }
+      }
+
+      // Include whitelisted bundle prefixes
+      libsByBsn.keys.forEach { bsn ->
+        if (whitelistedBundles.any { prefix -> bsn.startsWith(prefix) }) {
+          bsnsToConsider += bsn
+        }
+      }
+
+      // Remove any BSN that is provided by a module
+      bsnsToConsider.removeAll(pdeModuleBSNs)
+
+      // Choose a single library per BSN (prefer required version, else max)
+      val selectedLibsByBsn: MutableMap<String, Library> = mutableMapOf()
+
+      bsnsToConsider.forEach { bsn ->
+        val candidates = libsByBsn[bsn] ?: return@forEach
+        val preferred = requiredBsnToVersion[bsn]
+        val chosen = preferred?.let { pv ->
+          candidates.firstOrNull { it.ver == pv }?.lib
+        } ?: candidates.maxByOrNull { it.ver }?.lib
+        if (chosen != null) selectedLibsByBsn.putIfAbsent(bsn, chosen)
+      }
+
+      // Merge in host libraries when not already chosen (same BSN)
+      hostLibraries.forEach { lib ->
+        val name = lib.name ?: return@forEach
+        if (!name.startsWith(ProjectLibraryNamePrefix)) return@forEach
+        val bsn = bsnOfLibraryName(name) ?: return@forEach
+        if (bsn in pdeModuleBSNs) return@forEach
+        selectedLibsByBsn.putIfAbsent(bsn, lib)
+      }
+
+      // Finally, add the selected libraries only once per BSN
+      selectedLibsByBsn.values.forEach { depLibrary ->
+        model.addLibraryEntry(depLibrary)
+      }
     }
   }
 

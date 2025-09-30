@@ -55,6 +55,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
   var cleanRuntimeDir = false
   var additionalClasspath = ""
   var targetModules: Set<String>? = null
+  var excludedBundles: Set<String>? = null
 
   /**
    * Finds all files with the ".product" extension within the project content roots.
@@ -118,6 +119,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
       setAttribute("cleanRuntimeDir", cleanRuntimeDir.toString())
       setAttribute("additionalClasspath", additionalClasspath)
       setAttribute("targetModules", targetModules?.joinToString(",") ?: "")
+      setAttribute("excludedBundles", excludedBundles?.joinToString(",") ?: "")
     }
   }
 
@@ -136,6 +138,9 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
       targetModules =
         if (targetModuleAttribute != null && targetModuleAttribute.isNotBlank()) it.getAttributeValue("targetModules").split(",").toSet()
         else null
+      val excludedBundlesAttr = it.getAttributeValue("excludedBundles")
+      excludedBundles =
+        if (!excludedBundlesAttr.isNullOrBlank()) excludedBundlesAttr.split(',').toSet() else null
     }
   }
 
@@ -268,10 +273,23 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     override val projectDirectory: File get() = project.presentableUrl!!.toFile()
 
     override val libraries: List<File>
-      get() = BundleManagementService.getInstance(project).getBundles().map { it.file }
+      get() {
+        val all = BundleManagementService.getInstance(project).getBundles()
+        val excluded = excludedBundles
+        val filtered = if (excluded.isNullOrEmpty()) all else all.filter { it.bundleSymbolicName !in excluded }
+        return filtered.map { it.file }
+      }
 
     override val devModules: List<DevModule>
-      get() = project.allPDEModules().filter{ targetModules == null || it.name in targetModules!! }.mapNotNull { PDEFacet.getInstance(it) }.map(PDEFacet::toDevModule)
+      get() {
+        val devs = project
+          .allPDEModules()
+          .filter { targetModules == null || it.name in targetModules!! }
+          .mapNotNull { PDEFacet.getInstance(it) }
+          .map(PDEFacet::toDevModule)
+        val excluded = excludedBundles
+        return if (excluded.isNullOrEmpty()) devs else devs.filter { it.bundleSymbolicName !in excluded }
+      }
 
     override fun getManifest(jarFileOrDirectory: File): BundleManifest? =
       LocalFileSystem.getInstance().findFileByIoFile(jarFileOrDirectory)?.let { cache.getManifest(it) }
