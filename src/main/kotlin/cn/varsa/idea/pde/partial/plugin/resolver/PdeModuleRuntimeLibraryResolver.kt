@@ -1,6 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.resolver
 
 import cn.varsa.idea.pde.partial.common.*
+import cn.varsa.idea.pde.partial.common.domain.BundleManifest
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
@@ -205,6 +206,23 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         }.groupBy({ it.first }, { it.second })
       }
 
+      // Capture manifest + export lookups per library so we can reuse them when
+      // only import-package dependencies are present.
+      val libraryManifestCache = mutableMapOf<Library, BundleManifest?>()
+      val libraryExportsCache = mutableMapOf<Library, Map<String, Version>>()
+
+      fun libraryManifestOf(library: Library): BundleManifest? =
+        libraryManifestCache.getOrPut(library) {
+          library.getFiles(OrderRootType.CLASSES).asSequence()
+            .mapNotNull { cacheService.getManifest(it) }
+            .firstOrNull()
+        }
+
+      fun libraryExportsOf(library: Library): Map<String, Version> =
+        libraryExportsCache.getOrPut(library) {
+          libraryManifestOf(library)?.exportedPackageAndVersion() ?: emptyMap()
+        }
+
       // Build selection of BSN -> exact Version.
       // Prefer direct Require-Bundle constraints over re-exports to avoid
       // older transitive versions overriding a module's explicit version
@@ -240,6 +258,27 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
           .maxWithOrNull(compareBy({ it.second }, { it.first.bundleVersion }))
         candidate?.first?.let { bundle ->
           requiredBsnToVersion.putIfAbsent(bundle.bundleSymbolicName, bundle.bundleVersion)
+        }
+
+        if (candidate == null && libsByBsn.isNotEmpty()) {
+          // No bundle in the target platform serves this package; attempt to
+          // resolve against Partial libraries registered in the project.
+          // This is useful for handling "Import-Package" directives
+          val fallback = libsByBsn.asSequence()
+            .flatMap { (bsn, libVersions) ->
+              libVersions.asSequence().mapNotNull { libVer ->
+                val manifest = libraryManifestOf(libVer.lib) ?: return@mapNotNull null
+                val exportedVersion = libraryExportsOf(libVer.lib)[packageName]
+                  ?: return@mapNotNull null
+                if (!(range contains exportedVersion)) return@mapNotNull null
+                Triple(bsn, manifest.bundleVersion, exportedVersion)
+              }
+            }
+            .maxWithOrNull(compareBy({ it.third }, { it.second }))
+
+          fallback?.let { (bsn, version, _) ->
+            requiredBsnToVersion.putIfAbsent(bsn, version)
+          }
         }
       }
 
