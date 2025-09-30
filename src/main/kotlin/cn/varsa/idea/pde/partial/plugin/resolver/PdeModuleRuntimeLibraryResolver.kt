@@ -327,7 +327,9 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         if (!name.startsWith(ProjectLibraryNamePrefix)) return@forEach
         val bsn = bsnOfLibraryName(name) ?: return@forEach
         if (bsn in pdeModuleBSNs) return@forEach
-        selectedLibsByBsn.putIfAbsent(bsn, lib)
+        // Prefer the exact library instance used by the host to avoid
+        // fragments using a different version selected earlier.
+        selectedLibsByBsn[bsn] = lib
       }
 
       // Finally, add the selected libraries only once per BSN
