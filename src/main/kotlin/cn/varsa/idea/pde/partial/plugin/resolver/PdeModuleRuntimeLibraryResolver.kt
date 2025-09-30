@@ -47,16 +47,16 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       return name.substringAfterLast(ProjectLibraryNamePrefix).substringBeforeLast(BundleDefinition.canonicalNameSeparator)
     }
 
-    fun bsnOfLibrary(it: Library): String? {
-      return it.name?.let { bsnOfLibraryName(it) }
-    }
+    val manifestByBsn = mutableMapOf<String, BundleManifest?>()
 
     fun resolveTransitiveDependencies(requiredBundles: Set<String>, resolvedBundles: MutableSet<String>) {
       // TODO share sub-results (DP)
       val newDependencies = mutableSetOf<String>()
       requiredBundles.forEach { bsn ->
         if (bsn !in resolvedBundles) {
-          val manifest = managementService.getBundleManifestBySymbolicName(bsn)
+          val manifest = manifestByBsn.getOrPut(bsn) {
+            managementService.getBundleManifestBySymbolicName(bsn)
+          }
           manifest?.requireBundle?.keys?.let { newDependencies.addAll(it) }
           resolvedBundles.add(bsn)
         }
@@ -69,7 +69,6 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     area.updateModel { model ->
 
       fun addModuleDependency(moduleToAdd: Module): ModuleOrderEntry {
-        model.moduleDependencies.contains(moduleToAdd)
         return model.findModuleOrderEntry(moduleToAdd) ?: model.addModuleOrderEntry(moduleToAdd)
       }
 
@@ -125,7 +124,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       // Collect host dependencies for fragments without directly adding
       // libraries here; they will be merged and de-duplicated later.
       val hostLibraries: MutableList<Library> = mutableListOf()
-      bundleManifest.fragmentHostAndVersionRange()
+      hostAndRange
         ?.let { (hostSymbolicName, hostVersionRange) ->
           val hostModule = allPdeModules.find { candidate ->
             val man = cacheService.getManifest(candidate)
