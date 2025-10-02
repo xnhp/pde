@@ -1,7 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.resolver
 
 import cn.varsa.idea.pde.partial.common.*
-import cn.varsa.idea.pde.partial.common.domain.BundleManifest
+import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
@@ -135,7 +135,11 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
             // Inherit host’s module dependencies
             hostOrderEntries.filterIsInstance<ModuleOrderEntry>().forEach { entry ->
               entry.module?.let { depModule ->
-                if (depModule != area) addModuleDependency(depModule)
+                if (depModule == area) return@let
+                val moduleDependency = addModuleDependency(depModule)
+                moduleDependency.scope = entry.scope
+                moduleDependency.isExported = entry.isExported
+                moduleDependency.isProductionOnTestDependency = entry.isProductionOnTestDependency
               }
             }
             // Record host’s library dependencies for later selection
