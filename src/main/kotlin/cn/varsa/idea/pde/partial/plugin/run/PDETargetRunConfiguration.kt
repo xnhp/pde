@@ -1,7 +1,8 @@
 package cn.varsa.idea.pde.partial.plugin.run
 
 import cn.varsa.idea.pde.partial.common.configure.*
-import cn.varsa.idea.pde.partial.common.domain.*
+import cn.varsa.idea.pde.partial.common.domain.DevModule
+import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.idea.pde.partial.common.service.*
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*

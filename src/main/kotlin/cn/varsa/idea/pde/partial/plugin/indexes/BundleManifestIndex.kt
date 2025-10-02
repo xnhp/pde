@@ -1,7 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.indexes
 
 import cn.varsa.idea.pde.partial.common.*
-import cn.varsa.idea.pde.partial.common.domain.*
+import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.support.*
 import com.intellij.openapi.project.*

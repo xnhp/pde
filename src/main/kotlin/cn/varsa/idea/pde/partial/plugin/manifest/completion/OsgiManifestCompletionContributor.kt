@@ -1,6 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.manifest.completion
 
-import cn.varsa.idea.pde.partial.common.domain.*
+import cn.varsa.idea.pde.partial.common.domain.JavaVersions
+import cn.varsa.pde.resolver.manifest.*
 import cn.varsa.idea.pde.partial.plugin.config.*
 import cn.varsa.idea.pde.partial.plugin.manifest.psi.*
 import cn.varsa.idea.pde.partial.plugin.support.*

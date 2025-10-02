@@ -1,7 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.inspection
 
 import cn.varsa.idea.pde.partial.common.*
-import cn.varsa.idea.pde.partial.common.domain.*
+import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
@@ -98,12 +98,12 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
       val containers = arrayListOf<BundleManifest>()
       ownerFile?.presentableUrl?.let { managementService.getBundleByInnerJarPath(it)?.manifest }
         ?.also { containers += it }
-      containers += project.allPDEModules(requesterModule).filter { module ->
+      containers.addAll(project.allPDEModules(requesterModule).filter { module ->
         ownerFile?.presentableUrl == module.getModuleDir() || cacheService.getManifest(module)?.bundleClassPath?.keys?.filterNot { it == "." }
           ?.mapNotNull { module.getModuleDir()?.toFile(it)?.canonicalPath }
           ?.any { ownerFile?.presentableUrl == it } == true
-      }.mapNotNull { cacheService.getManifest(it) }
-      if (containers.isEmpty()) cacheService.getManifest(item)?.also { containers += it }
+      }.mapNotNull { cacheService.getManifest(it) })
+      if (containers.isEmpty()) cacheService.getManifest(item)?.also { containers.add(it) }
 
       val problems = arrayListOf<Problem>()
       if (containers.isEmpty()) problems += Problem.weak(message("inspection.hint.nonBundle", packageName))

@@ -1,6 +1,6 @@
 package cn.varsa.idea.pde.partial.plugin.manifest.lang
 
-import cn.varsa.idea.pde.partial.common.domain.*
+import cn.varsa.pde.resolver.manifest.*
 import org.jetbrains.lang.manifest.header.*
 import org.osgi.framework.Constants.*
 

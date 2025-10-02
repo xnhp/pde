@@ -1,6 +1,7 @@
 package cn.varsa.idea.pde.partial.common.service
 
-import cn.varsa.idea.pde.partial.common.domain.*
+import cn.varsa.idea.pde.partial.common.domain.DevModule
+import cn.varsa.pde.resolver.manifest.BundleManifest
 import java.io.*
 
 /**
