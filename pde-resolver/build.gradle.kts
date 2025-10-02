@@ -16,7 +16,7 @@ repositories {
 dependencies {
   // Root disables default stdlib; add explicitly
   implementation(kotlin("stdlib"))
-  implementation("org.osgi:org.osgi.core:6.0.0")
+  api("org.osgi:org.osgi.core:6.0.0")
 
   testImplementation(libs.junit)
 }
