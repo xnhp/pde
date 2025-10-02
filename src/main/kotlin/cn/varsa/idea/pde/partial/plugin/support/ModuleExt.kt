@@ -3,6 +3,7 @@ package cn.varsa.idea.pde.partial.plugin.support
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
+import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import com.intellij.openapi.module.*
 import com.intellij.openapi.project.*
 import com.intellij.openapi.roots.*

@@ -1,6 +1,8 @@
 package cn.varsa.idea.pde.partial.plugin.config
 
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.manifest.reexportRequiredBundleAndVersion
+import cn.varsa.pde.resolver.support.contains
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.dom.config.*

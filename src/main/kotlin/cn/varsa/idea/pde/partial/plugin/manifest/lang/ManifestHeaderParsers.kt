@@ -3,6 +3,12 @@ package cn.varsa.idea.pde.partial.plugin.manifest.lang
 import cn.varsa.idea.pde.partial.common.domain.JavaVersions
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.manifest.ECLIPSE_EXTENSIBLE_API
+import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
+import cn.varsa.pde.resolver.manifest.isFragmentHost
+import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.support.VersionRangeAny
+import cn.varsa.pde.resolver.support.contains
+import cn.varsa.pde.resolver.support.parseVersion
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*

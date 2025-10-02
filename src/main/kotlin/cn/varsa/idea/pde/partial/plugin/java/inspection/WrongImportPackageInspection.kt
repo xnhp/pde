@@ -8,6 +8,7 @@ import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.inspection.*
 import cn.varsa.idea.pde.partial.plugin.manifest.psi.*
 import cn.varsa.idea.pde.partial.plugin.support.*
+import cn.varsa.pde.resolver.manifest.getExportedPackageName
 import com.intellij.codeInspection.*
 import com.intellij.openapi.roots.*
 import com.intellij.psi.*

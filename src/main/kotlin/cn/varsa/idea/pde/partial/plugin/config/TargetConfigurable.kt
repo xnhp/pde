@@ -25,6 +25,9 @@ import com.jetbrains.rd.util.reactive.*
 import jdk.internal.org.jline.utils.AttributedStringBuilder.append
 import org.osgi.framework.*
 import org.osgi.framework.Constants.*
+import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.support.parseVersionRange
+import cn.varsa.pde.resolver.support.contains
 import java.awt.*
 import java.awt.event.*
 import javax.swing.*

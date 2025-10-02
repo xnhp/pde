@@ -2,6 +2,16 @@ package cn.varsa.idea.pde.partial.plugin.resolver
 
 import cn.varsa.idea.pde.partial.common.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.manifest.canonicalName
+import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
+import cn.varsa.pde.resolver.manifest.importedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
+import cn.varsa.pde.resolver.algo.Resolver
+import cn.varsa.pde.resolver.algo.ResolveOptions
+import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
+import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
@@ -84,7 +94,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
           isExported = true
         }
 
-        val libraryModel = library.modifiableModel
+      val libraryModel = library.modifiableModel
 
         libraryModel.getUrls(OrderRootType.CLASSES).forEach { libraryModel.removeRoot(it, OrderRootType.CLASSES) }
         classesRoot.forEach { libraryModel.addRoot(it, OrderRootType.CLASSES) }
@@ -95,246 +105,111 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         }
       }
 
-      val orderedList =
-        bundleManifest.bundleRequiredOrFromReExportOrderedList(project, area)
-      val importedList = bundleManifest.importedPackageAndVersion()
-      val hostAndRange = bundleManifest.fragmentHostAndVersionRange()
-      // Cache PDE modules once to avoid repeated scans
-      val allPdeModules = project.allPDEModules(area)
-      applicationInvokeAndWait {
-        allPdeModules.filter { module ->
-          val manifest = cacheService.getManifest(module)
-          val bsn = manifest?.bundleSymbolicName?.key
-          val version = manifest?.bundleVersion
-          val range = manifest?.fragmentHostAndVersionRange()
+      // Build workspace descriptors (all PDE modules in project)
+      val allPdeModules = project.allPDEModules()
+      val moduleByBsn = allPdeModules.mapNotNull { m ->
+        val man = cacheService.getManifest(m)
+        val bsn = man?.bundleSymbolicName?.key
+        if (bsn != null) bsn to m else null
+      }.toMap()
 
-          (bsn == hostAndRange?.first && version in hostAndRange?.second)  // add fragment host as module dependency
-              || orderedList.any { //
-            (it.first == bsn && version == it.second)  //
-                || (it.first == range?.first && it.second in range.second)
-          }
-              || manifest?.exportedPackageAndVersion()?.any {
-              (packageName, version) -> version in importedList[packageName]
-          } == true
-        }.forEach(::addModuleDependency)
+      fun modulePath(m: Module) =
+        m.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) }
+
+      val workspace: List<WorkspaceBundleDescriptor> = allPdeModules.mapNotNull { m ->
+        val man = cacheService.getManifest(m) ?: return@mapNotNull null
+        val path = modulePath(m) ?: return@mapNotNull null
+        WorkspaceBundleDescriptor(path, man)
       }
 
-      // Collect host dependencies for fragments without directly adding
-      // libraries here; they will be merged and de-duplicated later.
-      val hostLibraries: MutableList<Library> = mutableListOf()
-      hostAndRange
-        ?.let { (hostSymbolicName, hostVersionRange) ->
-          val hostModule = allPdeModules.find { candidate ->
-            val man = cacheService.getManifest(candidate)
-            val bsn = man?.bundleSymbolicName?.key
-            val ver = man?.bundleVersion
-            bsn == hostSymbolicName && (ver in hostVersionRange)
-          }
-          if (hostModule != null) {
-            val hostOrderEntries = hostModule.moduleRootManager.orderEntries
-            // Inherit host’s module dependencies
-            hostOrderEntries.filterIsInstance<ModuleOrderEntry>().forEach { entry ->
-              entry.module?.let { depModule ->
-                if (depModule == area) return@let
-                val moduleDependency = addModuleDependency(depModule)
-                moduleDependency.scope = entry.scope
-                moduleDependency.isExported = entry.isExported
-                moduleDependency.isProductionOnTestDependency = entry.isProductionOnTestDependency
-              }
-            }
-            // Record host’s library dependencies for later selection
-            hostOrderEntries.filterIsInstance<LibraryOrderEntry>().forEach { entry ->
-              entry.library?.let { lib -> hostLibraries += lib }
-            }
-          }
-        }
+      val entryPath = modulePath(area) ?: return@updateModel
+      val entryDesc = WorkspaceBundleDescriptor(entryPath, bundleManifest)
 
-
-
-      // initial seed
-      val requiredBundles = bundleManifest.requireBundle?.map { it.key }?.toSet() ?: emptySet()
-      val seeds = requiredBundles
-      // accumulator for transitive dependencies
-      val resolvedBundles = mutableSetOf<String>()
-      resolveTransitiveDependencies(seeds, resolvedBundles)
-      val imported = bundleManifest.importPackage?.map { it.key }?.toSet() ?: emptySet()
-      val bundleDependencies = resolvedBundles.union(imported)
-
-      // add module dependency if there is such a module in the project
-      allPdeModules.filter { module ->
-        val manifest = cacheService.getManifest(module)
-        val bsn = manifest?.bundleSymbolicName?.key
-        bundleDependencies.contains(bsn)
-      }.forEach(::addModuleDependency)
-
-      val whitelistedBundles: Set<String> =
-        PreferenceService.getInstance(project).libraryWhitelist
-
-      // Exclude bundles that are represented by modules (by BSN, not module name)
-      val pdeModuleBSNs: Set<String> = allPdeModules.mapNotNull {
-        cacheService.getManifest(it)?.bundleSymbolicName?.key
-      }.toSet()
-
-      // Group available project libraries by BSN and capture their versions
-      data class LibVer(val lib: Library, val ver: Version)
-
-      fun versionOfLibraryName(name: String): Version? {
-        val tail = name.substringAfterLast(ProjectLibraryNamePrefix)
-        val versionText =
-          tail.substringAfterLast(BundleDefinition.canonicalNameSeparator)
-        return try { Version.parseVersion(versionText) } catch (e: Exception) {
-          null
-        }
+      // Build TargetPlatformIndex from current target bundles (cached in plugin)
+      val targetBundles = managementService.getBundles()
+      val byBsn: MutableMap<String, java.util.NavigableMap<Version, TargetResolvedBundle>> = hashMapOf()
+      targetBundles.forEach { b ->
+        val man = b.manifest ?: return@forEach
+        // Exclude source bundles
+        if (man.eclipseSourceBundle != null) return@forEach
+        val bsn = man.bundleSymbolicName?.key ?: return@forEach
+        val ver = man.bundleVersion
+        val rb = TargetResolvedBundle(b.file.toPath(), man, b.file.isDirectory)
+        byBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = rb
       }
+      val targetIndex = TargetPlatformIndex(byBsn)
 
+      val options = ResolveOptions(
+        whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
+        preferWorkspace = true,
+        includeHostsForFragments = true
+      )
+
+      val result = Resolver.resolve(targetIndex, workspace, entryDesc, options)
+
+      // Prepare project library index (BSN -> versions -> Library)
       val index = ProjectLibraryIndexService.getInstance(project).getIndex()
-
-      val libsByBsn: Map<String, List<LibVer>> = if (index.isNotEmpty()) {
-        index.mapValues { (_, nav) ->
-          nav.entries.map { LibVer(it.value, it.key) }
-        }
+      val libsByBsn: Map<String, java.util.NavigableMap<Version, Library>> = if (index.isNotEmpty()) {
+        index
       } else {
-        // Fallback: build ad-hoc map if index is not ready
-        val projectLibs = project.libraryTable().libraries
-          .filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }
-        projectLibs.mapNotNull { lib ->
-          val name = lib.name ?: return@mapNotNull null
-          val bsn = bsnOfLibraryName(name) ?: return@mapNotNull null
-          val ver = versionOfLibraryName(name) ?: return@mapNotNull null
-          bsn to LibVer(lib, ver)
-        }.groupBy({ it.first }, { it.second })
+        // Fallback: ad-hoc rebuild view from current project libs
+        val tableLibs = project.libraryTable().libraries
+        val map = hashMapOf<String, java.util.NavigableMap<Version, Library>>()
+        tableLibs.filter { it.name?.startsWith(ProjectLibraryNamePrefix) == true }.forEach { lib ->
+          val name = lib.name ?: return@forEach
+          val bsn = bsnOfLibraryName(name) ?: return@forEach
+          val verText = name.substringAfterLast(BundleDefinition.canonicalNameSeparator)
+          val ver = try { Version.parseVersion(verText) } catch (_: Exception) { null }
+          if (ver != null) map.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = lib
+        }
+        map
       }
 
-      // Capture manifest + export lookups per library so we can reuse them when
-      // only import-package dependencies are present.
-      val libraryManifestCache = mutableMapOf<Library, BundleManifest?>()
-      val libraryExportsCache = mutableMapOf<Library, Map<String, Version>>()
-
-      fun libraryManifestOf(library: Library): BundleManifest? =
-        libraryManifestCache.getOrPut(library) {
-          library.getFiles(OrderRootType.CLASSES).asSequence()
-            .mapNotNull { cacheService.getManifest(it) }
-            .firstOrNull()
-        }
-
-      fun libraryExportsOf(library: Library): Map<String, Version> =
-        libraryExportsCache.getOrPut(library) {
-          libraryManifestOf(library)?.exportedPackageAndVersion() ?: emptyMap()
-        }
-
-      // Build selection of BSN -> exact Version.
-      // Prefer direct Require-Bundle constraints over re-exports to avoid
-      // older transitive versions overriding a module's explicit version
-      // requirement. We first resolve exact versions only for directly
-      // required bundles, and then fall back to re-exported/transitive
-      // results (orderedList) for BSNs that remain unspecified.
-      val requiredBsnToVersion: LinkedHashMap<String, Version> = linkedMapOf()
-      val availableBundles = managementService.getBundles()
-
-      // 1) Direct Require-Bundle: resolve to an exact, highest-in-range
-      //    version available in the target platform. This establishes the
-      //    authoritative version for the BSN when both direct and re-export
-      //    information exist.
-      bundleManifest.requiredBundleAndVersion().forEach { (bsn, range) ->
-        managementService.getBundlesByBSN(bsn, range)?.bundleVersion?.let { v ->
-          requiredBsnToVersion.putIfAbsent(bsn, v)
-        }
-      }
-
-      // 1a) Import-Package: choose bundles that export the requested
-      //     packages within the declared version range. This covers the
-      //     case where manifest only imports packages (no Require-Bundle)
-      //     and ensures we still attach the provider bundle/library.
-      importedList.forEach { (packageName, range) ->
-        val candidate = availableBundles.asSequence()
-          .mapNotNull { candidateBundle ->
-            val exportedVersion =
-              candidateBundle.manifest?.exportedPackageAndVersion()?.get(packageName)
-                ?: return@mapNotNull null
-            if (!(range contains exportedVersion)) return@mapNotNull null
-            candidateBundle to exportedVersion
-          }
-          .maxWithOrNull(compareBy({ it.second }, { it.first.bundleVersion }))
-        candidate?.first?.let { bundle ->
-          requiredBsnToVersion.putIfAbsent(bundle.bundleSymbolicName, bundle.bundleVersion)
-        }
-
-        if (candidate == null && libsByBsn.isNotEmpty()) {
-          // No bundle in the target platform serves this package; attempt to
-          // resolve against Partial libraries registered in the project.
-          // This is useful for handling "Import-Package" directives
-          val fallback = libsByBsn.asSequence()
-            .flatMap { (bsn, libVersions) ->
-              libVersions.asSequence().mapNotNull { libVer ->
-                val manifest = libraryManifestOf(libVer.lib) ?: return@mapNotNull null
-                val exportedVersion = libraryExportsOf(libVer.lib)[packageName]
-                  ?: return@mapNotNull null
-                if (!(range contains exportedVersion)) return@mapNotNull null
-                Triple(bsn, manifest.bundleVersion, exportedVersion)
-              }
+      // If entry is a fragment with a workspace host, mirror host dependencies
+      val hostWorkspaceBsn = result.bundles.firstOrNull { it.isHost && it.isWorkspace }?.bsn
+      val hostLibraries: MutableList<Library> = mutableListOf()
+      if (hostWorkspaceBsn != null) {
+        val hostModule = moduleByBsn[hostWorkspaceBsn]
+        if (hostModule != null) {
+          val hostOrderEntries = hostModule.moduleRootManager.orderEntries
+          hostOrderEntries.filterIsInstance<ModuleOrderEntry>().forEach { entry ->
+            entry.module?.let { depModule ->
+              if (depModule == area) return@let
+              val moduleDependency = addModuleDependency(depModule)
+              moduleDependency.scope = entry.scope
+              moduleDependency.isExported = entry.isExported
+              moduleDependency.isProductionOnTestDependency = entry.isProductionOnTestDependency
             }
-            .maxWithOrNull(compareBy({ it.third }, { it.second }))
-
-          fallback?.let { (bsn, version, _) ->
-            requiredBsnToVersion.putIfAbsent(bsn, version)
+          }
+          hostOrderEntries.filterIsInstance<LibraryOrderEntry>().forEach { entry ->
+            entry.library?.let { lib -> hostLibraries += lib }
           }
         }
       }
 
-      // 2) Re-exports and other transitives from the ordered list are only
-      //    used to fill in BSNs that do not have a direct constraint.
-      orderedList.forEach { (bsn, ver) ->
-        requiredBsnToVersion.putIfAbsent(bsn, ver)
+      // Apply workspace module dependencies
+      result.bundles.filter { it.isWorkspace }.forEach { rb ->
+        val mod = moduleByBsn[rb.bsn]
+        if (mod != null && mod != area) addModuleDependency(mod)
       }
 
-      // Seed BSNs to consider with required ones and full transitive Require-Bundle closure
-      val bsnsToConsider: MutableSet<String> = requiredBsnToVersion.keys.toMutableSet()
-      bsnsToConsider += resolvedBundles
+      // Apply target libraries (choose exact version where possible)
+      val addedLibs = hashSetOf<Library>()
+      fun chooseLib(bsn: String, ver: Version): Library? {
+        val nav = libsByBsn[bsn] ?: return null
+        return nav[ver] ?: nav.lastEntry()?.value
+      }
 
-      // Include host libraries’ BSNs
-      hostLibraries.forEach { lib ->
-        val name = lib.name
-        if (name != null && name.startsWith(ProjectLibraryNamePrefix)) {
-          bsnOfLibraryName(name)?.let { bsnsToConsider += it }
+      result.bundles.filter { !it.isWorkspace }.forEach { rb ->
+        val lib = chooseLib(rb.bsn, rb.version)
+        if (lib != null && addedLibs.add(lib)) {
+          model.addLibraryEntry(lib)
         }
       }
 
-      // Include whitelisted bundle prefixes
-      libsByBsn.keys.forEach { bsn ->
-        if (whitelistedBundles.any { prefix -> bsn.startsWith(prefix) }) {
-          bsnsToConsider += bsn
-        }
-      }
-
-      // Remove any BSN that is provided by a module
-      bsnsToConsider.removeAll(pdeModuleBSNs)
-
-      // Choose a single library per BSN (prefer required version, else max)
-      val selectedLibsByBsn: MutableMap<String, Library> = mutableMapOf()
-
-      bsnsToConsider.forEach { bsn ->
-        val candidates = libsByBsn[bsn] ?: return@forEach
-        val preferred = requiredBsnToVersion[bsn]
-        val chosen = preferred?.let { pv ->
-          candidates.firstOrNull { it.ver == pv }?.lib
-        } ?: candidates.maxByOrNull { it.ver }?.lib
-        if (chosen != null) selectedLibsByBsn.putIfAbsent(bsn, chosen)
-      }
-
-      // Merge in host libraries when not already chosen (same BSN)
+      // Merge in host libraries when present
       hostLibraries.forEach { lib ->
-        val name = lib.name ?: return@forEach
-        if (!name.startsWith(ProjectLibraryNamePrefix)) return@forEach
-        val bsn = bsnOfLibraryName(name) ?: return@forEach
-        if (bsn in pdeModuleBSNs) return@forEach
-        // Prefer the exact library instance used by the host to avoid
-        // fragments using a different version selected earlier.
-        selectedLibsByBsn[bsn] = lib
-      }
-
-      // Finally, add the selected libraries only once per BSN
-      selectedLibsByBsn.values.forEach { depLibrary ->
-        model.addLibraryEntry(depLibrary)
+        if (addedLibs.add(lib)) model.addLibraryEntry(lib)
       }
     }
   }
@@ -355,9 +230,13 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val runtimeOrder = orderEntriesMap[ModuleLibraryName]
       val hostOrder = orderEntriesMap[hostBCN] ?: orderEntriesMap["$ProjectLibraryNamePrefix$hostBCN"]
       val dependencyOrder =
-        manifest.bundleRequiredOrFromReExportOrderedList(project, area).map { it.asCanonicalName }.mapNotNull {
-          orderEntriesMap[it] ?: orderEntriesMap["$ProjectLibraryNamePrefix$it"]
-        }
+        manifest.bundleRequiredOrFromReExportOrderedList(project, area).map { it.asCanonicalName }.flatMap {
+          val dash = it
+          val at = it.substringBeforeLast('-') +
+            cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator +
+            it.substringAfterLast('-')
+          listOf(dash, "$ProjectLibraryNamePrefix$dash", "$ProjectLibraryNamePrefix$at")
+        }.mapNotNull { orderEntriesMap[it] }
 
       var libraryIndex = orderEntries.indexOfLast { it is JdkOrderEntry || it is ModuleSourceOrderEntry } + 1
       val arrangeOrderEntries = orderEntries.apply {

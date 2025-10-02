@@ -9,6 +9,12 @@ import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.helper.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.support.*
+import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
+import cn.varsa.pde.resolver.manifest.isFragmentHost
+import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.isPackageImported
+import cn.varsa.pde.resolver.manifest.isBundleRequired
+import cn.varsa.pde.resolver.support.contains
 import com.intellij.codeInspection.*
 import com.intellij.codeInspection.util.*
 import com.intellij.ide.projectView.impl.*

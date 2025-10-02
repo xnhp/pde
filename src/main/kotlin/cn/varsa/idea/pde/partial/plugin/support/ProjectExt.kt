@@ -1,6 +1,9 @@
 package cn.varsa.idea.pde.partial.plugin.support
 
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
+import cn.varsa.pde.resolver.manifest.isFragmentHost
+import cn.varsa.pde.resolver.support.contains
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
 import cn.varsa.idea.pde.partial.plugin.facet.*
