@@ -6,3 +6,4 @@ plugins {
 
 // Core resolver module for target platform parsing/indexing
 include(":pde-resolver")
+include(":pde-resolver-cli")
