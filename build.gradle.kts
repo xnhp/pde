@@ -45,6 +45,9 @@ dependencies {
 
     testFramework(TestFrameworkType.Platform)
   }
+
+  // Use core resolver in plugin code
+  implementation(project(":pde-resolver"))
 }
 
 // Configure IntelliJ Platform Gradle Plugin - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-extension.html
