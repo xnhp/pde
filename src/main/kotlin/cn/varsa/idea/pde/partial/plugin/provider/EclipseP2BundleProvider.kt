@@ -2,7 +2,7 @@ package cn.varsa.idea.pde.partial.plugin.provider
 
 import cn.varsa.idea.pde.partial.common.*
 import cn.varsa.pde.resolver.features.FeatureScanner
-import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.idea.pde.partial.common.support.*
 import java.io.File
 import java.net.URI
@@ -31,7 +31,7 @@ open class EclipseP2BundleProvider : EclipseSDKBundleProvider() {
 
     // Discover bundles via TargetPlatformIndex
     val profileDir = File(p2Directory, "org.eclipse.equinox.p2.engine/profileRegistry/$profileName.profile")
-    val index = TargetPlatformIndex.build(listOf(profileDir.toPath()))
+    val index = TargetPlatformCache.buildWithCache(listOf(profileDir.toPath()))
     index.bundlesByBsn().values.forEach { versions ->
       versions.values.forEach { rb -> processBundle(rb.location.toFile()) }
     }

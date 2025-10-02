@@ -2,7 +2,7 @@ package cn.varsa.idea.pde.partial.plugin.provider
 
 import cn.varsa.idea.pde.partial.common.*
 import cn.varsa.pde.resolver.features.FeatureScanner
-import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.index.findProfileFile
 import cn.varsa.pde.resolver.index.getBundlePoolPath
 import cn.varsa.pde.resolver.index.mapProfileFile
@@ -44,7 +44,7 @@ class TargetDefinitionBundleProvider : EclipseSDKBundleProvider() {
     }
 
     // Bundles via TargetPlatformIndex from profile dir
-    val index = TargetPlatformIndex.build(listOf(rootDirectory.toPath()))
+    val index = TargetPlatformCache.buildWithCache(listOf(rootDirectory.toPath()))
     index.bundlesByBsn().values.forEach { versions ->
       versions.values.forEach { rb -> processBundle(rb.location.toFile()) }
     }

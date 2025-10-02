@@ -1,7 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.provider
 
 import cn.varsa.idea.pde.partial.plugin.openapi.provider.TargetBundleProvider
-import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.TargetPlatformCache
 import java.io.File
 
 open class DirectoryBundleProvider : TargetBundleProvider {
@@ -14,7 +14,7 @@ open class DirectoryBundleProvider : TargetBundleProvider {
   ): Boolean {
     if (!rootDirectory.exists()) return false
 
-    val index = TargetPlatformIndex.build(listOf(rootDirectory.toPath()))
+    val index = TargetPlatformCache.buildWithCache(listOf(rootDirectory.toPath()))
     index.bundlesByBsn().values.forEach { versions ->
       versions.values.forEach { rb -> processBundle(rb.location.toFile()) }
     }

@@ -2,7 +2,7 @@ package cn.varsa.idea.pde.partial.plugin.provider
 
 import cn.varsa.idea.pde.partial.common.*
 import cn.varsa.pde.resolver.features.FeatureScanner
-import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.TargetPlatformCache
 import java.io.File
 
 open class EclipseSDKBundleProvider : DirectoryBundleProvider() {
@@ -17,7 +17,7 @@ open class EclipseSDKBundleProvider : DirectoryBundleProvider() {
     FeatureScanner.scanEclipseSdkFeatures(rootDirectory, processFeature)
 
     // bundles (plugins + dropins) via TargetPlatformIndex
-    val index = TargetPlatformIndex.build(listOf(rootDirectory.toPath()))
+    val index = TargetPlatformCache.buildWithCache(listOf(rootDirectory.toPath()))
     var found = false
     index.bundlesByBsn().values.forEach { versions ->
       versions.values.forEach { rb ->
