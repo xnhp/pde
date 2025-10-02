@@ -287,8 +287,9 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         requiredBsnToVersion.putIfAbsent(bsn, ver)
       }
 
-      // Seed BSNs to consider with required ones
+      // Seed BSNs to consider with required ones and full transitive Require-Bundle closure
       val bsnsToConsider: MutableSet<String> = requiredBsnToVersion.keys.toMutableSet()
+      bsnsToConsider += resolvedBundles
 
       // Include host libraries’ BSNs
       hostLibraries.forEach { lib ->

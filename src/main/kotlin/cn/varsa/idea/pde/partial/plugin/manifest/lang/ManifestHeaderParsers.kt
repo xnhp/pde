@@ -346,7 +346,9 @@ object RequireBundleParser : HeaderParser by OsgiHeaderParser {
   }
 
   override fun getReferences(headerValuePart: HeaderValuePart): Array<PsiReference> =
-    if (headerValuePart.parent is Clause) arrayOf(BundleReference(headerValuePart)) else PsiReference.EMPTY_ARRAY
+    if (headerValuePart.parent is Clause)
+      arrayOf<PsiReference>(cn.varsa.idea.pde.partial.plugin.manifest.psi.BundleReference(headerValuePart))
+    else PsiReference.EMPTY_ARRAY
 }
 
 object RequiredExecutionEnvironmentParser : HeaderParser by OsgiHeaderParser {
