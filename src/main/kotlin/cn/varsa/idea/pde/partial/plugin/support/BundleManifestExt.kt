@@ -49,7 +49,7 @@ fun BundleManifest.importedPackageAndVersion(): Map<String, VersionRange> =
 
 fun BundleManifest.exportedPackageAndVersion(): Map<String, Version> =
   exportPackage?.mapKeys { it.key.substringBefore(".*") }
-    ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].let { Version.parseVersion(it) } } ?: emptyMap()
+    ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersion() } ?: emptyMap()
 
 fun BundleManifest.isBundleRequiredOrFromReExport(
   project: Project, module: Module?, symbolName: String, version: Set<Version> = emptySet()
