@@ -10,8 +10,10 @@ import java.util.*
 import java.util.jar.JarFile
 
 class TargetPlatformIndex(
-  private val byBsn: Map<String, NavigableMap<Version, ResolvedBundle>>
+  private val byBsn: Map<String, NavigableMap<Version, ResolvedBundle>>,
+  val source: Source = Source.SCANNED
 ) {
+  enum class Source { SCANNED, CACHED }
   fun bundlesByBsn(): Map<String, NavigableMap<Version, ResolvedBundle>> = byBsn
 
   fun get(bsn: String, range: VersionRange? = null): ResolvedBundle? {
@@ -49,7 +51,7 @@ class TargetPlatformIndex(
         }
       }
 
-      return TargetPlatformIndex(map)
+      return TargetPlatformIndex(map, Source.SCANNED)
     }
 
     private fun scanEclipseSdkRoot(root: File, addBundle: (File) -> Unit) {
