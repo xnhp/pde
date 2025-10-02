@@ -1,10 +1,15 @@
 package cn.varsa.idea.pde.partial.plugin.provider
 
 import cn.varsa.idea.pde.partial.common.*
+import cn.varsa.pde.resolver.features.FeatureScanner
+import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.findProfileFile
+import cn.varsa.pde.resolver.index.getBundlePoolPath
+import cn.varsa.pde.resolver.index.mapProfileFile
 import cn.varsa.idea.pde.partial.common.support.*
 import com.jetbrains.rd.util.printlnError
-import java.io.*
-import java.net.*
+import java.io.File
+import java.net.URL
 
 /**
  * Read a "Target Definition" p2 profile, accessing the actual bundles from a bundle pool at another location.
@@ -22,7 +27,6 @@ class TargetDefinitionBundleProvider : EclipseSDKBundleProvider() {
     //  \ profileRegistry/TARGET_DEFINITION%58;resource%58;%47;org.knime.sdk.setup%47;KNIME-AP.target.profile
     // (that leaf is a directory)
     if (!rootDirectory.name.endsWith(".profile", ignoreCase = true)) {
-      // bundle provider is understood to not apply to these parameters if it returns false
       return false;
     }
 
@@ -38,12 +42,16 @@ class TargetDefinitionBundleProvider : EclipseSDKBundleProvider() {
       printlnError("bundle pool location does not exist: $bundlePoolPath")
       return false;
     }
-    val pluginsDirectory = File(bundlePool, Plugins).takeIf { it.exists() } ?: return false
-    val featureDirectory = File(bundlePool, Features)
 
-    mapProfileFile(profileFile, pluginsDirectory, featureDirectory, processBundle, processFeature)
+    // Bundles via TargetPlatformIndex from profile dir
+    val index = TargetPlatformIndex.build(listOf(rootDirectory.toPath()))
+    index.bundlesByBsn().values.forEach { versions ->
+      versions.values.forEach { rb -> processBundle(rb.location.toFile()) }
+    }
 
-    super.resolveDirectory(rootDirectory, processFeature, processBundle)
+    // Features via FeatureScanner
+    FeatureScanner.scanTargetDefinitionFeatures(rootDirectory, bundlePool, processFeature)
+
     return true
   }
 

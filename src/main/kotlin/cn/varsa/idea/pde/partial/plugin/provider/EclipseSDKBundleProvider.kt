@@ -1,21 +1,30 @@
 package cn.varsa.idea.pde.partial.plugin.provider
 
 import cn.varsa.idea.pde.partial.common.*
-import java.io.*
+import cn.varsa.pde.resolver.features.FeatureScanner
+import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import java.io.File
 
 open class EclipseSDKBundleProvider : DirectoryBundleProvider() {
   override val type: String = "Eclipse SDK"
+
   override fun resolveDirectory(
-    rootDirectory: File, processFeature: (File) -> Unit, processBundle: (File) -> Unit
+    rootDirectory: File,
+    processFeature: (File) -> Unit,
+    processBundle: (File) -> Unit
   ): Boolean {
-    File(rootDirectory, Features).takeIf { it.exists() && it.isDirectory }?.listFiles()?.filterNot { it.isHidden }
-      ?.forEach(processFeature)
+    // features via FeatureScanner
+    FeatureScanner.scanEclipseSdkFeatures(rootDirectory, processFeature)
 
-    super.resolveDirectory(File(rootDirectory, Dropins), processFeature, processBundle)
-
-    val pluginsDirectory = File(rootDirectory, Plugins)
-    super.resolveDirectory(pluginsDirectory, processFeature, processBundle)
-
-    return pluginsDirectory.exists()
+    // bundles (plugins + dropins) via TargetPlatformIndex
+    val index = TargetPlatformIndex.build(listOf(rootDirectory.toPath()))
+    var found = false
+    index.bundlesByBsn().values.forEach { versions ->
+      versions.values.forEach { rb ->
+        processBundle(rb.location.toFile())
+        found = true
+      }
+    }
+    return found
   }
 }
