@@ -28,7 +28,7 @@ class ExtensionPointManagementService(private val project: Project) : Background
     ConcurrentHashMap<Pair<String, String>, ConcurrentHashMap<String, HashSet<String>>>()
 
   override fun resolve(project: Project, indicator: ProgressIndicator) {
-    val managementService = BundleManagementService.getInstance(project)
+    val tpService = PluginTargetIndexService.getInstance(project)
 
     ExtensionPointCacheService.getInstance(project).clearCache()
     val cacheService = PluginXmlCacheService.getInstance(project)
@@ -44,13 +44,28 @@ class ExtensionPointManagementService(private val project: Project) : Background
     indicator.isIndeterminate = false
     indicator.fraction = 0.0
 
-    val bundles = managementService.getBundles()
-    val bundleStep = 1 / (bundles.size + 1)
-    bundles.forEach { bundle ->
-      indicator.checkCanceled()
-      indicator.text2 = "Resolving bundle ${bundle.file}"
+    val allBundles = tpService.getIndex().bundlesByBsn().values.flatMap { it.values }
+      .filter { it.manifest.eclipseSourceBundle == null }
+    val bundleStep = if (allBundles.isEmpty()) 1.0 else 1.0 / (allBundles.size + 1)
+    val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+    val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
 
-      cacheService.getXmlInfo(bundle)?.also { info ->
+    allBundles.forEach { rb ->
+      indicator.checkCanceled()
+      indicator.text2 = "Resolving bundle ${rb.location}"
+
+      val root = if (rb.isDirectory) {
+        lfs.findFileByNioFile(rb.location)
+      } else {
+        lfs.findFileByNioFile(rb.location)?.let { jarfs.getJarRootForLocalFile(it) }
+      }
+
+      if (root == null) {
+        indicator.fraction += bundleStep
+        return@forEach
+      }
+
+      cacheService.getXmlInfo(rb.manifest.bundleSymbolicName?.key ?: "", root)?.also { info ->
         applications += info.applications
         products += info.products
         epPoint2ExsdPath += info.epPoint2ExsdPath

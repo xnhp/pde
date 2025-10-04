@@ -127,6 +127,9 @@ class PluginXmlCacheService(private val project: Project) {
       getXmlInfo(cacheService.getManifest(module)?.bundleSymbolicName?.key ?: module.name, it, it.parent)
     }
 
+  fun getXmlInfo(bundleSymbolicName: String, bundleRoot: VirtualFile): XmlInfo? =
+    findXml(bundleRoot)?.let { getXmlInfo(bundleSymbolicName, it, bundleRoot, null) }
+
   private fun findXml(root: VirtualFile?): VirtualFile? =
     root?.children?.firstOrNull { it.name == PluginsXml || it.name == FragmentXml }
 

@@ -17,7 +17,7 @@ import java.io.*
 @Service(Service.Level.PROJECT)
 class ExtensionPointCacheService(private val project: Project) {
   private val cacheService by lazy { BundleManifestCacheService.getInstance(project) }
-  private val bundleManagementService by lazy { BundleManagementService.getInstance(project) }
+  private val tpService by lazy { PluginTargetIndexService.getInstance(project) }
   private val cachedValuesManager by lazy { CachedValuesManager.getManager(project) }
 
   private val caches = ConcurrentHashMap<String, CachedValue<ExtensionPointDefinition?>>()
@@ -46,9 +46,13 @@ class ExtensionPointCacheService(private val project: Project) {
     val urlFragments = schemaLocation.substringAfter(ExtensionPointDefinition.schemaProtocol).split('/')
 
     val entry = urlFragments.subList(1, urlFragments.size).joinToString("/")
-    return bundleManagementService.getBundlesByBSN(urlFragments[0])?.values?.firstNotNullOfOrNull { bundle ->
-      loadExtensionPoint(bundle.root, entry) ?: bundle.sourceBundle?.let { loadExtensionPoint(it.root, entry) }
-    } ?: project.allPDEModules()
+    val rb = tpService.getBundlesByBSN(urlFragments[0])?.values?.firstOrNull()
+    if (rb != null) {
+      val root = rootOf(rb)
+      val loaded = if (root != null) loadExtensionPoint(root, entry) else null
+      if (loaded != null) return loaded
+    }
+    return project.allPDEModules()
       .firstOrNull { cacheService.getManifest(it)?.bundleSymbolicName?.key == urlFragments[0] }?.moduleRootManager?.contentRoots?.firstNotNullOfOrNull {
         loadExtensionPoint(it, entry)
       }
@@ -56,6 +60,13 @@ class ExtensionPointCacheService(private val project: Project) {
 
   private fun loadExtensionPoint(root: VirtualFile, schema: String): ExtensionPointDefinition? =
     root.validFileOrRequestResolve()?.findFileByRelativePath(schema)?.let(this::getExtensionPoint)
+
+  private fun rootOf(rb: cn.varsa.pde.resolver.index.ResolvedBundle): VirtualFile? {
+    val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+    val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+    return if (rb.isDirectory) lfs.findFileByNioFile(rb.location)
+    else lfs.findFileByNioFile(rb.location)?.let { jarfs.getJarRootForLocalFile(it) }
+  }
 
   fun getExtensionPoint(schemaFile: VirtualFile): ExtensionPointDefinition? = readCompute {
     schemaFile.validFileOrRequestResolve()?.let { file ->
