@@ -56,7 +56,6 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
   var cleanRuntimeDir = false
   var additionalClasspath = ""
   var targetModules: Set<String>? = null
-  var excludedBundles: Set<String>? = null
 
   /**
    * Finds all files with the ".product" extension within the project content roots.
@@ -120,7 +119,6 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
       setAttribute("cleanRuntimeDir", cleanRuntimeDir.toString())
       setAttribute("additionalClasspath", additionalClasspath)
       setAttribute("targetModules", targetModules?.joinToString(",") ?: "")
-      setAttribute("excludedBundles", excludedBundles?.joinToString(",") ?: "")
     }
   }
 
@@ -139,9 +137,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
       targetModules =
         if (targetModuleAttribute != null && targetModuleAttribute.isNotBlank()) it.getAttributeValue("targetModules").split(",").toSet()
         else null
-      val excludedBundlesAttr = it.getAttributeValue("excludedBundles")
-      excludedBundles =
-        if (!excludedBundlesAttr.isNullOrBlank()) excludedBundlesAttr.split(',').toSet() else null
+      // excluded bundles removed
     }
   }
 
@@ -276,11 +272,9 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     override val libraries: List<File>
       get() {
         val tp = PluginTargetIndexService.getInstance(project)
-        val all = tp.getIndex().bundlesByBsn().values.flatMap { it.values }
+        return tp.getIndex().bundlesByBsn().values.flatMap { it.values }
           .filter { it.manifest.eclipseSourceBundle == null }
-        val excluded = excludedBundles
-        val filtered = if (excluded.isNullOrEmpty()) all else all.filter { it.manifest.bundleSymbolicName?.key !in excluded }
-        return filtered.map { it.location.toFile() }
+          .map { it.location.toFile() }
       }
 
     override val devModules: List<DevModule>
@@ -290,8 +284,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
           .filter { targetModules == null || it.name in targetModules!! }
           .mapNotNull { PDEFacet.getInstance(it) }
           .map(PDEFacet::toDevModule)
-        val excluded = excludedBundles
-        return if (excluded.isNullOrEmpty()) devs else devs.filter { it.bundleSymbolicName !in excluded }
+        return devs
       }
 
     override fun getManifest(jarFileOrDirectory: File): BundleManifest? =

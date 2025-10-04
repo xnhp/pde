@@ -95,7 +95,6 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
     panel.add(additionalClasspathComponent)
 
     panel.add(targetModulePanel())
-    panel.add(excludedBundlesPanel())
     panel.add(cleanRuntimeDir)
 
     additionalClasspath.attachLabel(additionalClasspathComponent.label)
@@ -107,46 +106,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
     if (moduleList.itemsCount > 0)
       moduleList.allItems.forEach{ moduleList.setItemSelected(it, configuration.targetModules == null || it in configuration.targetModules!!) }
 
-    // Init dual-list (available/excluded)
-    allBundles = cn.varsa.idea.pde.partial.plugin.config.BundleManagementService
-      .getInstance(configuration.project)
-      .getBundles()
-      .map { it.bundleSymbolicName }
-      .distinct()
-      .sorted()
-    excludedSet.clear()
-    configuration.excludedBundles?.let { excludedSet.addAll(it) }
-    availableList.model = availableModel
-    excludedList.model = excludedModel
-    availableList.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
-    excludedList.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
-    com.intellij.ui.ListSpeedSearch(availableList)
-    com.intellij.ui.ListSpeedSearch(excludedList)
-    refreshDualLists("")
-    availableFilterField.addDocumentListener(object : com.intellij.ui.DocumentAdapter() {
-      override fun textChanged(e: javax.swing.event.DocumentEvent) {
-        refreshDualLists(availableFilterField.text)
-      }
-    })
-    // Double-click / Enter to move items
-    availableList.addMouseListener(object : java.awt.event.MouseAdapter() {
-      override fun mouseClicked(e: java.awt.event.MouseEvent) {
-        if (e.clickCount == 2) excludeSelected()
-      }
-    })
-    excludedList.addMouseListener(object : java.awt.event.MouseAdapter() {
-      override fun mouseClicked(e: java.awt.event.MouseEvent) {
-        if (e.clickCount == 2) includeSelected()
-      }
-    })
-    availableList.inputMap.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0), "exclude")
-    availableList.actionMap.put("exclude", object : javax.swing.AbstractAction() {
-      override fun actionPerformed(e: java.awt.event.ActionEvent?) = excludeSelected()
-    })
-    excludedList.inputMap.put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0), "include")
-    excludedList.actionMap.put("include", object : javax.swing.AbstractAction() {
-      override fun actionPerformed(e: java.awt.event.ActionEvent?) = includeSelected()
-    })
+    // Excluded bundles feature removed
 
     panel.updateUI()
 
@@ -221,76 +181,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
     }
   }
 
-  private fun excludedBundlesPanel(): DialogPanel {
-    val excludeAction = object : AnAction(
-      message("run.local.config.tab.configuration.excludedBundles.exclude"),
-      message("run.local.config.tab.configuration.excludedBundles.exclude"), AllIcons.Actions.Forward
-    ) {
-      override fun actionPerformed(e: AnActionEvent) = excludeSelected()
-      override fun update(e: AnActionEvent) { e.presentation.isEnabled = !availableList.isSelectionEmpty }
-      override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-    }
-
-    val includeAction = object : AnAction(
-      message("run.local.config.tab.configuration.excludedBundles.include"),
-      message("run.local.config.tab.configuration.excludedBundles.include"), AllIcons.Actions.Back
-    ) {
-      override fun actionPerformed(e: AnActionEvent) = includeSelected()
-      override fun update(e: AnActionEvent) { e.presentation.isEnabled = !excludedList.isSelectionEmpty }
-      override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-    }
-
-    val excludeVisibleAction = object : AnAction(
-      message("run.local.config.tab.configuration.excludedBundles.excludeVisible"),
-      message("run.local.config.tab.configuration.excludedBundles.excludeVisible"), AllIcons.Actions.Selectall
-    ) {
-      override fun actionPerformed(e: AnActionEvent) = excludeVisible()
-      override fun update(e: AnActionEvent) { e.presentation.isEnabled = availableModel.size() > 0 }
-      override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-    }
-
-    val includeAllAction = object : AnAction(
-      message("run.local.config.tab.configuration.excludedBundles.includeAll"),
-      message("run.local.config.tab.configuration.excludedBundles.includeAll"), AllIcons.Actions.Unselectall
-    ) {
-      override fun actionPerformed(e: AnActionEvent) = includeAll()
-      override fun update(e: AnActionEvent) { e.presentation.isEnabled = excludedModel.size() > 0 }
-      override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-    }
-
-    val actionGroup = DefaultActionGroup().apply {
-      add(excludeAction)
-      add(includeAction)
-      addSeparator()
-      add(excludeVisibleAction)
-      add(includeAllAction)
-    }
-    val actionToolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.TOOLBAR, actionGroup, true)
-
-    val availablePanel = JPanel(BorderLayout()).apply {
-      val top = JPanel(BorderLayout(8, 0))
-      top.add(availableTitle, BorderLayout.WEST)
-      availableFilterField.textEditor.emptyText.text = message("run.local.config.tab.configuration.excludedBundles.search")
-      top.add(availableFilterField, BorderLayout.CENTER)
-      add(top, BorderLayout.NORTH)
-      add(JBScrollPane(availableList), BorderLayout.CENTER)
-    }
-    val excludedPanel = JPanel(BorderLayout()).apply {
-      add(excludedTitle, BorderLayout.NORTH)
-      add(JBScrollPane(excludedList), BorderLayout.CENTER)
-    }
-    val listsContainer = JPanel(GridLayout(1, 2, 8, 0)).apply {
-      add(availablePanel)
-      add(excludedPanel)
-    }
-
-    return panel {
-      collapsibleGroup(message("run.local.config.tab.configuration.excludedBundles")) {
-        row { cell(actionToolbar.component) }
-        row { resizableRow().cell(listsContainer).align(com.intellij.ui.dsl.builder.Align.FILL) }
-      }
-    }
-  }
+  // Excluded bundles UI removed
 
   override fun resetEditorFrom(configuration: PDETargetRunConfiguration) {
     javaParameters.reset(configuration)
@@ -321,16 +212,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
     if (moduleList.itemsCount > 0)
       moduleList.allItems.forEach{ moduleList.setItemSelected(it, configuration.targetModules == null || it in configuration.targetModules!!) }
 
-    // Reset dual-list state
-    allBundles = cn.varsa.idea.pde.partial.plugin.config.BundleManagementService
-      .getInstance(configuration.project)
-      .getBundles()
-      .map { it.bundleSymbolicName }
-      .distinct()
-      .sorted()
-    excludedSet.clear()
-    configuration.excludedBundles?.let { excludedSet.addAll(it) }
-    refreshDualLists(availableFilterField.text)
+    // Excluded bundles removed
   }
 
   override fun applyEditorTo(configuration: PDETargetRunConfiguration) {
@@ -353,51 +235,11 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
       if (selectedModules.size == moduleList.itemsCount) null
       else selectedModules.toSet()
 
-    configuration.excludedBundles = excludedSet.toSet()
+    // Excluded bundles removed
   }
 
   override fun createEditor(): JComponent = panel
-  private fun refreshDualLists(query: String) {
-    val filter = query.trim()
-    val availableItems = allBundles.asSequence()
-      .filter { it !in excludedSet }
-      .filter { filter.isEmpty() || it.contains(filter, ignoreCase = true) }
-      .toList()
-    availableModel.removeAllElements()
-    availableItems.forEach { availableModel.addElement(it) }
-    excludedModel.removeAllElements()
-    excludedSet.forEach { excludedModel.addElement(it) }
-    availableTitle.text = message("run.local.config.tab.configuration.excludedBundles.available") + " (" + availableModel.size() + ")"
-    excludedTitle.text = message("run.local.config.tab.configuration.excludedBundles.excluded") + " (" + excludedModel.size() + ")"
-  }
-
-  private fun excludeSelected() {
-    val toMove = availableList.selectedValuesList?.toList() ?: emptyList()
-    if (toMove.isEmpty()) return
-    excludedSet.addAll(toMove)
-    refreshDualLists(availableFilterField.text)
-  }
-
-  private fun includeSelected() {
-    val toMove = excludedList.selectedValuesList?.toList() ?: emptyList()
-    if (toMove.isEmpty()) return
-    excludedSet.removeAll(toMove.toSet())
-    refreshDualLists(availableFilterField.text)
-  }
-
-  private fun excludeVisible() {
-    val count = availableModel.size()
-    if (count == 0) return
-    val items = (0 until count).map { availableModel.getElementAt(it) }
-    excludedSet.addAll(items)
-    refreshDualLists(availableFilterField.text)
-  }
-
-  private fun includeAll() {
-    if (excludedSet.isEmpty()) return
-    excludedSet.clear()
-    refreshDualLists(availableFilterField.text)
-  }
+  // Excluded bundles helpers removed
   override fun getAnchor(): JComponent? = myAnchor
   override fun setAnchor(anchor: JComponent?) {
     myAnchor = anchor
