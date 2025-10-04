@@ -72,9 +72,7 @@
   </extensionPoints>
 
   <extensions defaultExtensionNs="cn.varsa.idea.eclipse.pde.partial">
-    <targetPlatformLibraryResolver
-        id="PdeProjectLibraryResolver"
-        implementation="cn.varsa.idea.pde.partial.plugin.resolver.PdeProjectLibraryResolver"/>
+    <!-- Removed PdeProjectLibraryResolver: libraries are created lazily per module -->
 
     <manifestLibraryResolver
         id="PdeModuleRuntimeLibraryResolver"

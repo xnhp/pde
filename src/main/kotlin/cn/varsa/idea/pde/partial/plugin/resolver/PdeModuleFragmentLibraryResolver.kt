@@ -37,7 +37,7 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
 
     val project = area.project
     val cacheService = BundleManifestCacheService.getInstance(project)
-    val managementService = BundleManagementService.getInstance(project)
+    val tpService = PluginTargetIndexService.getInstance(project)
 
     val manifest = cacheService.getManifest(area) ?: return
 
@@ -62,9 +62,9 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
         val path = hostModule.moduleRootManager.contentRoots.firstOrNull()?.path
         Triple(hostBsn, man, path?.let { java.nio.file.Paths.get(it) })
       } else {
-        val hostBundle = managementService.getBundlesByBSN(hostBsn, hostRange)
+        val hostBundle = tpService.getBundlesByBSN(hostBsn, hostRange)
         val man = hostBundle?.manifest
-        val path = hostBundle?.file?.toPath()
+        val path = hostBundle?.location
         if (man != null && path != null) Triple(hostBsn, man, path) else null
       }
     }
@@ -76,16 +76,10 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
         ?: return@mapNotNull null
       cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor(path, man)
     }
-    val byBsn: MutableMap<String, java.util.NavigableMap<org.osgi.framework.Version, cn.varsa.pde.resolver.index.ResolvedBundle>> = hashMapOf()
-    managementService.getBundles().forEach { b ->
-      val man = b.manifest ?: return@forEach
-      if (man.eclipseSourceBundle != null) return@forEach
-      val bsn = man.bundleSymbolicName?.key ?: return@forEach
-      val ver = man.bundleVersion
-      val rb = cn.varsa.pde.resolver.index.ResolvedBundle(b.file.toPath(), man, b.file.isDirectory)
-      byBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = rb
-    }
-    val targetIndex = cn.varsa.pde.resolver.index.TargetPlatformIndex(byBsn)
+    val roots = TargetDefinitionService.getInstance(project).locations
+      .mapNotNull { it.location.takeIf(String::isNotBlank) }
+      .map { java.nio.file.Paths.get(it) }
+    val targetIndex = cn.varsa.pde.resolver.index.TargetPlatformCache.buildWithCache(roots, null)
 
     val options = cn.varsa.pde.resolver.algo.ResolveOptions(
       whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
@@ -138,7 +132,7 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
 
       val fragment2HostOrder: Map<OrderEntry, OrderEntry> = presentLibs.mapNotNull { key ->
         val bcn = key.bsn + cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator + key.ver
-        val bundle = managementService.getBundleByBCN(bcn)
+        val bundle = tpService.getBundleByBCN(bcn)
         val hostPair = bundle?.manifest?.fragmentHostAndVersionRange() ?: return@mapNotNull null
         val hostNav = libsByBsn[hostPair.first] ?: return@mapNotNull null
         val hostEntry = hostNav.descendingMap().entries.firstOrNull { hostPair.second.includes(it.key) }?.value

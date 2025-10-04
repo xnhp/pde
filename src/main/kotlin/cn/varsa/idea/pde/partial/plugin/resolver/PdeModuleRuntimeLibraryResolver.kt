@@ -46,7 +46,6 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
     val project = area.project
     val cacheService = BundleManifestCacheService.getInstance(project)
-    val managementService = BundleManagementService.getInstance(project)
     val bundleManifest = cacheService.getManifest(area) ?: return
 
     val classesRoot = bundleManifest.bundleClassPath?.keys?.filterNot { it == "." }?.flatMap { binaryName ->
@@ -58,24 +57,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       return name.substringAfterLast(ProjectLibraryNamePrefix).substringBeforeLast(BundleDefinition.canonicalNameSeparator)
     }
 
-    val manifestByBsn = mutableMapOf<String, BundleManifest?>()
-
-    fun resolveTransitiveDependencies(requiredBundles: Set<String>, resolvedBundles: MutableSet<String>) {
-      // TODO share sub-results (DP)
-      val newDependencies = mutableSetOf<String>()
-      requiredBundles.forEach { bsn ->
-        if (bsn !in resolvedBundles) {
-          val manifest = manifestByBsn.getOrPut(bsn) {
-            managementService.getBundleManifestBySymbolicName(bsn)
-          }
-          manifest?.requireBundle?.keys?.let { newDependencies.addAll(it) }
-          resolvedBundles.add(bsn)
-        }
-      }
-      if (newDependencies.isNotEmpty()) {
-        resolveTransitiveDependencies(newDependencies, resolvedBundles)
-      }
-    }
+    // All transitive resolution handled by core Resolver; no plugin traversal
 
     area.updateModel { model ->
 
@@ -191,18 +173,37 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         val existing = libsByBsn[bsn]?.get(ver)
         if (existing != null) return existing
 
-        val def = managementService.getBundlesByBSN(bsn, ver) ?: return null
-        val libraryName = "$ProjectLibraryNamePrefix${def.canonicalName}"
+        val rb = targetIndex.bundlesByBsn()[bsn]?.get(ver) ?: return null
+        val libraryName = "$ProjectLibraryNamePrefix$bsn${BundleDefinition.canonicalNameSeparator}$ver"
         val projTableModel = project.libraryTable().modifiableModel
 
         val lib = writeCompute { projTableModel.createLibrary(libraryName) }
         val libModel = lib.modifiableModel
-        // classes
-        def.delegateClassPathFile.values.map { it.protocolUrl }
-          .forEach { libModel.addRoot(it, OrderRootType.CLASSES) }
-        // sources
-        def.sourceBundle?.delegateClassPathFile?.values?.map { it.protocolUrl }
-          ?.forEach { libModel.addRoot(it, OrderRootType.SOURCES) }
+
+        val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+        val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+
+        if (rb.isDirectory) {
+          val dirVf = local.refreshAndFindFileByNioFile(rb.location)
+          if (dirVf != null) {
+            // include root if classes under '.'
+            libModel.addRoot(dirVf.url, OrderRootType.CLASSES)
+            val bcp = rb.manifest.bundleClassPath?.keys ?: emptySet()
+            bcp.filter { it != "." }.forEach { rel ->
+              val child = dirVf.findFileByRelativePath(rel)
+              if (child != null) {
+                val root = if (child.fileSystem === jarfs) child else jarfs.getJarRootForLocalFile(child)
+                if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+              }
+            }
+          }
+        } else {
+          val jarVf = local.refreshAndFindFileByNioFile(rb.location)
+          if (jarVf != null) {
+            val root = jarfs.getJarRootForLocalFile(jarVf)
+            if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+          }
+        }
 
         writeRun {
           libModel.commit()

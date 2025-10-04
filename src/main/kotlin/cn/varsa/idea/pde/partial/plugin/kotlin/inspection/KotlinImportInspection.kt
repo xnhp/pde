@@ -29,9 +29,9 @@ class KotlinImportInspection : AbstractBaseJavaLocalInspectionTool() {
     PDEFacet.getInstance(module) ?: return null
     module.isBundleRequiredOrFromReExport(KotlinBundleSymbolName).ifTrue { return null }
 
-    val managementService = BundleManagementService.getInstance(project)
+    val tpService = PluginTargetIndexService.getInstance(project)
     val fixes =
-      managementService.getBundlesByBSN(KotlinBundleSymbolName)?.keys?.map { KotlinRequireBundleFix(it.toString()) }
+      tpService.getBundlesByBSN(KotlinBundleSymbolName)?.keys?.map { KotlinRequireBundleFix(it.toString()) }
         ?.toTypedArray() ?: emptyArray()
 
     return arrayOf(
