@@ -119,7 +119,8 @@ object Resolver {
         if (cand != null) {
           selected.putIfAbsent(bsn, cand)
           // Traverse full Require-Bundle closure (include re-exports implicitly)
-          val requiresAll = cand.manifest.requiredBundleAndVersion()
+          val requiresAll = if (cand.isWorkspace) cand.manifest.requiredBundleAndVersion() else
+            target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
           for ((rb, rr) in requiresAll) addRequireWithClosure(rb, rr)
         } else {
           unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
@@ -153,13 +154,12 @@ object Resolver {
     val importedPkgs = imports.keys.toSet()
     val tpProvidersByPkg: Map<String, java.util.NavigableMap<Version, PkgProvider>> = run {
       val map = HashMap<String, java.util.NavigableMap<Version, PkgProvider>>()
-      val byPkg = target.exportedBundlesByPackage()
+      val byPkg = target.exportedBundlesByPackageNav()
       importedPkgs.forEach { pkg ->
-        val bundles = byPkg[pkg] ?: return@forEach
+        val nav = byPkg[pkg] ?: return@forEach
         val providers = java.util.TreeMap<Version, PkgProvider>()
-        bundles.forEach { rb ->
+        nav.forEach { (ver, rb) ->
           val bsn = rb.manifest.bundleSymbolicName?.key ?: return@forEach
-          val ver = rb.manifest.bundleVersion
           providers[ver] = PkgProvider(bsn, ver, rb.location, rb.manifest, false)
         }
         if (providers.isNotEmpty()) map[pkg] = providers

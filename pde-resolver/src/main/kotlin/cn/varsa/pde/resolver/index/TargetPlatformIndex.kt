@@ -1,6 +1,7 @@
 package cn.varsa.pde.resolver.index
 
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.support.parseVersion
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
@@ -11,14 +12,19 @@ import java.util.jar.JarFile
 
 class TargetPlatformIndex(
   private val byBsn: Map<String, NavigableMap<Version, ResolvedBundle>>,
-  val source: Source = Source.SCANNED
+  val source: Source = Source.SCANNED,
+  precomputedExportsByPackage: Map<String, List<ResolvedBundle>>? = null
 ) {
   enum class Source { SCANNED, CACHED }
   fun bundlesByBsn(): Map<String, NavigableMap<Version, ResolvedBundle>> = byBsn
 
   // Lazily built index: package name -> list of bundles exporting it (unordered)
   @Volatile
-  private var exportsByPackage: Map<String, List<ResolvedBundle>>? = null
+  private var exportsByPackage: Map<String, List<ResolvedBundle>>? = precomputedExportsByPackage
+  @Volatile
+  private var exportsByPackageNav: Map<String, NavigableMap<Version, ResolvedBundle>>? = null
+  @Volatile
+  private var requiresByBsn: Map<String, NavigableMap<Version, Map<String, VersionRange>>>? = null
 
   fun exportedBundlesByPackage(): Map<String, List<ResolvedBundle>> {
     val cached = exportsByPackage
@@ -38,6 +44,34 @@ class TargetPlatformIndex(
     map.replaceAll { _, list -> list.sortedByDescending { it.manifest.bundleVersion } as MutableList<ResolvedBundle> }
 
     exportsByPackage = map
+    exportsByPackageNav = null
+    return map
+  }
+
+  fun exportedBundlesByPackageNav(): Map<String, NavigableMap<Version, ResolvedBundle>> {
+    val cached = exportsByPackageNav
+    if (cached != null) return cached
+    val byList = exportedBundlesByPackage()
+    val map = HashMap<String, NavigableMap<Version, ResolvedBundle>>()
+    byList.forEach { (pkg, list) ->
+      val nav = TreeMap<Version, ResolvedBundle>()
+      list.forEach { rb -> nav[rb.manifest.bundleVersion] = rb }
+      if (nav.isNotEmpty()) map[pkg] = nav
+    }
+    exportsByPackageNav = map
+    return map
+  }
+
+  fun requiresByBundle(): Map<String, NavigableMap<Version, Map<String, VersionRange>>> {
+    val cached = requiresByBsn
+    if (cached != null) return cached
+    val map = HashMap<String, NavigableMap<Version, Map<String, VersionRange>>>()
+    byBsn.forEach { (bsn, nav) ->
+      val reqNav = TreeMap<Version, Map<String, VersionRange>>()
+      nav.forEach { (ver, rb) -> reqNav[ver] = rb.manifest.requiredBundleAndVersion() }
+      if (reqNav.isNotEmpty()) map[bsn] = reqNav
+    }
+    requiresByBsn = map
     return map
   }
 

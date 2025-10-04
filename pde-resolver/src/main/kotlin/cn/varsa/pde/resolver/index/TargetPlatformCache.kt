@@ -13,11 +13,12 @@ import java.util.*
  * Fingerprint + persisted snapshot (Properties) for TargetPlatformIndex.
  */
 object TargetPlatformCache {
-  private const val SCHEMA = "1"
+  private const val SCHEMA = "2"
 
   data class Snapshot(
     val fingerprint: String,
     val records: List<Record>,
+    val packages: Map<String, List<String>> = emptyMap(),
   )
 
   data class Record(
@@ -31,12 +32,14 @@ object TargetPlatformCache {
     val cache = cacheFile ?: defaultCacheFile(roots)
     val snapshot = runCatching { load(cache) }.getOrNull()
     if (snapshot != null && snapshot.fingerprint == fp) {
-      return TargetPlatformIndex(reconstructMap(snapshot.records), TargetPlatformIndex.Source.CACHED)
+      val byBsn = reconstructMap(snapshot.records)
+      val precomputed = reconstructPackages(snapshot.packages, byBsn)
+      return TargetPlatformIndex(byBsn, TargetPlatformIndex.Source.CACHED, precomputed)
     }
 
     val index = TargetPlatformIndex.build(roots)
     // save
-    runCatching { save(cache, Snapshot(fp, flatten(index))) }
+    runCatching { save(cache, Snapshot(fp, flatten(index), flattenPackages(index))) }
     return index
   }
 
@@ -106,12 +109,45 @@ object TargetPlatformCache {
     return recs
   }
 
+  private fun flattenPackages(index: TargetPlatformIndex): Map<String, List<String>> {
+    val map = HashMap<String, List<String>>()
+    val byPkg = index.exportedBundlesByPackage()
+    byPkg.forEach { (pkg, rbs) ->
+      map[pkg] = rbs.mapNotNull { rb ->
+        val bsn = rb.manifest.bundleSymbolicName?.key ?: return@mapNotNull null
+        "$bsn@${rb.manifest.bundleVersion}"
+      }
+    }
+    return map
+  }
+
   private fun reconstructMap(records: List<Record>): Map<String, NavigableMap<Version, ResolvedBundle>> {
     val map = HashMap<String, NavigableMap<Version, ResolvedBundle>>()
     records.forEach { r ->
       val rb = ResolvedBundle(File(r.path).toPath(), r.manifest, r.isDirectory)
       val bsn = r.manifest.bundleSymbolicName?.key ?: return@forEach
       map.computeIfAbsent(bsn) { TreeMap() }[r.manifest.bundleVersion] = rb
+    }
+    return map
+  }
+
+  private fun reconstructPackages(
+    packages: Map<String, List<String>>,
+    byBsn: Map<String, NavigableMap<Version, ResolvedBundle>>
+  ): Map<String, List<ResolvedBundle>> {
+    val map = HashMap<String, List<ResolvedBundle>>()
+    packages.forEach { (pkg, values) ->
+      val list = ArrayList<ResolvedBundle>(values.size)
+      values.forEach { bcn ->
+        val bsn = bcn.substringBeforeLast('@')
+        val verText = bcn.substringAfterLast('@')
+        val ver = runCatching { Version.parseVersion(verText) }.getOrNull()
+        if (ver != null) {
+          val rb = byBsn[bsn]?.get(ver)
+          if (rb != null) list += rb
+        }
+      }
+      if (list.isNotEmpty()) map[pkg] = list
     }
     return map
   }
@@ -128,7 +164,13 @@ object TargetPlatformCache {
       val manifest = readManifestProps(props, i)
       Record(path, isDir, manifest)
     }
-    return Snapshot(fp, recs)
+    val pkgCount = props.getProperty("pkg.size")?.toIntOrNull() ?: 0
+    val pkgs = (0 until pkgCount).associate { i ->
+      val name = props.getProperty("pkg.$i.name") ?: ""
+      val values = props.getProperty("pkg.$i.values")?.split('\u0001')?.filter { it.isNotBlank() } ?: emptyList()
+      name to values
+    }
+    return Snapshot(fp, recs, pkgs)
   }
 
   fun save(file: File, snapshot: Snapshot) {
@@ -140,6 +182,11 @@ object TargetPlatformCache {
       props["record.$i.path"] = r.path
       props["record.$i.dir"] = r.isDirectory.toString()
       writeManifestProps(props, i, r.manifest)
+    }
+    props["pkg.size"] = snapshot.packages.size.toString()
+    snapshot.packages.entries.forEachIndexed { i, e ->
+      props["pkg.$i.name"] = e.key
+      props["pkg.$i.values"] = e.value.joinToString("\u0001")
     }
     file.parentFile?.mkdirs()
     val tmp = File(file.parentFile, file.name + ".tmp")
@@ -174,4 +221,3 @@ object TargetPlatformCache {
     return BundleManifest.parse(map)
   }
 }
-
