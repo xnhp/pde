@@ -30,6 +30,10 @@ class PluginTargetIndexService(private val project: Project) {
     return built
   }
 
+  fun invalidate() {
+    index = null
+  }
+
   fun getBundlesByBSN(bsn: String) = getIndex().bundlesByBsn()[bsn]
   fun getBundlesByBSN(bsn: String, version: Version) = getBundlesByBSN(bsn)?.get(version)
   fun getBundlesByBSN(bsn: String, range: VersionRange) =
@@ -53,4 +57,3 @@ class PluginTargetIndexService(private val project: Project) {
       rb.isDirectory && presentableUrl.startsWith(path)
     }
 }
-

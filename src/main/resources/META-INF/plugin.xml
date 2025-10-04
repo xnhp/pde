@@ -112,6 +112,10 @@
         topic="cn.varsa.idea.pde.partial.plugin.listener.TargetDefinitionChangeListener"/>
 
     <listener
+        class="cn.varsa.idea.pde.partial.plugin.listener.InvalidateTargetIndexOperation"
+        topic="cn.varsa.idea.pde.partial.plugin.listener.TargetDefinitionChangeListener"/>
+
+    <listener
         class="cn.varsa.idea.pde.partial.plugin.listener.ModuleChangedListener"
         topic="com.intellij.openapi.project.ModuleListener"/>
   </projectListeners>
