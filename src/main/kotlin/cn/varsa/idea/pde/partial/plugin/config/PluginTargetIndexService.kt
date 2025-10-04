@@ -2,6 +2,7 @@ package cn.varsa.idea.pde.partial.plugin.config
 
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import org.osgi.framework.Version
@@ -32,6 +33,11 @@ class PluginTargetIndexService(private val project: Project) {
 
   fun invalidate() {
     index = null
+    val roots = TargetDefinitionService.getInstance(project).locations.size
+    PdeNotifier.notification(
+      "Target Platform",
+      "Target platform index cache invalidated. Roots: $roots (will rebuild on next resolve)"
+    ).notify(project)
   }
 
   fun getBundlesByBSN(bsn: String) = getIndex().bundlesByBsn()[bsn]
