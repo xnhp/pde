@@ -11,6 +11,7 @@ import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
@@ -125,19 +126,11 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val entryPath = modulePath(area) ?: return@updateModel
       val entryDesc = WorkspaceBundleDescriptor(entryPath, bundleManifest)
 
-      // Build TargetPlatformIndex from current target bundles (cached in plugin)
-      val targetBundles = managementService.getBundles()
-      val byBsn: MutableMap<String, java.util.NavigableMap<Version, TargetResolvedBundle>> = hashMapOf()
-      targetBundles.forEach { b ->
-        val man = b.manifest ?: return@forEach
-        // Exclude source bundles
-        if (man.eclipseSourceBundle != null) return@forEach
-        val bsn = man.bundleSymbolicName?.key ?: return@forEach
-        val ver = man.bundleVersion
-        val rb = TargetResolvedBundle(b.file.toPath(), man, b.file.isDirectory)
-        byBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = rb
-      }
-      val targetIndex = TargetPlatformIndex(byBsn)
+      // Build TargetPlatformIndex using core cache directly from root paths
+      val roots = TargetDefinitionService.getInstance(project).locations
+        .mapNotNull { it.location.takeIf(String::isNotBlank) }
+        .map { java.nio.file.Paths.get(it) }
+      val targetIndex = TargetPlatformCache.buildWithCache(roots, null)
 
       val options = ResolveOptions(
         whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
@@ -149,8 +142,8 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
       // Prepare project library index (BSN -> versions -> Library)
       val index = ProjectLibraryIndexService.getInstance(project).getIndex()
-      val libsByBsn: Map<String, java.util.NavigableMap<Version, Library>> = if (index.isNotEmpty()) {
-        index
+      val libsByBsn: MutableMap<String, java.util.NavigableMap<Version, Library>> = if (index.isNotEmpty()) {
+        index.mapValues { java.util.TreeMap(it.value) }.toMutableMap()
       } else {
         // Fallback: ad-hoc rebuild view from current project libs
         val tableLibs = project.libraryTable().libraries
@@ -163,7 +156,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
           if (ver != null) map.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = lib
         }
         map
-      }
+      }.toMutableMap()
 
       // If entry is a fragment with a workspace host, mirror host dependencies
       val hostWorkspaceBsn = result.bundles.firstOrNull { it.isHost && it.isWorkspace }?.bsn
@@ -193,11 +186,43 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         if (mod != null && mod != area) addModuleDependency(mod)
       }
 
+      // Helper: lazily create project library for selected bundle when missing
+      fun ensureProjectLibrary(bsn: String, ver: Version): Library? {
+        val existing = libsByBsn[bsn]?.get(ver)
+        if (existing != null) return existing
+
+        val def = managementService.getBundlesByBSN(bsn, ver) ?: return null
+        val libraryName = "$ProjectLibraryNamePrefix${def.canonicalName}"
+        val projTableModel = project.libraryTable().modifiableModel
+
+        val lib = writeCompute { projTableModel.createLibrary(libraryName) }
+        val libModel = lib.modifiableModel
+        // classes
+        def.delegateClassPathFile.values.map { it.protocolUrl }
+          .forEach { libModel.addRoot(it, OrderRootType.CLASSES) }
+        // sources
+        def.sourceBundle?.delegateClassPathFile?.values?.map { it.protocolUrl }
+          ?.forEach { libModel.addRoot(it, OrderRootType.SOURCES) }
+
+        writeRun {
+          libModel.commit()
+          projTableModel.commit()
+        }
+
+        libsByBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = lib
+        return lib
+      }
+
       // Apply target libraries (choose exact version where possible)
       val addedLibs = hashSetOf<Library>()
       fun chooseLib(bsn: String, ver: Version): Library? {
-        val nav = libsByBsn[bsn] ?: return null
-        return nav[ver] ?: nav.lastEntry()?.value
+        val nav = libsByBsn[bsn]
+        val exact = nav?.get(ver)
+        if (exact != null) return exact
+        // Lazily create if absent
+        val created = ensureProjectLibrary(bsn, ver)
+        if (created != null) return created
+        return nav?.lastEntry()?.value
       }
 
       result.bundles.filter { !it.isWorkspace }.forEach { rb ->
