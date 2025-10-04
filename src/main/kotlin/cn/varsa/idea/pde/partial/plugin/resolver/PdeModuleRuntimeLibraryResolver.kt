@@ -177,8 +177,14 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
               moduleDependency.isProductionOnTestDependency = entry.isProductionOnTestDependency
             }
           }
+          // Only inherit project-level libraries from host; skip module-level
+          // libraries like Partial-Runtime and Partial-CompileOnly
           hostOrderEntries.filterIsInstance<LibraryOrderEntry>().forEach { entry ->
-            entry.library?.let { lib -> hostLibraries += lib }
+            val lib = entry.library ?: return@forEach
+            val name = lib.name
+            val isProjectLevel = lib.table != null
+            val isModuleSpecial = name == ModuleLibraryName || name == ModuleCompileOnlyLibraryName
+            if (isProjectLevel && !isModuleSpecial) hostLibraries += lib
           }
         }
       }
