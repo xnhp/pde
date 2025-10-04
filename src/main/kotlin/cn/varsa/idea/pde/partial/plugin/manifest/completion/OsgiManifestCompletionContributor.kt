@@ -121,7 +121,7 @@ class BundleNameProvider : CompletionProvider<CompletionParameters>() {
     parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet
   ) {
     parameters.editor.project?.let { project ->
-      val tp = cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
+      val tp = PluginTargetIndexService.getInstance(project)
       val coreBundles = tp.getIndex().bundlesByBsn().values
         .flatMap { it.values }
         .filter { it.manifest.fragmentHost == null && it.manifest.eclipseSourceBundle == null }

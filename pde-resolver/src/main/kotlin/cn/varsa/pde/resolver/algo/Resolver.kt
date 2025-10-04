@@ -129,7 +129,7 @@ object Resolver {
         val man = desc.manifest
         val bsn = man.bundleSymbolicName?.key ?: return@forEach
         val exp = exportsOf(man)
-        exp.forEach { (pkg, ver) ->
+        exp.forEach { (pkg, _) ->
           map.computeIfAbsent(pkg) { mutableListOf() }
             .add(PkgProvider(bsn, man.bundleVersion, desc.path, man, true))
         }
@@ -145,7 +145,7 @@ object Resolver {
         nav.forEach { (ver, rb) ->
           val exp = exportsOf(rb.manifest)
           // only index packages we actually need
-          exp.forEach { (pkg, pver) ->
+          exp.forEach { (pkg, _) ->
             if (pkg in importedPkgs) {
               val providers = map.computeIfAbsent(pkg) { java.util.TreeMap() }
               providers[ver] = PkgProvider(bsn, ver, rb.location, rb.manifest, false)

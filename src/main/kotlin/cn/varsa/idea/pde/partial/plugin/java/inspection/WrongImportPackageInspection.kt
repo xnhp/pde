@@ -23,7 +23,7 @@ class WrongImportPackageInspection : AbstractOsgiVisitor() {
           val project = facet.module.project
 
           val cacheService = BundleManifestCacheService.getInstance(project)
-          val tpService = cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
+          val tpService = PluginTargetIndexService.getInstance(project)
           val index = ProjectFileIndex.getInstance(project)
 
           nextValue@ for (value in (element as Header).headerValues) {

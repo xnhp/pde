@@ -47,8 +47,8 @@ class ExtensionPointManagementService(private val project: Project) : Background
     val allBundles = tpService.getIndex().bundlesByBsn().values.flatMap { it.values }
       .filter { it.manifest.eclipseSourceBundle == null }
     val bundleStep = if (allBundles.isEmpty()) 1.0 else 1.0 / (allBundles.size + 1)
-    val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-    val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+    val lfs = LocalFileSystem.getInstance()
+    val jarfs = JarFileSystem.getInstance()
 
     allBundles.forEach { rb ->
       indicator.checkCanceled()

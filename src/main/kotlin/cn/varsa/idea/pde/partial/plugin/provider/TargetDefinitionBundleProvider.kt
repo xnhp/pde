@@ -27,7 +27,7 @@ class TargetDefinitionBundleProvider : EclipseSDKBundleProvider() {
     //  \ profileRegistry/TARGET_DEFINITION%58;resource%58;%47;org.knime.sdk.setup%47;KNIME-AP.target.profile
     // (that leaf is a directory)
     if (!rootDirectory.name.endsWith(".profile", ignoreCase = true)) {
-      return false;
+      return false
     }
 
     val profileFile = findProfileFile(rootDirectory) ?: return false
@@ -40,7 +40,7 @@ class TargetDefinitionBundleProvider : EclipseSDKBundleProvider() {
     val bundlePool = URL("file:$bundlePoolPath").toURI().toFile().takeIf { it.exists() }
     if (bundlePool == null) {
       printlnError("bundle pool location does not exist: $bundlePoolPath")
-      return false;
+      return false
     }
 
     // Bundles via TargetPlatformIndex from profile dir

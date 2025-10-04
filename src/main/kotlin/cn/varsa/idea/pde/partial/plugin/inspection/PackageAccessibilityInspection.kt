@@ -61,7 +61,7 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
     ): List<Problem> {
       val project = requesterModule.project
       val cacheService = BundleManifestCacheService.getInstance(project)
-      val tpService = cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
+      val tpService = PluginTargetIndexService.getInstance(project)
       val index = ProjectFileIndex.getInstance(project)
 
       val importer = cacheService.getManifest(requesterModule) ?: return emptyList()
@@ -80,7 +80,7 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
       importer.fragmentHostAndVersionRange()?.also { (fragmentHostBSN, fragmentHostVersion) ->
         hostImporter = project.allPDEModules(requesterModule).mapNotNull { cacheService.getManifest(it) }
           .firstOrNull { it.isFragmentHost(fragmentHostBSN, fragmentHostVersion) }
-          ?: cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
+          ?: PluginTargetIndexService.getInstance(project)
             .getBundlesByBSN(fragmentHostBSN, fragmentHostVersion)?.manifest
 
       ownerFile?.presentableUrl?.let { tpService.findBundleByPath(it)?.manifest }
@@ -123,7 +123,7 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
         val exporterHost = exporter.fragmentHostAndVersionRange()?.let { (fragmentHostBSN, fragmentHostVersion) ->
           project.allPDEModules(requesterModule).mapNotNull { cacheService.getManifest(it) }
             .firstOrNull { it.isFragmentHost(fragmentHostBSN, fragmentHostVersion) }
-            ?: cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
+            ?: PluginTargetIndexService.getInstance(project)
               .getBundlesByBSN(fragmentHostBSN, fragmentHostVersion)?.manifest
         }
 

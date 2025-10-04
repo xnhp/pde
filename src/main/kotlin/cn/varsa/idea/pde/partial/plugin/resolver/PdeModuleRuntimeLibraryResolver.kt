@@ -54,7 +54,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       area.moduleRootManager.contentRoots.mapNotNull { it.findFileByRelativePath(binaryName) }
     }?.map { it.protocolUrl }?.distinct() ?: emptyList()
 
-    fun bsnOfLibraryName(name: String): String? {
+    fun bsnOfLibraryName(name: String): String {
       // e.g. "Partial: org.eclipse.birt.report.designer.ui.preview.web-4.15.0.v202403260939"
       return name.substringAfterLast(ProjectLibraryNamePrefix).substringBeforeLast(BundleDefinition.canonicalNameSeparator)
     }
@@ -281,7 +281,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       // Use core resolver's result order for dependency libraries
       val dependencyOrder = orderingResult.bundles.filter { !it.isWorkspace }.map { rb ->
         val dash = "${rb.bsn}-${rb.version}"
-        val at = "$ProjectLibraryNamePrefix${rb.bsn}${cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator}${rb.version}"
+        val at = "$ProjectLibraryNamePrefix${rb.bsn}${BundleDefinition.canonicalNameSeparator}${rb.version}"
         listOf(dash, "$ProjectLibraryNamePrefix$dash", at)
       }.flatten().mapNotNull { orderEntriesMap[it] }
 

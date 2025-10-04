@@ -25,7 +25,7 @@ fun BundleManifest.isBundleRequiredOrFromReExport(
     k == symbolName && (version.isEmpty() || version.any { it in r })
   }.ifTrue { return true }
 
-  val requiredBundle = requireBundle?.keys ?: return false
+  requireBundle?.keys ?: return false
   // Build re-export closure on the fly across workspace and target candidates
   val modulesManifest = project.allPDEModules(module).mapNotNull(cacheService::getManifest).toHashSet()
 
@@ -48,9 +48,7 @@ fun BundleManifest.isBundleRequiredOrFromReExport(
     return false
   }
 
-  if (traverseReexport(this, hashSetOf())) return true
-
-  return false
+  return traverseReexport(this, hashSetOf())
 }
 
 // legacy helper removed: re-export closure now built using core index

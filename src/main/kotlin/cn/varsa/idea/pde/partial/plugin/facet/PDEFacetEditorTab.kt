@@ -191,7 +191,7 @@ class PDEFacetEditorTab(
   private fun CheckBoxList<String>.checkedItems() =
     (0 until itemsCount).mapNotNull(this::getItemAt).filter(this::isItemSelected).distinct().toSet()
 
-  inner class ArgumentConsistencyValidator(private val textField: JBTextField) : FacetEditorValidator() {
+  class ArgumentConsistencyValidator(private val textField: JBTextField) : FacetEditorValidator() {
     override fun check(): ValidationResult = with(textField.text) {
       if (isBlank()) return ValidationResult(message("facet.tab.valid.notBlank"))
       if (startsWith('/')) return ValidationResult(message("facet.tab.valid.notRelative"))

@@ -848,11 +848,11 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
         bundle.sourceBundle =
           sourceVersions[bundle.bundle.bundleSymbolicName]?.firstOrNull { it.bundleVersion == bundle.bundle.bundleVersion }
       }
-    }.also { ShadowLocationRoot.add(it) }
+    }.also { add(it) }
 
     fun removeLocation(location: TargetLocationDefinition): ShadowLocation {
       sourceVersions.values.forEach { it -= location.bundles.toSet() }
-      return locations.first { it.location == location }.also { ShadowLocationRoot.remove(it) }
+      return locations.first { it.location == location }.also { remove(it) }
     }
 
     fun replaceLocation(addedLocation: TargetLocationDefinition, removedLocation: TargetLocationDefinition) {

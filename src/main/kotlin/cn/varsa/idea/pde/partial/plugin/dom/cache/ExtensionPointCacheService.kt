@@ -62,8 +62,8 @@ class ExtensionPointCacheService(private val project: Project) {
     root.validFileOrRequestResolve()?.findFileByRelativePath(schema)?.let(this::getExtensionPoint)
 
   private fun rootOf(rb: cn.varsa.pde.resolver.index.ResolvedBundle): VirtualFile? {
-    val lfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-    val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+    val lfs = LocalFileSystem.getInstance()
+    val jarfs = JarFileSystem.getInstance()
     return if (rb.isDirectory) lfs.findFileByNioFile(rb.location)
     else lfs.findFileByNioFile(rb.location)?.let { jarfs.getJarRootForLocalFile(it) }
   }

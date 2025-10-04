@@ -124,16 +124,16 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
     val rel = entry.presentableUrl.substringAfter(rootEntry?.presentableUrl ?: bundleRoot.presentableUrl, "")
     val safeName = sanitizeExtractName(bundleRoot.name, rel)
     val projectVf = local.findFileByPath(project.presentableUrl ?: return null) ?: return null
-    val outDir = cn.varsa.idea.pde.partial.plugin.support.readCompute { projectVf.findChild("out") } ?: cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+    val outDir = readCompute { projectVf.findChild("out") } ?: writeComputeAndWait {
       projectVf.createChildDirectory(this, "out")
     }
-    val tmpLib = cn.varsa.idea.pde.partial.plugin.support.readCompute { outDir.findChild("tmp_lib") } ?: cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+    val tmpLib = readCompute { outDir.findChild("tmp_lib") } ?: writeComputeAndWait {
       outDir.createChildDirectory(this, "tmp_lib")
     }
-    val target = cn.varsa.idea.pde.partial.plugin.support.readCompute { tmpLib.findChild(safeName) } ?: cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+    val target = readCompute { tmpLib.findChild(safeName) } ?: writeComputeAndWait {
       tmpLib.createChildData(this, safeName)
     }
-    cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+    writeComputeAndWait {
       target.getOutputStream(target, entry.modificationStamp, entry.timeStamp).use { os ->
         entry.inputStream.use { ins -> ins.copyTo(os) }
       }

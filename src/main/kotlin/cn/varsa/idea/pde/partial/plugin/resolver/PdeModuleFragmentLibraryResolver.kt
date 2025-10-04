@@ -43,7 +43,7 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
 
     // Build workspace descriptors and module lookup by BSN
     val allPdeModules = project.allPDEModules(area)
-    val moduleByBsn = allPdeModules.mapNotNull { m ->
+    allPdeModules.mapNotNull { m ->
       val man = cacheService.getManifest(m)
       val bsn = man?.bundleSymbolicName?.key
       if (bsn != null) bsn to m else null
@@ -96,12 +96,12 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
       val orderEntriesMap = orderEntries.associateBy { it.presentableName }
 
       // Use core resolver to compute host dependencies order (libraries only)
-      val dependencyOrder = hostManifestAndPath?.let { (hostBsn, hostMan, hostPath) ->
+      val dependencyOrder = hostManifestAndPath?.let { (_, hostMan, hostPath) ->
         val entry = cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor(hostPath!!, hostMan)
         val result = cn.varsa.pde.resolver.algo.Resolver.resolve(targetIndex, workspace, entry, options)
         val names = result.bundles.filter { !it.isWorkspace }.map { rb ->
           val dash = "${rb.bsn}-${rb.version}"
-          val at = "$ProjectLibraryNamePrefix${rb.bsn}${cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator}${rb.version}"
+          val at = "$ProjectLibraryNamePrefix${rb.bsn}${BundleDefinition.canonicalNameSeparator}${rb.version}"
           listOf(dash, "$ProjectLibraryNamePrefix$dash", at)
         }.flatten()
         names.mapNotNull { n -> orderEntriesMap[n] }
@@ -114,8 +114,8 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
       data class LibKey(val entry: LibraryOrderEntry, val bsn: String, val ver: org.osgi.framework.Version)
       fun parseLib(name: String): Pair<String, org.osgi.framework.Version>? {
         val tail = name.substringAfterLast(ProjectLibraryNamePrefix)
-        val bsn = tail.substringBeforeLast(cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator)
-        val verText = tail.substringAfterLast(cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator)
+        val bsn = tail.substringBeforeLast(BundleDefinition.canonicalNameSeparator)
+        val verText = tail.substringAfterLast(BundleDefinition.canonicalNameSeparator)
         val ver = try { org.osgi.framework.Version.parseVersion(verText) } catch (_: Exception) { return null }
         return bsn to ver
       }
@@ -131,7 +131,7 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
         }
 
       val fragment2HostOrder: Map<OrderEntry, OrderEntry> = presentLibs.mapNotNull { key ->
-        val bcn = key.bsn + cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator + key.ver
+        val bcn = key.bsn + BundleDefinition.canonicalNameSeparator + key.ver
         val bundle = tpService.getBundleByBCN(bcn)
         val hostPair = bundle?.manifest?.fragmentHostAndVersionRange() ?: return@mapNotNull null
         val hostNav = libsByBsn[hostPair.first] ?: return@mapNotNull null

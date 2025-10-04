@@ -160,7 +160,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
         }
 
         row {
-          resizableRow().scrollCell(moduleList).align(com.intellij.ui.dsl.builder.Align.FILL)
+          resizableRow().scrollCell(moduleList).align(Align.FILL)
         }
       }
     }

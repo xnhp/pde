@@ -33,7 +33,7 @@ class ModuleChangedListener : ModuleListener {
     modules.mapNotNull {
       val facet = PDEFacet.getInstance(it)
       if (facet != null && facet.configuration.updateArtifacts) facet to it else null
-    }.forEach { (facet, module) ->
+    }.forEach { (_, module) ->
       val model = readCompute { ArtifactManager.getInstance(project).createModifiableModel() }
       try {
         model.findArtifact("$ArtifactPrefix${oldNameProvider.`fun`(module)}")?.also { model.removeArtifact(it) }
