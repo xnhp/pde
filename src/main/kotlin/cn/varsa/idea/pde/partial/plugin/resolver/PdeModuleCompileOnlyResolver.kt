@@ -122,7 +122,7 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
 
     val rootEntry = jarfs.getRootByEntry(bundleRoot)
     val rel = entry.presentableUrl.substringAfter(rootEntry?.presentableUrl ?: bundleRoot.presentableUrl, "")
-    val safeName = (bundleRoot.name + rel).replace(Regex("[^A-Za-z0-9._-]"), "_")
+    val safeName = sanitizeExtractName(bundleRoot.name, rel)
     val projectVf = local.findFileByPath(project.presentableUrl ?: return null) ?: return null
     val outDir = cn.varsa.idea.pde.partial.plugin.support.readCompute { projectVf.findChild("out") } ?: cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
       projectVf.createChildDirectory(this, "out")
@@ -139,6 +139,11 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
       }
     }
     return jarfs.getJarRootForLocalFile(target)
+  }
+
+  companion object {
+    fun sanitizeExtractName(bundleName: String, rel: String): String =
+      (bundleName + rel).replace(Regex("[^A-Za-z0-9._-]"), "_")
   }
 
   override fun postResolve(area: Module) {

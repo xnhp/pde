@@ -2,12 +2,13 @@ package cn.varsa.idea.pde.partial.plugin.support
 
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
+import cn.varsa.pde.resolver.manifest.isBundleRequired
 import cn.varsa.pde.resolver.manifest.reexportRequiredBundleAndVersion
 import cn.varsa.pde.resolver.support.VersionRangeAny
 import cn.varsa.pde.resolver.support.contains
 import cn.varsa.idea.pde.partial.common.support.ifTrue
 import cn.varsa.idea.pde.partial.plugin.cache.BundleManifestCacheService
-import cn.varsa.idea.pde.partial.plugin.config.BundleManagementService
+import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
 import org.osgi.framework.Version
@@ -17,7 +18,7 @@ fun BundleManifest.isBundleRequiredOrFromReExport(
   project: Project, module: Module?, symbolName: String, version: Set<Version> = emptySet()
 ): Boolean {
   val cacheService = BundleManifestCacheService.getInstance(project)
-  val managementService = BundleManagementService.getInstance(project)
+  val tpService = PluginTargetIndexService.getInstance(project)
 
   // Bundle required directly
   requiredBundleAndVersion().any { (k, r) ->
@@ -25,50 +26,40 @@ fun BundleManifest.isBundleRequiredOrFromReExport(
   }.ifTrue { return true }
 
   val requiredBundle = requireBundle?.keys ?: return false
-  val allRequiredFromReExport = managementService.getLibReExportRequired(requiredBundleAndVersion())
-
-  // Re-export dependency tree can resolve bundle
-  allRequiredFromReExport.contains(symbolName).ifTrue { return true }
-
-  // Re-export bundle contain module, it needs calc again
+  // Build re-export closure on the fly across workspace and target candidates
   val modulesManifest = project.allPDEModules(module).mapNotNull(cacheService::getManifest).toHashSet()
 
-  modulesManifest.filter {
-    it.bundleSymbolicName?.key?.run { requiredBundle.contains(this) || allRequiredFromReExport.contains(this) } == true
-  }.any { isBundleFromReExportOnly(it, symbolName, version, cacheService, managementService, modulesManifest) }
-    .ifTrue { return true }
+  fun traverseReexport(man: BundleManifest, visited: MutableSet<String>): Boolean {
+    val reexp = man.reexportRequiredBundleAndVersion()
+    // direct match
+    if (reexp.any { (k, r) -> k == symbolName && (version.isEmpty() || version.any { it in r }) }) return true
+    // follow re-export edges
+    for ((bsn, range) in reexp) {
+      if (!visited.add(bsn)) continue
+      // Prefer workspace module manifests if present
+      val nextModule = modulesManifest.firstOrNull { it.bundleSymbolicName?.key == bsn && it.bundleVersion in range }
+      if (nextModule != null) {
+        if (traverseReexport(nextModule, visited)) return true
+        continue
+      }
+      val next = tpService.getBundlesByBSN(bsn, range)?.manifest ?: continue
+      if (traverseReexport(next, visited)) return true
+    }
+    return false
+  }
+
+  if (traverseReexport(this, hashSetOf())) return true
 
   return false
 }
 
-private fun isBundleFromReExportOnly(
-  manifest: BundleManifest,
-  symbolName: String,
-  version: Set<Version>,
-  cacheService: BundleManifestCacheService,
-  managementService: BundleManagementService,
-  modulesManifest: HashSet<BundleManifest>
-): Boolean {
-  // Re-export directly
-  manifest.reexportRequiredBundleAndVersion().filterValues { range -> version.isEmpty() || version.any { it in range } }
-    .containsKey(symbolName).ifTrue { return true }
-
-  val allReExport = managementService.getLibReExportRequired(manifest.reexportRequiredBundleAndVersion())
-
-  // Re-export dependency tree can resolve bundle
-  allReExport.contains(symbolName).ifTrue { return true }
-
-  // Dependency tree contains module, it needs calc again, and remove it from module set to not calc again and again and again
-  return modulesManifest.filter { allReExport.contains(it.bundleSymbolicName?.key) }.toSet()
-    .also { modulesManifest -= it }
-    .any { isBundleFromReExportOnly(it, symbolName, version, cacheService, managementService, modulesManifest) }
-}
+// legacy helper removed: re-export closure now built using core index
 
 fun BundleManifest.bundleRequiredOrFromReExportOrderedList(
   project: Project, vararg exclude: Module? = emptyArray()
 ): LinkedHashSet<Pair<String, Version>> {
   val cacheService = BundleManifestCacheService.getInstance(project)
-  val managementService = BundleManagementService.getInstance(project)
+  val tpService = PluginTargetIndexService.getInstance(project)
 
   val result = linkedSetOf<Pair<String, Version>>()
 
@@ -78,7 +69,7 @@ fun BundleManifest.bundleRequiredOrFromReExportOrderedList(
   fun processBSN(
     exportBundle: String, range: VersionRange, onEach: (Map.Entry<String, VersionRange>) -> Unit
   ) {
-    managementService.getBundlesByBSN(exportBundle, range)?.let { result += it.bundleSymbolicName to it.bundleVersion }
+    tpService.getBundlesByBSN(exportBundle, range)?.let { result += exportBundle to it.manifest.bundleVersion }
 
     modulesManifest[exportBundle]?.takeIf { it.first in range }
       ?.also { modulesManifest -= exportBundle }?.second?.also { result += exportBundle to it.bundleVersion }
@@ -88,9 +79,12 @@ fun BundleManifest.bundleRequiredOrFromReExportOrderedList(
   fun cycleBSN(exportBundle: String, range: VersionRange) {
     processBSN(exportBundle, range) { cycleBSN(it.key, it.value) }
 
-    managementService.getLibReExportRequired(exportBundle, range)?.forEach { (bsn, reqRange) ->
-      processBSN(bsn, reqRange) { cycleBSN(it.key, it.value) }
+    // Traverse workspace manifests and target candidates alike
+    modulesManifest.values.map { it.second }.filter { it.isBundleRequired(exportBundle) }.forEach { man ->
+      man.requiredBundleAndVersion().forEach { (k, r) -> processBSN(k, r) { cycleBSN(it.key, it.value) } }
     }
+    tpService.getBundlesByBSN(exportBundle)?.values?.lastOrNull()?.manifest
+      ?.requiredBundleAndVersion()?.forEach { (k, r) -> processBSN(k, r) { cycleBSN(it.key, it.value) } }
   }
 
   requiredBundleAndVersion().forEach { cycleBSN(it.key, it.value) }

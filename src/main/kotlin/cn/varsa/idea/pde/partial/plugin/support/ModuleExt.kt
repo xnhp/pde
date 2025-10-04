@@ -3,7 +3,9 @@ package cn.varsa.idea.pde.partial.plugin.support
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
+import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
+import cn.varsa.pde.resolver.manifest.isBundleRequired
 import com.intellij.openapi.module.*
 import com.intellij.openapi.project.*
 import com.intellij.openapi.roots.*
@@ -27,7 +29,7 @@ fun Module.isBundleRequiredOrFromReExport(symbolName: String, version: Set<Versi
 val Module.bundleRequiredOrFromReExportOrderedList: LinkedHashSet<Pair<String, Version>>
   get() {
     val cacheService = BundleManifestCacheService.getInstance(project)
-    val managementService = BundleManagementService.getInstance(project)
+    val tpService = PluginTargetIndexService.getInstance(project)
 
     val result = linkedSetOf<Pair<String, Version>>()
 
@@ -39,8 +41,8 @@ val Module.bundleRequiredOrFromReExportOrderedList: LinkedHashSet<Pair<String, V
     fun processBSN(
       exportBundle: String, range: VersionRange, onEach: (Map.Entry<String, VersionRange>) -> Unit
     ) {
-      managementService.getBundlesByBSN(exportBundle, range)
-        ?.let { result += it.bundleSymbolicName to it.bundleVersion }
+      tpService.getBundlesByBSN(exportBundle, range)
+        ?.let { result += exportBundle to it.manifest.bundleVersion }
 
       modulesManifest[exportBundle]?.takeIf { it.first in range }
         ?.also { modulesManifest -= exportBundle }?.second?.also { result += exportBundle to it.bundleVersion }
@@ -50,9 +52,11 @@ val Module.bundleRequiredOrFromReExportOrderedList: LinkedHashSet<Pair<String, V
     fun cycleBSN(exportBundle: String, range: VersionRange) {
       processBSN(exportBundle, range) { cycleBSN(it.key, it.value) }
 
-      managementService.getLibReExportRequired(exportBundle, range)?.forEach { (bsn, reqRange) ->
-        processBSN(bsn, reqRange) { cycleBSN(it.key, it.value) }
+      modulesManifest.values.map { it.second }.filter { it.isBundleRequired(exportBundle) }.forEach { man ->
+        man.requiredBundleAndVersion().forEach { (k, r) -> processBSN(k, r) { cycleBSN(it.key, it.value) } }
       }
+      tpService.getBundlesByBSN(exportBundle)?.values?.lastOrNull()?.manifest
+        ?.requiredBundleAndVersion()?.forEach { (k, r) -> processBSN(k, r) { cycleBSN(it.key, it.value) } }
     }
 
     manifest.requiredBundleAndVersion().forEach { cycleBSN(it.key, it.value) }
