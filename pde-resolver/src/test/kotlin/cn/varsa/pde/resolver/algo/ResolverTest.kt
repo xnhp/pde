@@ -163,4 +163,39 @@ class ResolverTest {
     assertTrue("whitelisted bundle must be present", "org.eclipse.swt" in bsns)
     assertFalse("non-whitelisted bundle must not be added", "com.acme.other" in bsns)
   }
+
+  @Test
+  fun importPackage_target_provider_prefers_acceptable_export_version() {
+    // Two target bundles export same package with different export versions.
+    // Range excludes the higher bundle's export; must pick acceptable one.
+    val target = tpIndex(
+      rb("y", "3.0.0", EXPORT_PACKAGE to "p;version=\"1.2.0\""),
+      rb("z", "5.0.0", EXPORT_PACKAGE to "p;version=\"1.1.0\"")
+    )
+    val workspace = emptyList<WorkspaceBundleDescriptor>()
+    val entry = wbd("a", "1.0.0", IMPORT_PACKAGE to "p;version=\"[1.2.0,2.0.0)\"")
+
+    val r = Resolver.resolve(target, workspace, entry, ResolveOptions(preferWorkspace = false))
+    val bsns = r.bundles.map { it.bsn }
+    assertTrue(bsns.contains("y"))
+    assertFalse(bsns.contains("z"))
+  }
+
+  @Test
+  fun whitelist_does_not_duplicate_already_selected_bsn() {
+    val target = tpIndex(
+      rb("org.eclipse.swt", "3.0.0"),
+      rb("b", "1.0.0")
+    )
+    val workspace = listOf(
+      wbd("b", "1.0.0")
+    )
+    val entry = wbd("a", "1.0.0", REQUIRE_BUNDLE to "b;bundle-version=\"[1.0.0,2.0.0)\"")
+
+    val r = Resolver.resolve(target, workspace, entry, ResolveOptions(whitelistPrefixes = setOf("org.eclipse.")))
+    val bsns = r.bundles.map { it.bsn }
+    // 'b' selected once via workspace; 'org.eclipse.swt' added via whitelist
+    assertEquals(bsns.toSet().size, bsns.size)
+    assertTrue(bsns.contains("org.eclipse.swt"))
+  }
 }
