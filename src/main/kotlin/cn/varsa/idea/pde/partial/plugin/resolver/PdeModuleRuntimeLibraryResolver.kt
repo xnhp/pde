@@ -35,10 +35,17 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     PDEFacet.getInstance(area) ?: return
 
     area.updateModel { model ->
-      model.orderEntries.filter {
-        it is ModuleOrderEntry || it.presentableName.startsWith(ProjectLibraryNamePrefix) ||
-          it.presentableName.equals(ModuleLibraryName)
-      }.forEach { model.removeOrderEntry(it) }
+      val toRemove = model.orderEntries.filter { entry ->
+        when (entry) {
+          is ModuleOrderEntry -> true
+          is LibraryOrderEntry -> {
+            val name = entry.library?.name
+            name != null && (name.startsWith(ProjectLibraryNamePrefix) || name == ModuleLibraryName)
+          }
+          else -> false
+        }
+      }
+      toRemove.forEach { model.removeOrderEntry(it) }
     }
   }
 

@@ -140,22 +140,29 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
         if (hostEntry != null) key.entry to hostEntry else null
       }.toMap()
 
-      val libraryIndex = orderEntries.indexOfLast {
-        it is JdkOrderEntry || it is ModuleSourceOrderEntry || it.presentableName.startsWith(
+      fun isAnchor(e: OrderEntry): Boolean =
+        e is JdkOrderEntry || e is ModuleSourceOrderEntry || e.presentableName.startsWith(
           KotlinOrderEntryName
-        ) || it.presentableName.equalAny(
+        ) || e.presentableName.equalAny(
           ModuleLibraryName, "$ProjectLibraryNamePrefix${hostAndName?.second}"
-        ) || it.presentableName == hostAndName?.second
-      } + 1
+        ) || e.presentableName == hostAndName?.second
+
+      // Initial anchor index before any changes (may shift after removals)
+      val initialAnchorIndex = orderEntries.indexOfLast { isAnchor(it) } + 1
       val arrangeOrderEntries = orderEntries.apply {
-        dependencyOrder?.also {
-          removeAll(it)
-          addAll(libraryIndex, it)
+        dependencyOrder?.also { deps ->
+          // Remove any existing occurrences first to avoid duplicates and index drift
+          removeAll(deps)
+          // Recompute anchor index after removals to avoid out-of-bounds
+          val anchorIndex = (indexOfLast { isAnchor(it) } + 1).let { if (it <= 0) initialAnchorIndex else it }
+          val insertAt = anchorIndex.coerceAtMost(size)
+          addAll(insertAt, deps)
         }
 
         fragment2HostOrder.forEach { (fragment, host) ->
           remove(fragment)
-          add(indexOf(host), fragment)
+          val hostIndex = indexOf(host)
+          if (hostIndex >= 0) add(hostIndex, fragment) else add(fragment)
         }
       }.toTypedArray()
       model.rearrangeOrderEntries(arrangeOrderEntries)
