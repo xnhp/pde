@@ -26,6 +26,8 @@ class PdeLibraryResolverRegistry {
   ) {
     object : BackgroundResolvable {
       override fun resolve(project: Project, indicator: ProgressIndicator) {
+        // Start a fresh resolve session
+        cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService.getInstance(project).clear()
         indicator.checkCanceled()
         indicator.isIndeterminate = false
         indicator.fraction = 0.0
@@ -43,6 +45,8 @@ class PdeLibraryResolverRegistry {
         }
 
         indicator.fraction = 1.0
+        // End of session for this run
+        cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService.getInstance(project).clear()
       }
     }.backgroundResolve(project, onSuccess, onCancel, onThrowable, onFinished)
   }

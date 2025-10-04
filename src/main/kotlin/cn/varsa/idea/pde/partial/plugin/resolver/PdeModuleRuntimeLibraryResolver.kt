@@ -70,6 +70,9 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val entryDesc = ctx.workspaceEntry(area) ?: return@updateModel
       val result = Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
 
+      // Stash resolve result for postResolve ordering (per run)
+      cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService.getInstance(project).put(area, result)
+
       // Warn on unresolved bundles for this module
       if (result.unresolved.isNotEmpty()) {
         val msg = buildString {
@@ -108,10 +111,14 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val hostBCN = project.fragmentHostManifest(manifest, area)?.canonicalName
 
     area.updateModel { model ->
-      // Reuse cached index/workspace build and recompute ordering
+      // Reuse cached resolver result if available (avoid recompute)
+      val session = cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService.getInstance(project)
+      val cached = session.get(area)
       val ctx = buildContext(project, cacheService)
       val entryDesc = ctx.workspaceEntry(area) ?: return@updateModel
-      val orderingResult = Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
+      val orderingResult = cached ?: Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
+      // Consume once to keep session small
+      session.remove(area)
 
       val orderEntries = model.orderEntries.toMutableList()
       val orderEntriesMap = orderEntries.associateBy { it.presentableName }
