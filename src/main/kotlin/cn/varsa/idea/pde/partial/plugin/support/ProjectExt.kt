@@ -6,6 +6,7 @@ import cn.varsa.pde.resolver.manifest.isFragmentHost
 import cn.varsa.pde.resolver.support.contains
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
+import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import cn.varsa.idea.pde.partial.plugin.facet.*
 import com.intellij.facet.*
 import com.intellij.openapi.module.*
@@ -29,7 +30,6 @@ fun Project.fragmentHostManifest(
   fragment: BundleManifest, vararg exclude: Module? = emptyArray()
 ): BundleManifest? = fragment.fragmentHostAndVersionRange()?.let { (fragmentHostBSN, fragmentHostVersion) ->
   allPDEModules(*exclude).mapNotNull { BundleManifestCacheService.getInstance(this).getManifest(it) }
-    .firstOrNull { it.isFragmentHost(fragmentHostBSN, fragmentHostVersion) } ?: BundleManagementService.getInstance(
-    this
-  ).getBundlesByBSN(fragmentHostBSN, fragmentHostVersion)?.manifest
+    .firstOrNull { it.isFragmentHost(fragmentHostBSN, fragmentHostVersion) }
+    ?: PluginTargetIndexService.getInstance(this).getBundlesByBSN(fragmentHostBSN, fragmentHostVersion)?.manifest
 }

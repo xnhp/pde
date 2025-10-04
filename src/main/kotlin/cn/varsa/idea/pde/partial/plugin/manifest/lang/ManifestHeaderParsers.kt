@@ -12,6 +12,7 @@ import cn.varsa.pde.resolver.support.parseVersion
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
+import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import cn.varsa.idea.pde.partial.plugin.helper.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.manifest.psi.*
@@ -325,11 +326,11 @@ object RequireBundleParser : HeaderParser by OsgiHeaderParser {
         } else {
           val manifest = project.allPDEModules(header.module).mapNotNull { cacheService.getManifest(it) }
             .firstOrNull { it.bundleSymbolicName?.key == text && it.bundleVersion in range }
-            ?: BundleManagementService.getInstance(project).getBundlesByBSN(text, range)?.manifest
+            ?: PluginTargetIndexService.getInstance(project).getBundlesByBSN(text, range)?.manifest
 
           if (manifest == null) {
             val versions =
-              BundleManagementService.getInstance(project).getBundlesByBSN(text)?.keys?.toHashSet() ?: hashSetOf()
+              PluginTargetIndexService.getInstance(project).getBundlesByBSN(text)?.keys?.toHashSet() ?: hashSetOf()
             versions += project.allPDEModules(header.module).mapNotNull { cacheService.getManifest(it) }
               .filter { it.bundleSymbolicName?.key == text }.map { it.bundleVersion }
 
@@ -438,7 +439,7 @@ object ImportPackageParser : HeaderParser by BasePackageParser {
   override fun annotate(header: Header, holder: AnnotationHolder): Boolean {
     var annotated = BasePackageParser.annotate(header, holder)
 
-    val managementService = BundleManagementService.getInstance(header.project)
+    val tpService = PluginTargetIndexService.getInstance(header.project)
     val cacheService = BundleManifestCacheService.getInstance(header.project)
     val index = ProjectFileIndex.getInstance(header.project)
 
@@ -478,7 +479,7 @@ object ImportPackageParser : HeaderParser by BasePackageParser {
                 jarFile == module.getModuleDir() || classPaths?.contains(jarFile) == true
               }.mapNotNull { it.second }
 
-              managementService.getBundleByInnerJarPath(jarFile)?.manifest?.also { containers += it }
+              tpService.findBundleByPath(jarFile)?.manifest?.also { containers += it }
             }
 
           containers.mapNotNull { it.exportedPackageAndVersion()[packageName] }.distinct().sorted().also { versions ->
@@ -511,7 +512,7 @@ object ExportPackageParser : HeaderParser by BasePackageParser {
     val hostManifest = header.module?.let { cacheService.getManifest(it) }?.fragmentHostAndVersionRange()
       ?.let { (hostBSN, hostVersion) ->
         project.allPDEModules(header.module).mapNotNull { cacheService.getManifest(it) }
-          .firstOrNull { it.isFragmentHost(hostBSN, hostVersion) } ?: BundleManagementService.getInstance(
+          .firstOrNull { it.isFragmentHost(hostBSN, hostVersion) } ?: PluginTargetIndexService.getInstance(
           project
         ).getBundlesByBSN(hostBSN, hostVersion)?.manifest
       }
@@ -640,10 +641,10 @@ object FragmentHostParser : HeaderParser by RequireBundleParser {
         } else {
           val manifest = project.allPDEModules(header.module).mapNotNull { cacheService.getManifest(it) }
             .firstOrNull { it.bundleSymbolicName?.key == text && it.bundleVersion in range }
-            ?: BundleManagementService.getInstance(project).getBundlesByBSN(text, range)?.manifest
+            ?: PluginTargetIndexService.getInstance(project).getBundlesByBSN(text, range)?.manifest
 
           if (manifest == null) {
-            val versions = (BundleManagementService.getInstance(project).getBundlesByBSN(text)?.keys
+            val versions = (PluginTargetIndexService.getInstance(project).getBundlesByBSN(text)?.keys
               ?: emptySet()) + project.allPDEModules(header.module).mapNotNull { cacheService.getManifest(it) }
               .filter { it.bundleSymbolicName?.key == text }.map { it.bundleVersion }
 

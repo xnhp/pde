@@ -121,9 +121,12 @@ class BundleNameProvider : CompletionProvider<CompletionParameters>() {
     parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet
   ) {
     parameters.editor.project?.let { project ->
-      project.allPDEModulesSymbolicName(parameters.originalFile.module) { it.fragmentHost == null } + BundleManagementService.getInstance(
-        project
-      ).getBundles().filter { it.manifest?.fragmentHost == null }.map { it.bundleSymbolicName }
+      val tp = cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
+      val coreBundles = tp.getIndex().bundlesByBsn().values
+        .flatMap { it.values }
+        .filter { it.manifest.fragmentHost == null && it.manifest.eclipseSourceBundle == null }
+        .mapNotNull { it.manifest.bundleSymbolicName?.key }
+      project.allPDEModulesSymbolicName(parameters.originalFile.module) { it.fragmentHost == null } + coreBundles
     }?.distinct()?.sorted()?.forEach {
       result.addElement(LookupElementBuilder.create(it).withCaseSensitivity(false))
     }

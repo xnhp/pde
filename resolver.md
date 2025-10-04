@@ -18,6 +18,10 @@ Responsibilities
            `getBundlePoolPath`, `mapProfileFile`)
          - `cn.varsa.pde.resolver.features.FeatureScanner` (features from SDK
            `features/`, P2 `pool/features`, Target Definition profiles)
+         - Caching: `cn.varsa.pde.resolver.index.TargetPlatformCache`
+           - Tree fingerprint of candidates (path:size:mtime)
+           - Persisted snapshot (Properties) with schema and manifests
+           - `buildWithCache(roots, cacheFile?)` uses cache by default
      - Plugin integration
        - Providers now use core scanners:
          - `DirectoryBundleProvider`, `EclipseSDKBundleProvider`,
@@ -76,6 +80,7 @@ File signals and APIs to extract
     - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/resolver/PdeModuleRuntimeLibraryResolver.kt:1`
   - Target indexing and lookups
     - Moved to core: `pde-resolver/src/main/kotlin/cn/varsa/pde/resolver/index/*`
+      (including `TargetPlatformCache`)
   - Manifest utilities
     - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/support/BundleManifestExt.kt:1`
       (extensions targeting core `BundleManifest`)
@@ -98,6 +103,9 @@ Public API (core, current + planned)
     - Current: `TargetPlatformIndex.build(rootPaths: List<Path>)`
       - Scans Eclipse SDK roots, profile dirs, plain dirs/files for bundles.
       - Lookups: `get(bsn, range?)`, `bundlesByBsn()`.
+    - Current: `TargetPlatformCache.buildWithCache(roots, cacheFile?)`
+      - Computes fingerprint; loads cached snapshot if it matches;
+        otherwise scans and persists snapshot.
     - Current: `FeatureScanner`
       - `scanEclipseSdkFeatures`, `scanTargetDefinitionFeatures`, `scanP2Features`.
     - Planned: richer data views (exports, fragments, re‑exports).
@@ -149,7 +157,8 @@ Package layout
   - Core module `pde-resolver`
     - `cn.varsa.pde.resolver.manifest`: manifest model/adapters and header parsing.
     - `cn.varsa.pde.resolver.support`: string/version helpers.
-    - `cn.varsa.pde.resolver.index`: `TargetPlatformIndex`, profile helpers.
+    - `cn.varsa.pde.resolver.index`: `TargetPlatformIndex`, profile helpers,
+      `TargetPlatformCache`.
     - `cn.varsa.pde.resolver.features`: `FeatureScanner`.
     - Planned:
       - `cn.varsa.pde.resolver.algo`: Resolver for Require‑Bundle,
@@ -184,6 +193,10 @@ Progress/Status
     - Added core unit tests for manifest parsing, profile mapping, index,
       and feature scanning.
     - Build green with IntelliJ Gradle plugin 2.9.0.
+    - Added tree‑fingerprint cache with persisted snapshot in core;
+      `TargetPlatformCache.buildWithCache` entry point.
+    - Providers now use cached build by default.
+    - Added cache hit/miss test.
   - Next
     - Extract pure Resolver (Require‑Bundle/Import‑Package/Fragment‑Host).
     - Add resolver unit tests (version ranges, re‑export closure, fragments).

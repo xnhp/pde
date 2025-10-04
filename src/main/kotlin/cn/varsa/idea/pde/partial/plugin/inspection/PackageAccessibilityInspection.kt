@@ -61,7 +61,7 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
     ): List<Problem> {
       val project = requesterModule.project
       val cacheService = BundleManifestCacheService.getInstance(project)
-      val managementService = BundleManagementService.getInstance(project)
+      val tpService = cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
       val index = ProjectFileIndex.getInstance(project)
 
       val importer = cacheService.getManifest(requesterModule) ?: return emptyList()
@@ -83,7 +83,7 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
           ?: BundleManagementService.getInstance(project)
             .getBundlesByBSN(fragmentHostBSN, fragmentHostVersion)?.manifest
 
-        ownerFile?.presentableUrl?.let { managementService.getBundleByInnerJarPath(it)?.manifest }
+      ownerFile?.presentableUrl?.let { tpService.findBundleByPath(it)?.manifest }
           ?.isFragmentHost(fragmentHostBSN, fragmentHostVersion)?.ifTrue { return emptyList() }
 
         project.allPDEModules(requesterModule).any { module ->
@@ -102,7 +102,7 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
 
       // In bundle class path?
       val containers = arrayListOf<BundleManifest>()
-      ownerFile?.presentableUrl?.let { managementService.getBundleByInnerJarPath(it)?.manifest }
+      ownerFile?.presentableUrl?.let { tpService.findBundleByPath(it)?.manifest }
         ?.also { containers += it }
       containers.addAll(project.allPDEModules(requesterModule).filter { module ->
         ownerFile?.presentableUrl == module.getModuleDir() || cacheService.getManifest(module)?.bundleClassPath?.keys?.filterNot { it == "." }
@@ -140,12 +140,12 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
         exporter.exportedPackageAndVersion()[packageName]?.also { exportedPackageVersions += it }
         exporterHost?.exportedPackageAndVersion()?.get(packageName)?.also { exportedPackageVersions += it }
 
-        managementService.getBundlesByBSN(exporterBSN)?.mapValues { it.value.manifest }
+        tpService.getBundlesByBSN(exporterBSN)?.mapValues { it.value.manifest }
           ?.mapValues { it.value?.exportedPackageAndVersion()?.get(packageName) }?.also {
             exporterVersions += it.keys
             exportedPackageVersions += it.values.filterNotNull()
           }
-        exporterHostBSN?.let { managementService.getBundlesByBSN(it) }?.mapValues { it.value.manifest }
+        exporterHostBSN?.let { tpService.getBundlesByBSN(it) }?.mapValues { it.value.manifest }
           ?.mapValues { it.value?.exportedPackageAndVersion()?.get(packageName) }?.also {
             exporterHostVersions += it.keys
             exportedPackageVersions += it.values.filterNotNull()

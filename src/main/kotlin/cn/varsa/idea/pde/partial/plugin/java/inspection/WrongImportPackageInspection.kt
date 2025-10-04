@@ -23,7 +23,7 @@ class WrongImportPackageInspection : AbstractOsgiVisitor() {
           val project = facet.module.project
 
           val cacheService = BundleManifestCacheService.getInstance(project)
-          val managementService = BundleManagementService.getInstance(project)
+          val tpService = cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService.getInstance(project)
           val index = ProjectFileIndex.getInstance(project)
 
           nextValue@ for (value in (element as Header).headerValues) {
@@ -43,7 +43,7 @@ class WrongImportPackageInspection : AbstractOsgiVisitor() {
 
                 for (directory in directories) {
                   val jarFile = index.getClassRootForFile(directory.virtualFile)
-                  val containerBundle = jarFile?.presentableUrl?.let { managementService.getBundleByInnerJarPath(it) }
+                  val containerBundle = jarFile?.presentableUrl?.let { tpService.findBundleByPath(it) }
 
                   if (containerBundle?.manifest?.getExportedPackageName(packageName) != null) {
                     continue@nextValue

@@ -35,8 +35,10 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     PDEFacet.getInstance(area) ?: return
 
     area.updateModel { model ->
-      model.orderEntries.filter { it is ModuleOrderEntry || it.presentableName.startsWith(ProjectLibraryNamePrefix) || it.presentableName.equals(ModuleLibraryName) }
-        .forEach { model.removeOrderEntry(it) }
+      model.orderEntries.filter {
+        it is ModuleOrderEntry || it.presentableName.startsWith(ProjectLibraryNamePrefix) ||
+          it.presentableName.equals(ModuleLibraryName)
+      }.forEach { model.removeOrderEntry(it) }
     }
   }
 
@@ -249,20 +251,39 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val hostBCN = project.fragmentHostManifest(manifest, area)?.canonicalName
 
     area.updateModel { model ->
+      // Recompute resolver result to drive ordering
+      val allPdeModules = project.allPDEModules()
+      fun modulePath(m: Module) = m.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) }
+      val workspace: List<WorkspaceBundleDescriptor> = allPdeModules.mapNotNull { m ->
+        val man = cacheService.getManifest(m) ?: return@mapNotNull null
+        val path = modulePath(m) ?: return@mapNotNull null
+        WorkspaceBundleDescriptor(path, man)
+      }
+      val entryPath = modulePath(area) ?: return@updateModel
+      val entryDesc = WorkspaceBundleDescriptor(entryPath, manifest)
+      val roots = TargetDefinitionService.getInstance(project).locations
+        .mapNotNull { it.location.takeIf(String::isNotBlank) }
+        .map { java.nio.file.Paths.get(it) }
+      val targetIndex = TargetPlatformCache.buildWithCache(roots, null)
+      val options = ResolveOptions(
+        whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
+        preferWorkspace = true,
+        includeHostsForFragments = true
+      )
+      val orderingResult = Resolver.resolve(targetIndex, workspace, entryDesc, options)
+
       val orderEntries = model.orderEntries.toMutableList()
       val orderEntriesMap = orderEntries.associateBy { it.presentableName }
 
       val kotlinOrder = orderEntriesMap.filter { it.key.startsWith(KotlinOrderEntryName) }.values.toSet()
       val runtimeOrder = orderEntriesMap[ModuleLibraryName]
       val hostOrder = orderEntriesMap[hostBCN] ?: orderEntriesMap["$ProjectLibraryNamePrefix$hostBCN"]
-      val dependencyOrder =
-        manifest.bundleRequiredOrFromReExportOrderedList(project, area).map { it.asCanonicalName }.flatMap {
-          val dash = it
-          val at = it.substringBeforeLast('-') +
-            cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator +
-            it.substringAfterLast('-')
-          listOf(dash, "$ProjectLibraryNamePrefix$dash", "$ProjectLibraryNamePrefix$at")
-        }.mapNotNull { orderEntriesMap[it] }
+      // Use core resolver's result order for dependency libraries
+      val dependencyOrder = orderingResult.bundles.filter { !it.isWorkspace }.map { rb ->
+        val dash = "${rb.bsn}-${rb.version}"
+        val at = "$ProjectLibraryNamePrefix${rb.bsn}${cn.varsa.idea.pde.partial.plugin.domain.BundleDefinition.canonicalNameSeparator}${rb.version}"
+        listOf(dash, "$ProjectLibraryNamePrefix$dash", at)
+      }.flatten().mapNotNull { orderEntriesMap[it] }
 
       var libraryIndex = orderEntries.indexOfLast { it is JdkOrderEntry || it is ModuleSourceOrderEntry } + 1
       val arrangeOrderEntries = orderEntries.apply {

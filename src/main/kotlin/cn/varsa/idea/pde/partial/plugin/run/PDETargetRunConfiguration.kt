@@ -275,10 +275,12 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
 
     override val libraries: List<File>
       get() {
-        val all = BundleManagementService.getInstance(project).getBundles()
+        val tp = PluginTargetIndexService.getInstance(project)
+        val all = tp.getIndex().bundlesByBsn().values.flatMap { it.values }
+          .filter { it.manifest.eclipseSourceBundle == null }
         val excluded = excludedBundles
-        val filtered = if (excluded.isNullOrEmpty()) all else all.filter { it.bundleSymbolicName !in excluded }
-        return filtered.map { it.file }
+        val filtered = if (excluded.isNullOrEmpty()) all else all.filter { it.manifest.bundleSymbolicName?.key !in excluded }
+        return filtered.map { it.location.toFile() }
       }
 
     override val devModules: List<DevModule>

@@ -54,10 +54,19 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
           } else {
             val entry = urlFragments.subList(3, urlFragments.size).joinToString("/")
             val child = root.findFileByRelativePath(entry)
-            // If child is a jar file on local FS, add its jar root; otherwise add as-is
-            if (child != null && child.fileSystem === local) {
-              jarfs.getJarRootForLocalFile(child) ?: child
-            } else child
+            if (child != null) {
+              when (child.fileSystem) {
+                local -> jarfs.getJarRootForLocalFile(child) ?: child
+                jarfs -> {
+                  val ext = child.extension?.lowercase()
+                  if (ext == "jar" || ext == "aar" || ext == "war") {
+                    // Extract nested jar entry into project out/tmp_lib and return its jar root
+                    extractNestedJar(area.project, root, child) ?: child
+                  } else child
+                }
+                else -> child
+              }
+            } else null
           }
         } else symbolicName2Module[bsn]?.let { module ->
           if (urlFragments.size == 3) {
@@ -101,6 +110,35 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
         moduleDependency.forEach { model.findModuleOrderEntry(it) ?: model.addModuleOrderEntry(it) }
       }
     }
+  }
+
+  private fun extractNestedJar(
+    project: com.intellij.openapi.project.Project,
+    bundleRoot: com.intellij.openapi.vfs.VirtualFile,
+    entry: com.intellij.openapi.vfs.VirtualFile
+  ): com.intellij.openapi.vfs.VirtualFile? {
+    val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+    val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+
+    val rootEntry = jarfs.getRootByEntry(bundleRoot)
+    val rel = entry.presentableUrl.substringAfter(rootEntry?.presentableUrl ?: bundleRoot.presentableUrl, "")
+    val safeName = (bundleRoot.name + rel).replace(Regex("[^A-Za-z0-9._-]"), "_")
+    val projectVf = local.findFileByPath(project.presentableUrl ?: return null) ?: return null
+    val outDir = cn.varsa.idea.pde.partial.plugin.support.readCompute { projectVf.findChild("out") } ?: cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+      projectVf.createChildDirectory(this, "out")
+    }
+    val tmpLib = cn.varsa.idea.pde.partial.plugin.support.readCompute { outDir.findChild("tmp_lib") } ?: cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+      outDir.createChildDirectory(this, "tmp_lib")
+    }
+    val target = cn.varsa.idea.pde.partial.plugin.support.readCompute { tmpLib.findChild(safeName) } ?: cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+      tmpLib.createChildData(this, safeName)
+    }
+    cn.varsa.idea.pde.partial.plugin.support.writeComputeAndWait {
+      target.getOutputStream(target, entry.modificationStamp, entry.timeStamp).use { os ->
+        entry.inputStream.use { ins -> ins.copyTo(os) }
+      }
+    }
+    return jarfs.getJarRootForLocalFile(target)
   }
 
   override fun postResolve(area: Module) {
