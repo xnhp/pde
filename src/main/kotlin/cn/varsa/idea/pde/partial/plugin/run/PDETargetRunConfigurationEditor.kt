@@ -6,7 +6,6 @@ import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.support.*
 import com.intellij.execution.ui.*
 import com.intellij.icons.*
-import com.intellij.ide.*
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.options.*
 import com.intellij.openapi.ui.*
@@ -43,12 +42,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
   private val splashBundlePathPanel = JPanel(BorderLayout()).apply {
     add(splashBundlePathField, BorderLayout.CENTER)
     val infoPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0))
-    val helpIcon = JLabel(AllIcons.General.ContextHelp)
-    HelpTooltip()
-      .setDescription(message("run.local.config.tab.configuration.splashBundleHelp"))
-      .setTitle(message("run.local.config.tab.configuration.splashBundleName"))
-      .installOn(helpIcon)
-    infoPanel.add(helpIcon)
+    // Help tooltip removed for simplicity
     add(infoPanel, BorderLayout.EAST)
   }
 
@@ -70,16 +64,7 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
 
   private val moduleList = CheckBoxList<String>()
 
-  // Dual-list: available vs excluded bundles
-  private val availableList = JBList<String>()
-  private val excludedList = JBList<String>()
-  private val availableModel = javax.swing.DefaultListModel<String>()
-  private val excludedModel = javax.swing.DefaultListModel<String>()
-  private var allBundles: List<String> = emptyList()
-  private val excludedSet = linkedSetOf<String>()
-  private val availableFilterField = com.intellij.ui.SearchTextField()
-  private val availableTitle = JBLabel()
-  private val excludedTitle = JBLabel()
+  // Exclude bundles UI removed
 
   private val cleanRuntimeDir = JBCheckBox(message("run.remote.config.tab.wishes.cleanRuntimeDir"))
 
