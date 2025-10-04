@@ -4,6 +4,7 @@ import cn.varsa.idea.pde.partial.common.*
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
+import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.openapi.resolver.*
@@ -27,7 +28,7 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
     val classPaths = buildProperties.getProperty("jars.extra.classpath")?.splitToSequence(',') ?: return
 
     val cacheService = BundleManifestCacheService.getInstance(area.project)
-    val managementService = BundleManagementService.getInstance(area.project)
+    val tpService = PluginTargetIndexService.getInstance(area.project)
 
     val symbolicName2Module =
       area.project.allPDEModules(area).map { cacheService.getManifest(it)?.bundleSymbolicName?.key to it }
@@ -39,14 +40,26 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
       if (urlFragments[0] != "platform:") {
         area.moduleRootManager.contentRoots.firstNotNullOfOrNull { it.findFileByRelativePath(url) }
       } else if (urlFragments.size > 2 && urlFragments[1].equalAny("plugin", "fragment", ignoreCase = true)) {
-        managementService.getBundlesByBSN(urlFragments[2])?.values?.firstOrNull()?.let { definition ->
+        val bsn = urlFragments[2]
+        val rb = tpService.getBundlesByBSN(bsn)?.lastEntry()?.value
+        val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+        val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+        val root = rb?.let {
+          if (it.isDirectory) local.findFileByNioFile(it.location)
+          else local.findFileByNioFile(it.location)?.let { jf -> jarfs.getJarRootForLocalFile(jf) }
+        }
+        if (root != null) {
           if (urlFragments.size == 3) {
-            definition.root
+            root
           } else {
             val entry = urlFragments.subList(3, urlFragments.size).joinToString("/")
-            definition.delegateClassPathFile[entry]
+            val child = root.findFileByRelativePath(entry)
+            // If child is a jar file on local FS, add its jar root; otherwise add as-is
+            if (child != null && child.fileSystem === local) {
+              jarfs.getJarRootForLocalFile(child) ?: child
+            } else child
           }
-        } ?: symbolicName2Module[urlFragments[2]]?.let { module ->
+        } else symbolicName2Module[bsn]?.let { module ->
           if (urlFragments.size == 3) {
             moduleDependency += module
             null
