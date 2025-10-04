@@ -33,7 +33,14 @@ data class ResolvedBundle(
 data class ResolveResult(
   val bundles: List<ResolvedBundle>,
   val imports: Map<String, VersionRange>,
-  val requires: Map<String, VersionRange>
+  val requires: Map<String, VersionRange>,
+  val unresolved: List<UnresolvedBundle> = emptyList()
+)
+
+data class UnresolvedBundle(
+  val bsn: String,
+  val range: VersionRange?,
+  val reason: String
 )
 
 object Resolver {
@@ -87,6 +94,7 @@ object Resolver {
     }
 
     val selected = LinkedHashMap<String, Candidate>()
+    val unresolved = LinkedHashSet<UnresolvedBundle>()
 
     // Caches to avoid recomputing manifest exports repeatedly
     val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, Version>>()
@@ -100,6 +108,8 @@ object Resolver {
       val host = select(hostBsn, hostRange)
       if (host != null) {
         selected.putIfAbsent(hostBsn, host.copy(isHost = true))
+      } else {
+        unresolved.add(UnresolvedBundle(hostBsn, hostRange, "fragmentHost"))
       }
     }
 
@@ -111,6 +121,8 @@ object Resolver {
           // Traverse full Require-Bundle closure (include re-exports implicitly)
           val requiresAll = cand.manifest.requiredBundleAndVersion()
           for ((rb, rr) in requiresAll) addRequireWithClosure(rb, rr)
+        } else {
+          unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
         }
       }
     }
@@ -217,7 +229,8 @@ object Resolver {
     return ResolveResult(
       bundles = bundles,
       imports = imports,
-      requires = requires
+      requires = requires,
+      unresolved = unresolved.toList()
     )
   }
 }

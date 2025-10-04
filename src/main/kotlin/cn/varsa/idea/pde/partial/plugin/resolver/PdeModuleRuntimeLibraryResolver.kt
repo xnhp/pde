@@ -70,6 +70,27 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val entryDesc = ctx.workspaceEntry(area) ?: return@updateModel
       val result = Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
 
+      // Warn on unresolved bundles for this module
+      if (result.unresolved.isNotEmpty()) {
+        val msg = buildString {
+          append("Unresolved bundles for ")
+          append(area.name)
+          append(':')
+          result.unresolved.forEach { u ->
+            append("\n • ")
+            append(u.bsn)
+            u.range?.let { r ->
+              append(" ")
+              append(r.toString())
+            }
+            append(" [")
+            append(u.reason)
+            append(']')
+          }
+        }
+        cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier.important("PDE Resolver", msg).notify(project)
+      }
+
       // 3) Mirror workspace host deps (modules + project-level libs)
       val hostLibs = mirrorHostDependencies(area, model, ctx, result)
 
