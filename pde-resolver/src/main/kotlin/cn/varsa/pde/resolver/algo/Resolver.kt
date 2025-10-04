@@ -88,6 +88,11 @@ object Resolver {
 
     val selected = LinkedHashMap<String, Candidate>()
 
+    // Caches to avoid recomputing manifest exports repeatedly
+    val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, Version>>()
+    fun exportsOf(manifest: BundleManifest): Map<String, Version> =
+      manifestExportsCache.getOrPut(manifest) { manifest.exportedPackageAndVersion() }
+
     // If entry is a fragment, include its host first (optional)
     val hostPair = entry.manifest.fragmentHostAndVersionRange()
     if (options.includeHostsForFragments && hostPair != null) {
@@ -116,48 +121,59 @@ object Resolver {
     // Import-Package resolution: pick providers for requested packages
     val imports = entry.manifest.importedPackageAndVersion()
 
+    // Precompute workspace export providers for faster lookups per package
+    data class PkgProvider(val bsn: String, val version: Version, val path: Path, val manifest: BundleManifest, val isWs: Boolean)
+    val wsProvidersByPkg: Map<String, List<PkgProvider>> = run {
+      val map = HashMap<String, MutableList<PkgProvider>>()
+      workspace.forEach { desc ->
+        val man = desc.manifest
+        val bsn = man.bundleSymbolicName?.key ?: return@forEach
+        val exp = exportsOf(man)
+        exp.forEach { (pkg, ver) ->
+          map.computeIfAbsent(pkg) { mutableListOf() }
+            .add(PkgProvider(bsn, man.bundleVersion, desc.path, man, true))
+        }
+      }
+      map
+    }
+
+    // Precompute target export providers only for imported packages to reduce work
+    val importedPkgs = imports.keys.toSet()
+    val tpProvidersByPkg: Map<String, java.util.NavigableMap<Version, PkgProvider>> = run {
+      val map = HashMap<String, java.util.NavigableMap<Version, PkgProvider>>()
+      target.bundlesByBsn().forEach { (bsn, nav) ->
+        nav.forEach { (ver, rb) ->
+          val exp = exportsOf(rb.manifest)
+          // only index packages we actually need
+          exp.forEach { (pkg, pver) ->
+            if (pkg in importedPkgs) {
+              val providers = map.computeIfAbsent(pkg) { java.util.TreeMap() }
+              providers[ver] = PkgProvider(bsn, ver, rb.location, rb.manifest, false)
+            }
+          }
+        }
+      }
+      map
+    }
+
     fun findProviderForPackage(pkg: String, range: VersionRange): Candidate? {
       if (options.preferWorkspace) {
-        val wsProvider = workspace.asSequence()
-          .mapNotNull { desc ->
-            val exports = desc.manifest.exportedPackageAndVersion()
-            val v = exports[pkg]
-            if (v != null && range.includes(v)) desc else null
-          }
-          .maxByOrNull { it.manifest.bundleVersion }
-        if (wsProvider != null) {
-          val bsn = wsProvider.manifest.bundleSymbolicName?.key ?: return null
-          return Candidate(
-            bsn = bsn,
-            version = wsProvider.manifest.bundleVersion,
-            path = wsProvider.path,
-            manifest = wsProvider.manifest,
-            isWorkspace = true
-          )
-        }
+        val ws = wsProvidersByPkg[pkg]
+          ?.asSequence()
+          ?.filter { range.includes(exportsOf(it.manifest)[pkg]) }
+          ?.maxByOrNull { it.version }
+        if (ws != null) return Candidate(ws.bsn, ws.version, ws.path, ws.manifest, true)
       }
 
-      // Target platform scan: choose highest bundle that exports matching package
-      val byBsn = target.bundlesByBsn()
-      var best: Candidate? = null
-      for ((bsn, nav) in byBsn) {
-        val desc = nav.descendingMap()
-        for ((ver, rb) in desc) {
-          val exp = rb.manifest.exportedPackageAndVersion()
-          val pkgVer = exp[pkg] ?: continue
-          if (!range.includes(pkgVer)) continue
-          best = Candidate(
-            bsn = bsn,
-            version = ver,
-            path = rb.location,
-            manifest = rb.manifest,
-            isWorkspace = false
-          )
-          break
-        }
-        if (best != null) break
-      }
-      return best
+      val nav = tpProvidersByPkg[pkg] ?: return null
+      val desc = nav.descendingMap()
+      val entry = desc.entries.firstOrNull { e ->
+        val man = nav[e.key]?.manifest ?: return@firstOrNull false
+        val ver = exportsOf(man)[pkg]
+        ver != null && range.includes(ver)
+      } ?: return null
+      val p = entry.value
+      return Candidate(p.bsn, p.version, p.path, p.manifest, false)
     }
 
     imports.forEach { (pkg, range) ->
@@ -168,18 +184,14 @@ object Resolver {
     }
 
     if (options.whitelistPrefixes.isNotEmpty()) {
-      for (prefix in options.whitelistPrefixes) {
-        target.bundlesByBsn().forEach { (bsn, nav) ->
-          if (bsn.startsWith(prefix) && !selected.containsKey(bsn)) {
-            nav.lastEntry()?.value?.let { rb ->
-              selected[bsn] = Candidate(
-                bsn = bsn,
-                version = rb.manifest.bundleVersion,
-                path = rb.location,
-                manifest = rb.manifest,
-                isWorkspace = false
-              )
-            }
+      val keys = target.bundlesByBsn().keys
+      // Single pass over BSNs to match prefixes
+      keys.forEach { bsn ->
+        if (!selected.containsKey(bsn) && options.whitelistPrefixes.any { bsn.startsWith(it) }) {
+          val nav = target.bundlesByBsn()[bsn]
+          val rb = nav?.lastEntry()?.value
+          if (rb != null) {
+            selected[bsn] = Candidate(bsn, rb.manifest.bundleVersion, rb.location, rb.manifest, false)
           }
         }
       }
