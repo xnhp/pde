@@ -58,7 +58,7 @@ class Parameters(value: String, private val map: MutableMap<String, Attrs> = mut
       val attribute = mutableMapOf<String, String>()
       val directive = mutableMapOf<String, String>()
       val aliases = mutableListOf<String>()
-      val name = qt.nextToken(",;")
+      val name = qt.nextToken(",;")?.trim()
 
       del = qt.separator
       if (name.isNullOrBlank()) {
@@ -67,7 +67,7 @@ class Parameters(value: String, private val map: MutableMap<String, Attrs> = mut
         aliases += name
 
         while (del == ';') {
-          val adName = qt.nextToken()
+          val adName = qt.nextToken()?.trim()
           if (qt.separator.also { del = it } != '=') {
             if (!adName.isNullOrBlank()) aliases += adName
           } else {
@@ -84,7 +84,10 @@ class Parameters(value: String, private val map: MutableMap<String, Attrs> = mut
         }
 
         val attrs = Attrs(attribute, directive)
-        aliases.forEach { map[it] = attrs }
+        aliases.forEach { alias ->
+          val key = alias.trim()
+          if (key.isNotEmpty()) map[key] = attrs
+        }
       }
     } while (del == ',')
   }
