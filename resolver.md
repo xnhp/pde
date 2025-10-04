@@ -37,22 +37,33 @@ Responsibilities
        - `FeatureScanner*Test` — feature enumeration from SDK/P2/profile.
 
   2) Resolve workspace bundles against target + workspace
-     - Given workspace bundle paths/descriptors and a target index, resolve
+     - Given workspace bundle descriptors and a target index, resolve
        Require-Bundle, Import-Package, Fragment-Host, and re-exports.
-     - Current code
-       - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/resolver/PdeModuleRuntimeLibraryResolver.kt:1`
-         - Core resolution orchestration for a module; selects libraries by
-           BSN/version; handles fragments and host inheritance; integrates
-           with IDE order entries and library index.
-       - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/resolver/PdeModuleFragmentLibraryResolver.kt:1`
-         - Fragment-specific resolution logic and host linkage.
-       - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/support/BundleManifestExt.kt:1`
-         - Helpers to compute: `requiredBundleAndVersion`, `importedPackageAndVersion`,
-           `reexportRequiredBundleAndVersion`, `fragmentHostAndVersionRange`,
-           and ordered resolution lists.
-       - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/config/BundleManagementService.kt:1`
-         - Provides bundle lookup by BSN/version and re-export closure used by
-           the resolver.
+     - Implemented in core
+       - `pde-resolver` module:
+         - `cn.varsa.pde.resolver.algo.Resolver`
+           - Input: `TargetPlatformIndex`, `List<WorkspaceBundleDescriptor>`,
+             entry `WorkspaceBundleDescriptor`, and `ResolveOptions`.
+           - Output: `ResolveResult` with:
+             - `bundles`: ordered selected bundles (workspace + target),
+               carrying `bsn`, `version`, `path`, `isWorkspace`, `isHost`.
+             - `requires` and `imports` maps for diagnostics.
+             - `unresolved`: list of missing fragment hosts or required
+               bundles (reported as `UnresolvedBundle`).
+         - Robust manifest parsing (`BundleManifest`, `Parameters`) with
+           trimming for folded/multi-line headers.
+         - Cached index usage via `TargetPlatformCache`.
+     - Plugin orchestration
+       - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/resolver/PdeModuleRuntimeLibraryResolver.kt`
+         - Builds workspace descriptors, calls core `Resolver`.
+         - Lazily creates project libraries per selected target bundle on
+           EDT; mirrors workspace host module deps; orders entries.
+         - Shows notifications for unresolved bundles (`PdeNotifier`).
+       - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/resolver/PdeModuleFragmentLibraryResolver.kt`
+         - Adds module dependency to host; orders fragment before host;
+           uses core resolution to derive dependency order.
+       - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/support/BundleManifestExt.kt`
+         - Thin helpers around core `BundleManifest` for IDE use.
 
   3) Assemble config for launching RCP
      - Convert resolved bundles to launch artifacts (e.g., bundles list with
@@ -66,13 +77,12 @@ Responsibilities
 
 Proposed extraction
   - New library module
-    - In progress. Landed: TargetPlatformIndex, FeatureScanner, shared
-      `BundleManifest` model + helpers.
-    - Planned: `WorkspaceBundleDescriptor`, Resolver
-      (Require‑Bundle/Import‑Package/Fragment), and LauncherConfig assembler.
-  - Plugin adapters
-    - Map IntelliJ modules to `WorkspaceBundleDescriptor` and provide paths.
-    - Maintain IDE library index/whitelist logic; call into library resolver
+    - Landed: TargetPlatformIndex, TargetPlatformCache, FeatureScanner,
+      shared `BundleManifest` model + helpers, `WorkspaceBundleDescriptor`,
+      and core `Resolver` with unresolved reporting.
+    - Plugin adapters
+      - Map IntelliJ modules to `WorkspaceBundleDescriptor` and provide paths.
+      - Maintain IDE library index/whitelist logic; call into library resolver
       for selection; then apply results to module order entries.
 
 File signals and APIs to extract
@@ -110,21 +120,12 @@ Public API (core, current + planned)
       - `scanEclipseSdkFeatures`, `scanTargetDefinitionFeatures`, `scanP2Features`.
     - Planned: richer data views (exports, fragments, re‑exports).
   - Workspace bundles
-    - Planned: `WorkspaceBundleDescriptor(path: Path, manifest: BundleManifest)`.
+    - Current: `WorkspaceBundleDescriptor(path: Path, manifest: BundleManifest)`.
   - Resolution
-    - Planned: `Resolver.resolve(
-         target: TargetPlatformIndex,
-         workspace: List<WorkspaceBundleDescriptor>,
-         entry: WorkspaceBundleDescriptor,
-         options: ResolveOptions
-       ): ResolveResult`
-      - Input options: optional whitelist, preferWorkspace flag, handle
-        re-exports, include hosts for fragments.
-      - Output `ResolveResult`
-        - `bundles: List<ResolvedBundle>` where `ResolvedBundle` carries
-          `bsn`, `version`, `path`, `isWorkspace`, `isHost`.
-        - `imports: Map<String, VersionRange>` and
-          `requires: Map<String, VersionRange>` for diagnostics.
+    - Current: `Resolver.resolve(target, workspace, entry, options)`
+      - Options: `whitelistPrefixes`, `preferWorkspace`,
+        `includeHostsForFragments`.
+      - Result: `ResolveResult { bundles, imports, requires, unresolved }`.
   - Launch config assembler
     - Planned: `LauncherConfig.from(result: ResolveResult, opts: LaunchOptions)`
       - Produces:
@@ -186,18 +187,42 @@ is anticipated.
 
 Progress/Status
   - Done
-    - Introduced `pde-resolver` core module and wired plugin dependency.
-    - Implemented `TargetPlatformIndex`, profile helpers, and `FeatureScanner`.
-    - Consolidated manifest model to core; removed plugin duplicate.
-    - Updated bundle providers to consume core; removed plugin `ProfileUtils`.
-    - Added core unit tests for manifest parsing, profile mapping, index,
-      and feature scanning.
-    - Build green with IntelliJ Gradle plugin 2.9.0.
-    - Added tree‑fingerprint cache with persisted snapshot in core;
-      `TargetPlatformCache.buildWithCache` entry point.
-    - Providers now use cached build by default.
-    - Added cache hit/miss test.
+    - Core
+      - Resolver implemented: Require‑Bundle closure (incl. re‑exports),
+        Import‑Package provider selection, optional Fragment‑Host inclusion.
+      - `ResolveResult.unresolved` reports missing fragment hosts and
+        required bundles (for IDE and CLI diagnostics).
+      - Parameters parser trims item names and attributes (fixes folded
+        headers like “, org.knime.base”).
+      - TargetPlatformIndex + Cache used across plugin and CLI.
+      - Unit tests: parsing, profile/index, features; trimming of
+        Require‑Bundle; transitive resolution; unresolved reporting.
+    - Plugin
+      - Runtime resolver and fragment resolver use core Resolver.
+      - Project libraries created lazily on demand (EDT), with caching via
+        `ProjectLibraryIndexService` when available.
+      - Target index access centralized via `PluginTargetIndexService`.
+      - Order-entry fixes: stable insertion indices, fragment-before-host.
+      - Robust preResolve cleanup to avoid NPEs/bridge mismatches.
+      - Unresolved bundles surfaced via warning notifications.
+      - Removed BundleManagementService and “Exclude Bundles” UI/logic.
+      - Removed unfinished ManifestBuildGuard feature and tests.
+    - Performance
+      - Avoids full VFS refresh; reuses cached target index; minimizes
+        duplicate resolver invocations; lazy library creation.
   - Next
-    - Extract pure Resolver (Require‑Bundle/Import‑Package/Fragment‑Host).
-    - Add resolver unit tests (version ranges, re‑export closure, fragments).
-    - Implement LauncherConfig assembler and tests.
+    - Expose a CLI subcommand to print unresolved bundles and selection.
+    - LauncherConfig assembler and tests.
+    - Improve postResolve to reuse earlier ResolveResult instead of
+      re-running.
+    - Add guarded VFS refresh in extension-point scanning when roots are
+      first seen.
+
+Open TODOs
+  - Invalidate/rebuild PluginTargetIndexService on target changes.
+  - Reuse resolve results in postResolve to avoid recomputation.
+  - Synchronize nested jar extraction in compile-only resolver; cleanup.
+  - Optionally trigger ProjectLibraryIndexService rebuild after bulk
+    library creation.
+  - Remove unused message keys related to deprecated “Exclude Bundles”.
+  - Ensure PluginXmlIndex covers source-only plugin.xml if needed.
