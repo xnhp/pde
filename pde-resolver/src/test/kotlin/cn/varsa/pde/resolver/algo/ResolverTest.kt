@@ -94,6 +94,22 @@ class ResolverTest {
   }
 
   @Test
+  fun transitive_require_bundle_are_included() {
+    // A requires B (no re-export), B requires C (no re-export) -> expect B and C
+    val target = tpIndex(
+      rb("b", "1.0.0", REQUIRE_BUNDLE to "c;bundle-version=\"[1.0.0,1.0.0]\""),
+      rb("c", "1.0.0")
+    )
+    val workspace = emptyList<WorkspaceBundleDescriptor>()
+    val entry = wbd("a", "1.0.0", REQUIRE_BUNDLE to "b;bundle-version=\"[1.0.0,1.0.0]\"")
+
+    val r = Resolver.resolve(target, workspace, entry)
+    val bsns = r.bundles.map { it.bsn }.toSet()
+    assertTrue("direct requirement must be included", "b" in bsns)
+    assertTrue("transitive requirement must be included", "c" in bsns)
+  }
+
+  @Test
   fun importPackage_selects_provider_workspace_then_target() {
     val target = tpIndex(
       rb("y", "2.0.0", EXPORT_PACKAGE to "p;version=\"1.3.0\"")
@@ -148,4 +164,3 @@ class ResolverTest {
     assertFalse("non-whitelisted bundle must not be added", "com.acme.other" in bsns)
   }
 }
-

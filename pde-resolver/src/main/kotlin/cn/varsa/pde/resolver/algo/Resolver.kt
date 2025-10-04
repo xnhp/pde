@@ -103,9 +103,9 @@ object Resolver {
         val cand = select(bsn, range)
         if (cand != null) {
           selected.putIfAbsent(bsn, cand)
-          // Re-export closure from the selected candidate
-          val reexports = cand.manifest.reexportRequiredBundleAndVersion()
-          for ((rb, rr) in reexports) addRequireWithClosure(rb, rr)
+          // Traverse full Require-Bundle closure (include re-exports implicitly)
+          val requiresAll = cand.manifest.requiredBundleAndVersion()
+          for ((rb, rr) in requiresAll) addRequireWithClosure(rb, rr)
         }
       }
     }
