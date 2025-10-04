@@ -196,43 +196,48 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
         val rb = targetIndex.bundlesByBsn()[bsn]?.get(ver) ?: return null
         val libraryName = "$ProjectLibraryNamePrefix$bsn${BundleDefinition.canonicalNameSeparator}$ver"
-        val projTableModel = project.libraryTable().modifiableModel
 
-        val lib = writeCompute { projTableModel.createLibrary(libraryName) }
-        val libModel = lib.modifiableModel
+        var created: Library? = null
+        applicationInvokeAndWait {
+          val projTableModel = project.libraryTable().modifiableModel
+          val lib = writeCompute { projTableModel.createLibrary(libraryName) }
+          val libModel = lib.modifiableModel
 
-        val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-        val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+          val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+          val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
 
-        if (rb.isDirectory) {
-          val dirVf = local.refreshAndFindFileByNioFile(rb.location)
-          if (dirVf != null) {
-            // include root if classes under '.'
-            libModel.addRoot(dirVf.url, OrderRootType.CLASSES)
-            val bcp = rb.manifest.bundleClassPath?.keys ?: emptySet()
-            bcp.filter { it != "." }.forEach { rel ->
-              val child = dirVf.findFileByRelativePath(rel)
-              if (child != null) {
-                val root = if (child.fileSystem === jarfs) child else jarfs.getJarRootForLocalFile(child)
-                if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+          if (rb.isDirectory) {
+            val dirVf = local.refreshAndFindFileByNioFile(rb.location)
+            if (dirVf != null) {
+              // include root if classes under '.'
+              libModel.addRoot(dirVf.url, OrderRootType.CLASSES)
+              val bcp = rb.manifest.bundleClassPath?.keys ?: emptySet()
+              bcp.filter { it != "." }.forEach { rel ->
+                val child = dirVf.findFileByRelativePath(rel)
+                if (child != null) {
+                  val root = if (child.fileSystem === jarfs) child else jarfs.getJarRootForLocalFile(child)
+                  if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+                }
               }
             }
+          } else {
+            val jarVf = local.refreshAndFindFileByNioFile(rb.location)
+            if (jarVf != null) {
+              val root = jarfs.getJarRootForLocalFile(jarVf)
+              if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+            }
           }
-        } else {
-          val jarVf = local.refreshAndFindFileByNioFile(rb.location)
-          if (jarVf != null) {
-            val root = jarfs.getJarRootForLocalFile(jarVf)
-            if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+
+          writeRun {
+            libModel.commit()
+            projTableModel.commit()
           }
+
+          created = lib
         }
 
-        writeRun {
-          libModel.commit()
-          projTableModel.commit()
-        }
-
-        libsByBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = lib
-        return lib
+        created?.let { libsByBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = it }
+        return created
       }
 
       // Apply target libraries (choose exact version where possible)
