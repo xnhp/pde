@@ -76,10 +76,7 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
         ?: return@mapNotNull null
       cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor(path, man)
     }
-    val roots = TargetDefinitionService.getInstance(project).locations
-      .mapNotNull { it.location.takeIf(String::isNotBlank) }
-      .map { java.nio.file.Paths.get(it) }
-    val targetIndex = cn.varsa.pde.resolver.index.TargetPlatformCache.buildWithCache(roots, null)
+    val targetIndex = PluginTargetIndexService.getInstance(project).getIndex()
 
     val options = cn.varsa.pde.resolver.algo.ResolveOptions(
       whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,

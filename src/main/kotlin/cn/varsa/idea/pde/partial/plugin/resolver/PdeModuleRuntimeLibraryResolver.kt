@@ -99,6 +99,8 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
       // 4) Add resolved target libraries (create lazily in project table)
       addResolvedLibraries(model, ctx, result, hostLibs)
+      // Keep shared project library index coherent after potential batch creation
+      ProjectLibraryIndexService.getInstance(project).rebuild(project)
     }
   }
 
@@ -272,60 +274,56 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val libsByBsn = projectLibrariesIndex(ctx.project)
     val addedLibs = hashSetOf<Library>()
 
-    fun ensureProjectLibrary(bsn: String, ver: Version): Library? {
-      val existing = libsByBsn[bsn]?.get(ver)
-      if (existing != null) return existing
-      val rb = ctx.targetIndex.bundlesByBsn()[bsn]?.get(ver) ?: return null
-      val libraryName = "$ProjectLibraryNamePrefix$bsn${BundleDefinition.canonicalNameSeparator}$ver"
-      var created: Library? = null
+    // Batch create: collect missing libs then create in one project-table commit
+    val missing = mutableListOf<Pair<String, Version>>()
+    result.bundles.filter { !it.isWorkspace }.forEach { rb ->
+      val nav = libsByBsn[rb.bsn]
+      if (nav?.get(rb.version) == null) missing += rb.bsn to rb.version
+    }
+    if (missing.isNotEmpty()) {
       applicationInvokeAndWait {
         val projTableModel = ctx.project.libraryTable().modifiableModel
-        val lib = writeCompute { projTableModel.createLibrary(libraryName) }
-        val libModel = lib.modifiableModel
         val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
         val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
-        if (rb.isDirectory) {
-          val dirVf = local.refreshAndFindFileByNioFile(rb.location)
-          if (dirVf != null) {
-            libModel.addRoot(dirVf.url, OrderRootType.CLASSES)
-            val bcp = rb.manifest.bundleClassPath?.keys ?: emptySet()
-            bcp.filter { it != "." }.forEach { rel ->
-              val child = dirVf.findFileByRelativePath(rel)
-              if (child != null) {
-                val root = if (child.fileSystem === jarfs) child else jarfs.getJarRootForLocalFile(child)
-                if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+        missing.forEach { (bsn, ver) ->
+          val rb = ctx.targetIndex.bundlesByBsn()[bsn]?.get(ver) ?: return@forEach
+          val libraryName = "$ProjectLibraryNamePrefix$bsn${BundleDefinition.canonicalNameSeparator}$ver"
+          val lib = writeCompute { projTableModel.createLibrary(libraryName) }
+          val libModel = lib.modifiableModel
+          // Prefer non-refresh find to avoid VFS churn; refresh only when null
+          if (rb.isDirectory) {
+            val dirVf = local.findFileByNioFile(rb.location) ?: local.refreshAndFindFileByNioFile(rb.location)
+            if (dirVf != null) {
+              libModel.addRoot(dirVf.url, OrderRootType.CLASSES)
+              val bcp = rb.manifest.bundleClassPath?.keys ?: emptySet()
+              bcp.filter { it != "." }.forEach { rel ->
+                val child = dirVf.findFileByRelativePath(rel)
+                if (child != null) {
+                  val root = if (child.fileSystem === jarfs) child else jarfs.getJarRootForLocalFile(child)
+                  if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+                }
               }
             }
+          } else {
+            val jarVf = local.findFileByNioFile(rb.location) ?: local.refreshAndFindFileByNioFile(rb.location)
+            if (jarVf != null) {
+              val root = jarfs.getJarRootForLocalFile(jarVf)
+              if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
+            }
           }
-        } else {
-          val jarVf = local.refreshAndFindFileByNioFile(rb.location)
-          if (jarVf != null) {
-            val root = jarfs.getJarRootForLocalFile(jarVf)
-            if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
-          }
+          writeRun { libModel.commit() }
+          libsByBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = lib
         }
-        writeRun {
-          libModel.commit()
-          projTableModel.commit()
-        }
-        created = lib
+        writeRun { projTableModel.commit() }
       }
-      created?.let { libsByBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = it }
-      return created
-    }
-
-    fun chooseLib(bsn: String, ver: Version): Library? {
-      val nav = libsByBsn[bsn]
-      val exact = nav?.get(ver)
-      if (exact != null) return exact
-      val created = ensureProjectLibrary(bsn, ver)
-      if (created != null) return created
-      return nav?.lastEntry()?.value
     }
 
     result.bundles.filter { !it.isWorkspace }.forEach { rb ->
-      val lib = chooseLib(rb.bsn, rb.version)
-      if (lib != null && addedLibs.add(lib)) model.addLibraryEntry(lib)
+      val lib = libsByBsn[rb.bsn]?.get(rb.version)
+      if (lib != null && addedLibs.add(lib)) {
+        val existing = model.findLibraryOrderEntry(lib)
+        if (existing == null) model.addLibraryEntry(lib)
+      }
     }
     hostLibraries.forEach { lib -> if (addedLibs.add(lib)) model.addLibraryEntry(lib) }
   }
