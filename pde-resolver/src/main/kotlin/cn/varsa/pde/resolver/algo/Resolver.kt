@@ -149,21 +149,20 @@ object Resolver {
       map
     }
 
-    // Precompute target export providers only for imported packages to reduce work
+    // Precompute target export providers only for imported packages using the index
     val importedPkgs = imports.keys.toSet()
     val tpProvidersByPkg: Map<String, java.util.NavigableMap<Version, PkgProvider>> = run {
       val map = HashMap<String, java.util.NavigableMap<Version, PkgProvider>>()
-      target.bundlesByBsn().forEach { (bsn, nav) ->
-        nav.forEach { (ver, rb) ->
-          val exp = exportsOf(rb.manifest)
-          // only index packages we actually need
-          exp.forEach { (pkg, _) ->
-            if (pkg in importedPkgs) {
-              val providers = map.computeIfAbsent(pkg) { java.util.TreeMap() }
-              providers[ver] = PkgProvider(bsn, ver, rb.location, rb.manifest, false)
-            }
-          }
+      val byPkg = target.exportedBundlesByPackage()
+      importedPkgs.forEach { pkg ->
+        val bundles = byPkg[pkg] ?: return@forEach
+        val providers = java.util.TreeMap<Version, PkgProvider>()
+        bundles.forEach { rb ->
+          val bsn = rb.manifest.bundleSymbolicName?.key ?: return@forEach
+          val ver = rb.manifest.bundleVersion
+          providers[ver] = PkgProvider(bsn, ver, rb.location, rb.manifest, false)
         }
+        if (providers.isNotEmpty()) map[pkg] = providers
       }
       map
     }

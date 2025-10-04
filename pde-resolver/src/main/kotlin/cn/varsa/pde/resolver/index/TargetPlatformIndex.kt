@@ -16,6 +16,31 @@ class TargetPlatformIndex(
   enum class Source { SCANNED, CACHED }
   fun bundlesByBsn(): Map<String, NavigableMap<Version, ResolvedBundle>> = byBsn
 
+  // Lazily built index: package name -> list of bundles exporting it (unordered)
+  @Volatile
+  private var exportsByPackage: Map<String, List<ResolvedBundle>>? = null
+
+  fun exportedBundlesByPackage(): Map<String, List<ResolvedBundle>> {
+    val cached = exportsByPackage
+    if (cached != null) return cached
+
+    val map = HashMap<String, MutableList<ResolvedBundle>>()
+    byBsn.values.forEach { nav ->
+      nav.values.forEach { rb ->
+        val man = rb.manifest
+        // Keys of exportPackage are package names (may include .*) – normalize like exportedPackageAndVersion()
+        val pkgs = man.exportPackage?.keys?.map { it.substringBefore(".*") } ?: emptyList()
+        pkgs.forEach { pkg -> map.computeIfAbsent(pkg) { mutableListOf() }.add(rb) }
+      }
+    }
+
+    // Optional: order per package by bundle version descending (cheap heuristic)
+    map.replaceAll { _, list -> list.sortedByDescending { it.manifest.bundleVersion } as MutableList<ResolvedBundle> }
+
+    exportsByPackage = map
+    return map
+  }
+
   fun get(bsn: String, range: VersionRange? = null): ResolvedBundle? {
     val versions = byBsn[bsn] ?: return null
     if (range == null) return versions.lastEntry()?.value
