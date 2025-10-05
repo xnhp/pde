@@ -186,18 +186,21 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
     }
 
     // If EP scan hasn’t populated products/applications yet, run it now and repopulate on finish
-    if (productField.itemCount <= 1 && applicationField.itemCount == 0) {
+    if (productField.itemCount <= 1 && applicationField.itemCount <= 1) {
       managementService.backgroundResolve(configuration.project, onFinished = {
         val selProduct = configuration.product ?: ""
         val selApp = configuration.application ?: ""
-        productField.removeAllItems()
-        productField.addItem("")
-        managementService.getProducts().sorted().forEach(productField::addItem)
-        productField.item = selProduct
+        applicationInvokeLater {
+          productField.removeAllItems()
+          productField.addItem("")
+          managementService.getProducts().sorted().forEach(productField::addItem)
+          productField.item = selProduct
 
-        applicationField.removeAllItems()
-        managementService.getApplications().sorted().forEach(applicationField::addItem)
-        applicationField.item = selApp
+          applicationField.removeAllItems()
+          applicationField.addItem("")
+          managementService.getApplications().sorted().forEach(applicationField::addItem)
+          applicationField.item = selApp
+        }
       })
     }
     splashBundlePathField.text = configuration.splashBundlePath
