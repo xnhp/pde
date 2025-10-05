@@ -89,6 +89,14 @@ class PluginXmlCacheService(private val project: Project) {
                   }
                 }
 
+                "application" -> if (extensionPoint == "org.eclipse.core.runtime.applications") {
+                  reader.getAttributeValue("", "id")?.let(applications::add)
+                }
+
+                "product" -> if (extensionPoint == "org.eclipse.core.runtime.products") {
+                  reader.getAttributeValue("", "id")?.let(products::add)
+                }
+
                 else -> if (extensionPoint.isNotBlank()) {
                   val map =
                     epReferenceIdentityMap.computeIfAbsent(extensionPoint to reader.localName) { ConcurrentHashMap() }
