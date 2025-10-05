@@ -54,10 +54,17 @@ class ExtensionPointManagementService(private val project: Project) : Background
       indicator.checkCanceled()
       indicator.text2 = "Resolving bundle ${rb.location}"
 
+      // Try without refresh to avoid VFS churn; if missing, refresh once
+      val localFile = lfs.findFileByNioFile(rb.location) ?: lfs.refreshAndFindFileByNioFile(rb.location)
       val root = if (rb.isDirectory) {
-        lfs.findFileByNioFile(rb.location)
+        localFile
       } else {
-        lfs.findFileByNioFile(rb.location)?.let { jarfs.getJarRootForLocalFile(it) }
+        val jarRoot = localFile?.let { jarfs.getJarRootForLocalFile(it) }
+        jarRoot ?: run {
+          // As a last resort, refresh the local file again and retry
+          val refreshed = lfs.refreshAndFindFileByNioFile(rb.location)
+          refreshed?.let { jarfs.getJarRootForLocalFile(it) }
+        }
       }
 
       if (root == null) {
