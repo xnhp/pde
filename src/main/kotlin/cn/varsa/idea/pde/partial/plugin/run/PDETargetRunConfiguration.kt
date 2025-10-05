@@ -3,7 +3,6 @@ package cn.varsa.idea.pde.partial.plugin.run
 import cn.varsa.idea.pde.partial.common.configure.*
 import cn.varsa.idea.pde.partial.common.domain.DevModule
 import cn.varsa.pde.resolver.manifest.BundleManifest
-import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.idea.pde.partial.common.service.*
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.cache.*
@@ -203,18 +202,6 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
           remoteTestRunnerClient = RemoteTestRunnerClient()
           val port = remoteTestRunnerClient!!.createServerSocket()
           parameters.programParametersList.addAll("-port", port.toString())
-
-          // Ensure testpluginname targets the host bundle (fragments don't work with PDE runner)
-          val list = parameters.programParametersList.list
-          val idx = list.indexOf("-testpluginname")
-          if (idx >= 0 && idx + 1 < list.size) {
-            val pluginName = list[idx + 1]
-            findFragmentHost(pluginName)?.let { host ->
-              if (host.isNotBlank() && host != pluginName) {
-                list[idx + 1] = host
-              }
-            }
-          }
         }
       } catch (e: Exception) {
         thisLogger().error(e.message, e)
@@ -309,26 +296,5 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
       return if (getPluginConfiguration()?.containsKey(bundleSymbolicName) == true) true
       else target.startupLevels.containsKey(bundleSymbolicName)
     }
-  }
-
-  private fun findFragmentHost(pluginName: String): String? {
-    val tp = PluginTargetIndexService.getInstance(project).getIndex()
-    tp.bundlesByBsn()[pluginName]
-      ?.descendingMap()
-      ?.values
-      ?.firstOrNull()
-      ?.manifest
-      ?.fragmentHostAndVersionRange()
-      ?.first
-      ?.let { return it }
-
-    for (module in project.allPDEModules()) {
-      val manifest = cache.getManifest(module)
-      val bsn = manifest?.bundleSymbolicName?.key
-      if (bsn == pluginName) {
-        manifest.fragmentHostAndVersionRange()?.first?.let { return it }
-      }
-    }
-    return null
   }
 }
