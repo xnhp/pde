@@ -65,46 +65,22 @@ Responsibilities
        - `src/main/kotlin/cn/varsa/idea/pde/partial/plugin/support/BundleManifestExt.kt`
          - Thin helpers around core `BundleManifest` for IDE use.
 
-  3) Assemble config for launching RCP (core extraction target)
-     - Goal: move launch assembly to core so both IDE and a CLI can reuse it.
-     - Convert ResolveResult + project/target context to artifacts:
-       - Framework/system properties (config.ini content)
-       - bundles.info entries (bundle url, version, start level, auto-start)
-       - dev.properties (for workspace/dev modules)
-     - Current plugin code (to be refactored to core API)
-       - `src/main/kotlin/cn/varsa/idea/pde/partial/common/configure/LaunchConfigGenerator.kt`
-         builds `config.ini`, `bundles.info`, `dev.properties` using
-         plugin services (ConfigService, libraries/devModules). This is
-         the primary candidate to port behind a client-agnostic facade.
-     - Proposed core API (new in `pde-resolver`)
-       - Model
-         - `LauncherOptions` (product, application, splash bundle, default
-           start level, framework extensions, VM/system props, etc.)
-         - `BundleStartSpec(bsn, version, location: Path, startLevel, autoStart)`
-         - `LauncherPlan(bundles: List<BundleStartSpec>, framework: BundleStartSpec?,
-           properties: Map<String,String>)`
-       - Assembly
-         - `LauncherAssembler.from(resolve: ResolveResult, ctx: LaunchContext, opts: LauncherOptions): LauncherPlan`
-           where `LaunchContext` supplies: target index, workspace modules
-           with paths and manifests, startup level rules, and mapping of
-           BSN→library paths.
-       - Rendering
-         - `ConfigIniRenderer.toProperties(plan)` (String/Properties)
-         - `BundlesInfoRenderer.toText(plan)`
-         - `DevPropertiesRenderer.toProperties(plan, workspaceDev)`
-       - IO adapters (optional)
-         - `LauncherWriter.writeAll(outDir, plan, renderers, overwrite=true)`
-     - IDE adapter changes
-       - Map IntelliJ state (TargetDefinitionService.startupLevels, selected
-         modules, project libraries) to `LaunchContext`/`LauncherOptions`.
-       - Replace current `LaunchConfigGenerator` usage with core `Assembler`
-         and `Renderer`s, keeping file writes in the plugin.
-       - Keep run configuration UI; execution simply consumes the written
-         files or in-memory properties.
+  3) Assemble config for launching RCP (core + IDE adapter done)
+     - Core API (new in `pde-resolver`)
+       - Model: `LauncherOptions`, `BundleStartSpec`, `LaunchContext`, `LauncherPlan`.
+       - Assembly: `LauncherAssembler.from(ResolveResult, LaunchContext, LauncherOptions)`
+         builds a bundle plan with start levels, auto-start flags, framework bundle.
+       - Rendering: `ConfigIniRenderer`, `BundlesInfoRenderer`, `DevPropertiesRenderer`.
+       - Unit tests cover assembly and rendering (see `LauncherAssemblerTest`).
+     - IDE integration
+       - Adapter `LauncherPlanBuilder` (plugin) maps `ConfigService`
+         (libraries, dev modules, startup levels) to `LaunchContext` and core plan.
+       - Run configuration now renders `config.ini`, `bundles.info`,
+         `dev.properties` using core renderers; legacy `LaunchConfigGenerator`
+         has been removed.
      - CLI adapter (future)
-       - Parse a target/profile and workspace roots
-       - Call core Resolver + LauncherAssembler, emit files to a folder or
-         print JSON/YAML.
+       - Create `LaunchContext` by scanning workspace + target, call core
+         assembler/renderers, write files or JSON.
 
 Proposed extraction
   - New library module
@@ -227,7 +203,12 @@ Progress/Status
         headers like “, org.knime.base”).
       - TargetPlatformIndex + Cache used across plugin and CLI.
       - Unit tests: parsing, profile/index, features; trimming of
-        Require‑Bundle; transitive resolution; unresolved reporting.
+        Require‑Bundle; transitive resolution; unresolved reporting;
+        launcher assembly/renderers.
+    - Core launcher
+      - Added launcher models, assembler, renderers, and tests.
+      - Exported package & require-bundle indices cached (and persisted) for
+        faster resolves.
     - Plugin
       - Runtime resolver and fragment resolver use core Resolver.
       - Project libraries created lazily on demand (EDT), with caching via
@@ -238,14 +219,14 @@ Progress/Status
       - Unresolved bundles surfaced via warning notifications.
       - Removed BundleManagementService and “Exclude Bundles” UI/logic.
       - Removed unfinished ManifestBuildGuard feature and tests.
+      - Run configuration builds launch files via core launcher; `LaunchConfigGenerator`
+        deleted.
     - Performance
       - Avoids full VFS refresh; reuses cached target index; minimizes
         duplicate resolver invocations; lazy library creation.
   - Next
     - Expose a CLI subcommand to print unresolved bundles and selection.
-    - Launcher assembler (core) and renderers + tests (config.ini,
-      bundles.info, dev.properties).
-    - Migrate IDE run-config to the core launcher pipeline.
+    - CLI command to emit launch artifacts using core assembler/renderers.
     - Improve postResolve to reuse earlier ResolveResult instead of
       re-running (partially done via ResolveSessionService).
     - Add guarded VFS refresh in extension-point scanning when roots are
@@ -256,32 +237,21 @@ Open TODOs
   - Reuse resolve results in postResolve to avoid recomputation.
   - Synchronize nested jar extraction in compile-only resolver; cleanup.
   - Optionally trigger ProjectLibraryIndexService rebuild after bulk
-    library creation.
+    library creation (currently done per resolve; consider batching project-wide).
   - Remove unused message keys related to deprecated “Exclude Bundles”.
   - Ensure PluginXmlIndex covers source-only plugin.xml if needed.
 
 Launcher extraction plan (detailed)
   - Phase 1: Define core models and assembly entry
-    - Add `LauncherOptions`, `BundleStartSpec`, `LauncherPlan` to core.
-    - Add `LauncherAssembler.from(...)` taking `ResolveResult` and a
-      minimal `LaunchContext` (workspace bundle paths+manifests,
-      startup-level rules, framework selection rules).
-    - Unit tests: minimal workspace/target mixes, fragments, re-exports,
-      ensuring correct startLevel/autoStart and framework selection.
+    - ✅ Done: core models/assembler/renderers with tests.
   - Phase 2: Add renderers
-    - `ConfigIniRenderer`, `BundlesInfoRenderer`, `DevPropertiesRenderer`.
-    - Unit tests: stable outputs for known inputs (golden files).
+    - ✅ Done: renderers + unit tests (string assertions; add golden tests if desired).
   - Phase 3: IDE migration
-    - Add an adapter that gathers `LaunchContext` and `LauncherOptions`
-      from current services (`TargetDefinitionService.startupLevels`,
-      selected modules, project libraries, etc.).
-    - Replace `LaunchConfigGenerator` usage in run-config with calls to
-      assembler + renderers.
-    - Keep file writes and process launch in IDE; avoid core knowing IDE.
+    - ✅ Done: run configuration uses `LauncherPlanBuilder` + core renderers.
   - Phase 4: CLI adapter (optional)
     - Add simple CLI command to resolve and emit launch files or JSON.
     - Reuse the same core APIs; no IDE dependencies.
   - Phase 5: Performance & polish
     - Cache framework/extension candidate lookups in the target index.
     - Validate inputs (missing framework, invalid start levels) and report
-      via the `unresolved` list or a launcher-specific diagnostics model.
+      via launcher-specific diagnostics.
