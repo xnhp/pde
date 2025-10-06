@@ -8,6 +8,7 @@ import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
 import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
+import cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier
 import cn.varsa.idea.pde.partial.plugin.launch.LauncherPlanBuilder
 import cn.varsa.idea.pde.partial.plugin.support.*
 import cn.varsa.pde.resolver.launch.*
@@ -108,9 +109,6 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
 
     val dir = File(dataDirectory)
     if (dir.isFile) throw RuntimeConfigurationWarning(message("run.local.config.dataDirectoryNotDirectory"))
-
-    // Light preflight for dev module class roots
-    preflightDevMappings()
   }
 
   override fun writeExternal(element: Element) {
@@ -333,15 +331,15 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
    * Check that each dev module's mapped class roots exist and contain classes.
    * Warns via notification if any mapping looks stale or empty.
    */
-  private fun preflightDevMappings() {
+  fun collectDevMappingProblems(): List<String> {
     val devs = project
       .allPDEModules()
       .filter { targetModules == null || it.name in (targetModules ?: emptySet()) }
       .mapNotNull { PDEFacet.getInstance(it)?.toDevModule() }
 
-    if (devs.isEmpty()) return
+    if (devs.isEmpty()) return emptyList()
 
-    val projectDir = project.presentableUrl?.toFile() ?: return
+    val projectDir = project.presentableUrl?.toFile() ?: return emptyList()
 
     val problems = mutableListOf<String>()
     devs.forEach { dm ->
@@ -358,11 +356,17 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
       }
     }
 
-    if (problems.isNotEmpty()) {
+    return problems
+  }
+
+  fun notifyDevMappingProblems(problems: List<String>) {
+    if (problems.isEmpty()) {
+      PdeNotifier.notification("PDE Preflight", message("run.local.config.preflight.success")).notify(project)
+    } else {
       val head = problems.take(5).joinToString("\n • ", prefix = "\n • ")
-      val more = if (problems.size > 5) "\n…and ${problems.size - 5} more" else ""
-      val text = "Some dev module class roots look missing/empty:$head$more"
-      cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier.important("PDE Preflight", text).notify(project)
+      val more = if (problems.size > 5) "\n" + message("run.local.config.preflight.more", (problems.size - 5)) else ""
+      val text = message("run.local.config.preflight.problems.header") + head + more
+      PdeNotifier.important("PDE Preflight", text).notify(project)
     }
   }
 }

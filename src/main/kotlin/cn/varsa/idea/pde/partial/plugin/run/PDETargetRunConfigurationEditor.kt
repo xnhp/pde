@@ -7,7 +7,11 @@ import cn.varsa.idea.pde.partial.plugin.support.*
 import com.intellij.execution.ui.*
 import com.intellij.icons.*
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.*
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.ui.*
 import com.intellij.ui.*
 import com.intellij.ui.components.*
@@ -17,7 +21,7 @@ import com.intellij.util.ui.*
 import java.awt.*
 import javax.swing.*
 
-class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) :
+class PDETargetRunConfigurationEditor(private val configuration: PDETargetRunConfiguration) :
   SettingsEditor<PDETargetRunConfiguration>(), PanelWithAnchor {
   private var myAnchor: JComponent? = null
 
@@ -143,9 +147,34 @@ class PDETargetRunConfigurationEditor(configuration: PDETargetRunConfiguration) 
       }
     }
 
+    val preflightAction = object : AnAction(
+      message("run.local.config.tab.configuration.targetModules.checkDevRoots"),
+      message("run.local.config.tab.configuration.targetModules.checkDevRoots.description"),
+      AllIcons.General.InspectionsEye
+    ) {
+      override fun actionPerformed(e: AnActionEvent) {
+        ProgressManager.getInstance().run(object : Task.Backgroundable(
+          configuration.project,
+          message("run.local.config.preflight.progress"),
+          false
+        ) {
+          override fun run(indicator: ProgressIndicator) {
+            indicator.isIndeterminate = true
+            val problems = configuration.collectDevMappingProblems()
+            ApplicationManager.getApplication().invokeLater({
+              configuration.notifyDevMappingProblems(problems)
+            }, { configuration.project.isDisposed })
+          }
+        })
+      }
+
+      override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+    }
+
     val actionGroup = DefaultActionGroup().apply {
       add(selectAllAction)
       add(unselectAllAction)
+      add(preflightAction)
     }
     val actionToolbar = ActionManager.getInstance().createActionToolbar(
       ActionPlaces.TOOLBAR,
