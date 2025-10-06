@@ -68,6 +68,14 @@ object LauncherPlanBuilder {
       result.bundles.forEach { rb -> registerBundle(rb.bsn, rb.version, rb.path, rb.isWorkspace) }
     }
 
+    targetIndex.bundlesByBsn().values.forEach { nav ->
+      val rb = nav.lastEntry()?.value ?: return@forEach
+      val bsn = rb.manifest.bundleSymbolicName?.key ?: return@forEach
+      if (!bundleMap.containsKey(bsn)) {
+        registerBundle(bsn, rb.manifest.bundleVersion, rb.location, false)
+      }
+    }
+
     val bundles = bundleMap.values.toList()
     val plan = LauncherPlan(
       bundles = bundles,
