@@ -1,10 +1,6 @@
 package cn.varsa.idea.pde.partial.plugin.launch
 
 import cn.varsa.idea.pde.partial.common.service.ConfigService
-import cn.varsa.pde.resolver.algo.Resolver
-import cn.varsa.pde.resolver.algo.ResolveOptions
-import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
-import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.launch.BundleStartSpec
 import cn.varsa.pde.resolver.launch.LaunchContext
 import cn.varsa.pde.resolver.launch.LauncherOptions
@@ -15,13 +11,7 @@ import org.osgi.framework.Version
 object LauncherPlanBuilder {
   data class PlanResult(val plan: LauncherPlan, val context: LaunchContext)
 
-  fun build(
-    configService: ConfigService,
-    options: LauncherOptions,
-    targetIndex: TargetPlatformIndex,
-    workspaceDescriptors: List<WorkspaceBundleDescriptor>,
-    startupBundles: Map<String, Int>
-  ): PlanResult {
+  fun build(configService: ConfigService, options: LauncherOptions): PlanResult {
     val startupLevels = mutableMapOf<String, Int>()
     val bundleMap = LinkedHashMap<String, BundleStartSpec>()
 
@@ -42,38 +32,18 @@ object LauncherPlanBuilder {
       }
     }
 
-    val resolveOptions = ResolveOptions(preferWorkspace = true, includeHostsForFragments = true)
-
-    val roots = mutableListOf<Pair<WorkspaceBundleDescriptor, Boolean>>()
-    roots += workspaceDescriptors.map { it to true }
-
-    val targetRoots = startupBundles.keys
-      .mapNotNull { bsn -> targetIndex.bundlesByBsn()[bsn]?.lastEntry()?.value }
-      .map { WorkspaceBundleDescriptor(it.location, it.manifest) to false }
-
-    if (roots.isEmpty() && targetRoots.isEmpty()) {
-      // fallback: include highest versions of all target bundles
-      roots += targetIndex.bundlesByBsn().values.mapNotNull { it.lastEntry()?.value }
-        .map { WorkspaceBundleDescriptor(it.location, it.manifest) to false }
-    } else {
-      roots += targetRoots
+    configService.libraries.forEach { file ->
+      val manifest = configService.getManifest(file) ?: return@forEach
+      val bsn = manifest.bundleSymbolicName?.key ?: file.nameWithoutExtension
+      registerBundle(bsn, manifest.bundleVersion, file.toPath(), false)
     }
 
-    val workspaceList = workspaceDescriptors
-
-    roots.forEach { (entry, isWorkspaceEntry) ->
-      val bsn = entry.manifest.bundleSymbolicName?.key ?: return@forEach
-      registerBundle(bsn, entry.manifest.bundleVersion, entry.path, isWorkspaceEntry)
-      val result = Resolver.resolve(targetIndex, workspaceList, entry, resolveOptions)
-      result.bundles.forEach { rb -> registerBundle(rb.bsn, rb.version, rb.path, rb.isWorkspace) }
-    }
-
-    targetIndex.bundlesByBsn().values.forEach { nav ->
-      val rb = nav.lastEntry()?.value ?: return@forEach
-      val bsn = rb.manifest.bundleSymbolicName?.key ?: return@forEach
-      if (!bundleMap.containsKey(bsn)) {
-        registerBundle(bsn, rb.manifest.bundleVersion, rb.location, false)
-      }
+    configService.devModules.forEach { module ->
+      val moduleDir = File(configService.projectDirectory, module.relativePathToProject)
+      val manifest = configService.getManifest(moduleDir)
+      val bsn = manifest?.bundleSymbolicName?.key ?: module.bundleSymbolicName
+      val version = manifest?.bundleVersion ?: Version.emptyVersion
+      registerBundle(bsn, version, moduleDir.toPath(), true)
     }
 
     val bundles = bundleMap.values.toList()

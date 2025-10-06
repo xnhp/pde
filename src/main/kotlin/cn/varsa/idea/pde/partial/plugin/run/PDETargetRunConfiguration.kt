@@ -12,7 +12,6 @@ import cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier
 import cn.varsa.idea.pde.partial.plugin.launch.LauncherPlanBuilder
 import cn.varsa.idea.pde.partial.plugin.support.*
 import cn.varsa.pde.resolver.launch.*
-import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import com.intellij.diagnostic.logging.*
 import com.intellij.execution.*
 import com.intellij.execution.application.*
@@ -192,20 +191,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
           application = application?.takeIf { it.isNotBlank() },
           splashBSN = splashBundlePath.takeIf { it.isNotBlank() }
         )
-        val targetIndex = PluginTargetIndexService.getInstance(project).getIndex()
-        val workspaceDescriptors = configServiceDelegate.devModules.mapNotNull { module ->
-          val moduleDir = File(configServiceDelegate.projectDirectory, module.relativePathToProject)
-          val manifest = configServiceDelegate.getManifest(moduleDir) ?: return@mapNotNull null
-          WorkspaceBundleDescriptor(moduleDir.toPath(), manifest)
-        }
-
-        val planResult = LauncherPlanBuilder.build(
-          configServiceDelegate,
-          launchOptions,
-          targetIndex,
-          workspaceDescriptors,
-          target.startupLevels
-        )
+        val planResult = LauncherPlanBuilder.build(configServiceDelegate, launchOptions)
         val plan = planResult.plan
         val ctx = planResult.context
 
@@ -315,7 +301,8 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     override val libraries: List<File>
       get() {
         val tp = PluginTargetIndexService.getInstance(project)
-        return tp.getIndex().bundlesByBsn().values.mapNotNull { it.lastEntry()?.value }
+        return tp.getIndex().bundlesByBsn().values
+          .flatMap { it.values }
           .filter { it.manifest.eclipseSourceBundle == null }
           .map { it.location.toFile() }
       }
