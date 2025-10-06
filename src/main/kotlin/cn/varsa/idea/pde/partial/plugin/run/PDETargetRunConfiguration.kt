@@ -1,6 +1,5 @@
 package cn.varsa.idea.pde.partial.plugin.run
 
-import cn.varsa.idea.pde.partial.common.configure.*
 import cn.varsa.idea.pde.partial.common.domain.DevModule
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.idea.pde.partial.common.service.*
@@ -9,7 +8,9 @@ import cn.varsa.idea.pde.partial.plugin.cache.*
 import cn.varsa.idea.pde.partial.plugin.config.*
 import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
+import cn.varsa.idea.pde.partial.plugin.launch.LauncherPlanBuilder
 import cn.varsa.idea.pde.partial.plugin.support.*
+import cn.varsa.pde.resolver.launch.*
 import com.intellij.diagnostic.logging.*
 import com.intellij.execution.*
 import com.intellij.execution.application.*
@@ -107,6 +108,9 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
 
     val dir = File(dataDirectory)
     if (dir.isFile) throw RuntimeConfigurationWarning(message("run.local.config.dataDirectoryNotDirectory"))
+
+    // Light preflight for dev module class roots
+    preflightDevMappings()
   }
 
   override fun writeExternal(element: Element) {
@@ -183,9 +187,36 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
         val properties =
           target.locations.map { File(it.location, "configuration/config.ini") }.firstOrNull(File::exists)
             ?.inputStream()?.use { Properties().apply { load(it) } } ?: Properties()
-        LaunchConfigGenerator.storeConfigIniFile(configServiceDelegate, properties)
-        LaunchConfigGenerator.storeDevProperties(configServiceDelegate)
-        LaunchConfigGenerator.storeBundleInfo(configServiceDelegate)
+
+        val launchOptions = LauncherOptions(
+          product = product?.takeIf { it.isNotBlank() },
+          application = application?.takeIf { it.isNotBlank() },
+          splashBSN = splashBundlePath.takeIf { it.isNotBlank() }
+        )
+        val planResult = LauncherPlanBuilder.build(configServiceDelegate, launchOptions)
+        val plan = planResult.plan
+        val ctx = planResult.context
+
+        val configProps = ConfigIniRenderer.toProperties(plan, launchOptions).apply {
+          this["osgi.install.area"] = configServiceDelegate.installArea.protocolUrl
+          this["osgi.instance.area.default"] = configServiceDelegate.instanceArea.protocolUrl
+          this["osgi.configuration.cascaded"] = false.toString()
+          this["org.eclipse.equinox.simpleconfigurator.configUrl"] =
+            configServiceDelegate.bundlesInfoFile.protocolUrl
+          this["eclipse.p2.data.area"] = "@config.dir/.p2"
+          this["osgi.bundles"] = "org.eclipse.equinox.simpleconfigurator@1:start"
+          this["org.eclipse.update.reconcile"] = "false"
+          properties.forEach { (k, v) -> if (k is String && v is String) this.putIfAbsent(k, v) }
+        }
+
+        configServiceDelegate.configurationDirectory.makeDirs()
+        configServiceDelegate.configIniFile.touchFile().outputStream().use { configProps.store(it, "Configuration File") }
+
+        val devProps = DevPropertiesRenderer.toProperties(ctx)
+        configServiceDelegate.devPropertiesFile.touchFile().outputStream().use { devProps.store(it, "Development File") }
+
+        val bundlesInfo = BundlesInfoRenderer.toText(plan)
+        configServiceDelegate.bundlesInfoFile.touchFile().printWriter().use { it.write(bundlesInfo) }
 
         parameters.programParametersList.addAll("-data", configServiceDelegate.dataPath.absolutePath)
         parameters.programParametersList.addAll(
@@ -295,6 +326,43 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     override fun isAutoStartUp(bundleSymbolicName: String): Boolean {
       return if (getPluginConfiguration()?.containsKey(bundleSymbolicName) == true) true
       else target.startupLevels.containsKey(bundleSymbolicName)
+    }
+  }
+
+  /**
+   * Check that each dev module's mapped class roots exist and contain classes.
+   * Warns via notification if any mapping looks stale or empty.
+   */
+  private fun preflightDevMappings() {
+    val devs = project
+      .allPDEModules()
+      .filter { targetModules == null || it.name in (targetModules ?: emptySet()) }
+      .mapNotNull { PDEFacet.getInstance(it)?.toDevModule() }
+
+    if (devs.isEmpty()) return
+
+    val projectDir = project.presentableUrl?.toFile() ?: return
+
+    val problems = mutableListOf<String>()
+    devs.forEach { dm ->
+      val moduleDir = File(projectDir, dm.relativePathToProject)
+      dm.compilerClassRelativePathToModule.forEach { rel ->
+        val root = File(moduleDir, rel)
+        if (!root.exists() || !root.isDirectory) {
+          problems += "${dm.bundleSymbolicName}: missing class root ${root.absolutePath}"
+        } else {
+          // Heuristic: check for any .class under the root (top-level or one subdir)
+          val hasClass = root.walkTopDown().take(200).any { it.isFile && it.name.endsWith(".class", ignoreCase = true) }
+          if (!hasClass) problems += "${dm.bundleSymbolicName}: no .class files under ${root.absolutePath}"
+        }
+      }
+    }
+
+    if (problems.isNotEmpty()) {
+      val head = problems.take(5).joinToString("\n • ", prefix = "\n • ")
+      val more = if (problems.size > 5) "\n…and ${problems.size - 5} more" else ""
+      val text = "Some dev module class roots look missing/empty:$head$more"
+      cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier.important("PDE Preflight", text).notify(project)
     }
   }
 }
