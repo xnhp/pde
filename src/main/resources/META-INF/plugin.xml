@@ -121,6 +121,9 @@
   </projectListeners>
 
   <actions>
+    <action id="PDE.CleanPartialLibraries" class="cn.varsa.idea.pde.partial.plugin.action.CleanPartialLibrariesAction" text="PDE: Clean Partial Libraries" description="Remove stale 'Partial:' project libraries not present in current target platform" icon="AllIcons.Actions.GC">
+      <add-to-group group-id="ToolsMenu" anchor="last"/>
+    </action>
     <action class="cn.varsa.idea.pde.partial.plugin.action.ResolveWorkspaceAction" icon="AllIcons.Actions.Refresh">
       <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
     </action>
