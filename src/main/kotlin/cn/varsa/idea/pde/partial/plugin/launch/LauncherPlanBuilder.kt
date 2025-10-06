@@ -28,10 +28,14 @@ object LauncherPlanBuilder {
       )
     }
 
+    val seen = hashSetOf<String>()
+
     configService.libraries.forEach { file ->
       val manifest = configService.getManifest(file) ?: return@forEach
       val bsn = manifest.bundleSymbolicName?.key ?: return@forEach
-      registerBundle(bsn, manifest.bundleVersion, file, false)
+      if (seen.add(bsn)) {
+        registerBundle(bsn, manifest.bundleVersion, file, false)
+      }
     }
 
     configService.devModules.forEach { module ->
@@ -39,6 +43,11 @@ object LauncherPlanBuilder {
       val manifest = configService.getManifest(moduleDir)
       val bsn = manifest?.bundleSymbolicName?.key ?: module.bundleSymbolicName
       val version = manifest?.bundleVersion ?: Version.emptyVersion
+      if (!seen.add(bsn)) {
+        // Replace previously registered bundle with workspace version
+        val idx = bundles.indexOfFirst { it.bsn == bsn }
+        if (idx >= 0) bundles.removeAt(idx)
+      }
       registerBundle(bsn, version, moduleDir, true)
     }
 
