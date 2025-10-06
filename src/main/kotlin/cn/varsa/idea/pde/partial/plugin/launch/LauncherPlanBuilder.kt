@@ -19,7 +19,8 @@ object LauncherPlanBuilder {
     configService: ConfigService,
     options: LauncherOptions,
     targetIndex: TargetPlatformIndex,
-    workspaceDescriptors: List<WorkspaceBundleDescriptor>
+    workspaceDescriptors: List<WorkspaceBundleDescriptor>,
+    startupBundles: Map<String, Int>
   ): PlanResult {
     val startupLevels = mutableMapOf<String, Int>()
     val bundleMap = LinkedHashMap<String, BundleStartSpec>()
@@ -43,21 +44,28 @@ object LauncherPlanBuilder {
 
     val resolveOptions = ResolveOptions(preferWorkspace = true, includeHostsForFragments = true)
 
-    if (workspaceDescriptors.isNotEmpty()) {
-      workspaceDescriptors.forEach { desc ->
-        val bsn = desc.manifest.bundleSymbolicName?.key ?: return@forEach
-        registerBundle(bsn, desc.manifest.bundleVersion, desc.path, true)
-        val result = Resolver.resolve(targetIndex, workspaceDescriptors, desc, resolveOptions)
-        result.bundles.forEach { rb ->
-          registerBundle(rb.bsn, rb.version, rb.path, rb.isWorkspace)
-        }
-      }
+    val roots = mutableListOf<Pair<WorkspaceBundleDescriptor, Boolean>>()
+    roots += workspaceDescriptors.map { it to true }
+
+    val targetRoots = startupBundles.keys
+      .mapNotNull { bsn -> targetIndex.bundlesByBsn()[bsn]?.lastEntry()?.value }
+      .map { WorkspaceBundleDescriptor(it.location, it.manifest) to false }
+
+    if (roots.isEmpty() && targetRoots.isEmpty()) {
+      // fallback: include highest versions of all target bundles
+      roots += targetIndex.bundlesByBsn().values.mapNotNull { it.lastEntry()?.value }
+        .map { WorkspaceBundleDescriptor(it.location, it.manifest) to false }
     } else {
-      configService.libraries.forEach { file ->
-        val manifest = configService.getManifest(file) ?: return@forEach
-        val bsn = manifest.bundleSymbolicName?.key ?: return@forEach
-        registerBundle(bsn, manifest.bundleVersion, file.toPath(), false)
-      }
+      roots += targetRoots
+    }
+
+    val workspaceList = workspaceDescriptors
+
+    roots.forEach { (entry, isWorkspaceEntry) ->
+      val bsn = entry.manifest.bundleSymbolicName?.key ?: return@forEach
+      registerBundle(bsn, entry.manifest.bundleVersion, entry.path, isWorkspaceEntry)
+      val result = Resolver.resolve(targetIndex, workspaceList, entry, resolveOptions)
+      result.bundles.forEach { rb -> registerBundle(rb.bsn, rb.version, rb.path, rb.isWorkspace) }
     }
 
     val bundles = bundleMap.values.toList()

@@ -203,7 +203,8 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
           configServiceDelegate,
           launchOptions,
           targetIndex,
-          workspaceDescriptors
+          workspaceDescriptors,
+          target.startupLevels
         )
         val plan = planResult.plan
         val ctx = planResult.context
