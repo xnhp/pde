@@ -241,6 +241,25 @@ Open TODOs
   - Remove unused message keys related to deprecated “Exclude Bundles”.
   - Ensure PluginXmlIndex covers source-only plugin.xml if needed.
 
+Lessons learned / pitfalls
+  - Bundles for launch must be enumerated the same way as the legacy
+    LaunchConfigGenerator: include *every* target bundle plus workspace dev
+    modules. Resolver-only output can miss optional/indirect dependencies
+    (e.g., BIRT’s Apache Batik stack).
+  - Respect bundle version ranges. Selecting the highest available version
+    (e.g., `javax.activation` 2.x) breaks bundles that depend on
+    `[1.2.2,2.0.0)`; planner must allow lower versions when required.
+  - Workspace bundles need to override target copies in the final plan to
+    avoid duplicates and ensure dev modules take precedence.
+  - Carry forward legacy `config.ini` entries (`osgi.install.area`,
+    `osgi.bundles`, simpleconfigurator configUrl, etc.); missing keys prevent
+    the platform from bootstrapping.
+  - Product/application bundles must be present in the plan; otherwise the
+    framework registry won’t contain the configured application even if the
+    target bundle exists.
+  - Always diff new `bundles.info`/`config.ini` against a known-working
+    version after planner changes to catch regressions quickly.
+
 Launcher extraction plan (detailed)
   - Phase 1: Define core models and assembly entry
     - ✅ Done: core models/assembler/renderers with tests.
