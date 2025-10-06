@@ -301,7 +301,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     override val libraries: List<File>
       get() {
         val tp = PluginTargetIndexService.getInstance(project)
-        return tp.getIndex().bundlesByBsn().values.flatMap { it.values }
+        return tp.getIndex().bundlesByBsn().values.mapNotNull { it.lastEntry()?.value }
           .filter { it.manifest.eclipseSourceBundle == null }
           .map { it.location.toFile() }
       }
