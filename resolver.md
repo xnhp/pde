@@ -260,6 +260,45 @@ Lessons learned / pitfalls
   - Always diff new `bundles.info`/`config.ini` against a known-working
     version after planner changes to catch regressions quickly.
 
+Detailed plan for Responsibility #3 (core launcher extraction)
+  1. Stabilize current behaviour (parity with LaunchConfigGenerator)
+     - ✅ LauncherPlanBuilder restored to legacy behaviour; ensure all target
+       + workspace bundles are enumerated while preserving workspace override.
+     - ✅ Config.ini writer carries all required legacy keys; verify path
+       mapping (install/instance/config directories, configurator URL).
+     - ✅ Document pitfalls: version ranges, product availability, diffing.
+  2. Codify the plan assembly contract
+     - Define explicit requirements in documentation/code comments: inclusion
+       of all target bundles, preference for workspace, version range respect,
+       support for startup levels/auto-start.
+     - Add unit tests covering:
+       * All bundles from target are present.
+       * Workspace bundle overrides target.
+       * Version range case (activation 1.x).
+       * Optional dependencies (BIRT/Batik) remain present.
+  3. Move shared launcher assembly into core (pde-resolver)
+     - Create a “legacy mode” launcher assembler mirroring
+       LaunchConfigGenerator logic (target bundles + workspace overlays).
+     - Provide API to produce bundles.info/config.ini/dev.properties from
+       ConfigService-like inputs (target libraries, dev modules, startup map).
+     - Ensure core code exports minimal DTOs for product, options, startup.
+  4. Refactor IDE run configuration to call core API
+     - Replace plugin-side plan builder with the new core assembler.
+     - Keep file writing (config.ini/dev/bundles.info) in plugin but delegate
+       bundle enumeration and property assembly to core.
+     - Maintain run configuration UI; feed `LauncherOptions` + context into
+       core assembler.
+  5. Introduce CLI client (optional but planned)
+     - Create CLI command using core launcher API: load target/workspace, run
+       assembler, emit config files or JSON descriptors.
+     - Shared code ensures CLI and IDE generate identical artefacts.
+  6. Hardening & diagnostics
+     - Add logging/telemetry for plan size, missing bundles, version mismatches.
+     - Provide optional “diff against baseline bundles.info” utility for quick
+       regression checks.
+     - Expose helper to run resolver diagnostics (unresolved bundles) before
+       writing launch files; surface actionable info to users.
+
 Launcher extraction plan (detailed)
   - Phase 1: Define core models and assembly entry
     - ✅ Done: core models/assembler/renderers with tests.
