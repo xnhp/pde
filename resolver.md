@@ -157,6 +157,9 @@ Status and Roadmap
     - Share bundle-selection logic between module resolver and launcher
       plan builder (reuse resolver version picks when generating
       launch plans).
+    - Reintroduce launch preflight check that validates compiler outputs
+      live under each bundle module (e.g. `<module>/out/production`,
+      `<module>/out/tests`) instead of the project root.
 
 Lessons Learned
   - Launch plans must include every target bundle plus workspace dev modules

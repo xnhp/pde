@@ -79,20 +79,6 @@ object LauncherPlanBuilder {
       registerBundle(bsn, manifest.bundleVersion, file.toPath(), false)
     }
 
-    workspaceDescriptors.forEach { desc ->
-      val bsn = desc.manifest.bundleSymbolicName?.key ?: desc.path.fileName.toString()
-      registerBundle(bsn, desc.manifest.bundleVersion, desc.path, true)
-    }
-
-    // Fallback for dev modules without readable manifests
-    configService.devModules.forEach { module ->
-      val moduleDir = File(configService.projectDirectory, module.relativePathToProject)
-      val manifest = configService.getManifest(moduleDir)
-      val bsn = manifest?.bundleSymbolicName?.key ?: module.bundleSymbolicName
-      val version = manifest?.bundleVersion ?: Version.emptyVersion
-      registerBundle(bsn, version, moduleDir.toPath(), true)
-    }
-
     // Ensure startup-level bundles are present even if not in workspace closure
     TargetDefinitionService.getInstance(project).startupLevels.keys.forEach { startBsn ->
       if (!bundleMap.containsKey(startBsn)) {

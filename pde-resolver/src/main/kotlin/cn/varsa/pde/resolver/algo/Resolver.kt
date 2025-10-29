@@ -101,13 +101,25 @@ object Resolver {
     fun exportsOf(manifest: BundleManifest): Map<String, Version> =
       manifestExportsCache.getOrPut(manifest) { manifest.exportedPackageAndVersion() }
 
+    // Always register the entry bundle (workspace preferred)
+    entry.manifest.bundleSymbolicName?.key?.let { entryBsn ->
+      val entryCandidate = Candidate(
+        bsn = entryBsn,
+        version = entry.manifest.bundleVersion,
+        path = entry.path,
+        manifest = entry.manifest,
+        isWorkspace = true
+      )
+      selected.putIfAbsent(entryBsn, entryCandidate)
+    }
+
     // If entry is a fragment, include its host first (optional)
     val hostPair = entry.manifest.fragmentHostAndVersionRange()
     if (options.includeHostsForFragments && hostPair != null) {
       val (hostBsn, hostRange) = hostPair
       val host = select(hostBsn, hostRange)
       if (host != null) {
-        selected.putIfAbsent(hostBsn, host.copy(isHost = true))
+        selected.put(hostBsn, host.copy(isHost = true))
       } else {
         unresolved.add(UnresolvedBundle(hostBsn, hostRange, "fragmentHost"))
       }
@@ -217,10 +229,13 @@ object Resolver {
     )
 
     val bundles = mutableListOf<ResolvedBundle>()
-    // Host first, if any
+    // Maintain insertion order (entry, host, others)
     val hostBsn = hostPair?.first
-    if (hostBsn != null) selected[hostBsn]?.let { bundles.add(toResolved(it)) }
-    // Then others in insertion order
+    selected.forEach { (bsn, cand) ->
+      if (bsn == hostBsn) {
+        bundles.add(toResolved(cand))
+      }
+    }
     selected.forEach { (bsn, cand) ->
       if (bsn != hostBsn) bundles.add(toResolved(cand))
     }

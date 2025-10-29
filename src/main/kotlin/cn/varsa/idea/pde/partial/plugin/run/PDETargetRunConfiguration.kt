@@ -350,7 +350,6 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
         if (!root.exists() || !root.isDirectory) {
           problems += "${dm.bundleSymbolicName}: missing class root ${root.absolutePath}"
         } else {
-          // Heuristic: check for any .class under the root (top-level or one subdir)
           val hasClass = root.walkTopDown().take(200).any { it.isFile && it.name.endsWith(".class", ignoreCase = true) }
           if (!hasClass) problems += "${dm.bundleSymbolicName}: no .class files under ${root.absolutePath}"
         }
