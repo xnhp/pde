@@ -27,7 +27,10 @@ object LauncherPlanBuilder {
         isWorkspace = isWorkspace
       )
       val existing = bundleMap[bsn]
-      if (existing == null || (spec.isWorkspace && !existing.isWorkspace)) {
+      if (existing == null ||
+        (spec.isWorkspace && !existing.isWorkspace) ||
+        (!existing.isWorkspace && !spec.isWorkspace && spec.version > existing.version)
+      ) {
         bundleMap[bsn] = spec
       }
     }
