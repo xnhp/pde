@@ -99,6 +99,19 @@ Launch Logic Extraction Plan (Responsibility #3)
        startup levels, splash paths, framework selection, and generated
        `config.ini`, `bundles.info`, and `dev.properties` payloads.
 
+Testing Prerequisites (target: early regression coverage)
+  - Promote `LauncherPlanBuilder.build` into `pde-resolver` so tests can
+    invoke launch planning without IntelliJ dependencies.
+  - Introduce a serialisable `LaunchEnvironment` matching `ConfigService`
+    inputs to feed deterministic target libraries, dev modules, and startup
+    levels into tests.
+  - Keep launcher renderers accepting DTOs only, allowing tests to call
+    `ConfigIniRenderer`, `BundlesInfoRenderer`, and `DevPropertiesRenderer`
+    directly.
+  - Reuse resolver fixtures to capture representative `ResolveResult`
+    scenarios and compare generated artefacts against golden strings,
+    catching workspace precedence or configuration regressions early.
+
 
 Architecture Reference
   Package layout
