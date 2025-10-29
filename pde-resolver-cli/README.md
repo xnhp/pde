@@ -20,6 +20,10 @@ shared resolver library and its on‑disk cache.
     - Target Definition profile dir (`*.profile`)
     - Plain bundle directory of JARs/dirs
     - Single JAR or exploded bundle directory
+- `--workspace, -w <path>`
+  - Workspace bundle roots (repeatable). Use with `--plan` to include
+    local modules. Each path should contain `META-INF/MANIFEST.MF` (either
+    directory bundle or built JAR).
 - `--cache-file, -c <file>`
   - Optional explicit cache file. If omitted, the library uses:
     - `$XDG_CACHE_HOME/pde-resolver/v1/index-<hash>.properties` or
@@ -28,6 +32,9 @@ shared resolver library and its on‑disk cache.
   - Optional filter to only list a specific BSN.
 - `--json, -j`
   - Output JSON instead of plain text.
+- `--plan`
+  - Resolve workspace bundles against the target index (same logic as the
+    IDE resolver) and print the bundles that would appear in a launch plan.
 
 ## Examples
 
@@ -35,6 +42,8 @@ shared resolver library and its on‑disk cache.
   - `pde-resolver-cli --root /opt/eclipse`
 - Index a Target Definition profile directory:
   - `pde-resolver-cli --root /workspace/.metadata/.../TD.profile`
+- Show launch plan bundles for workspace modules:
+  - `pde-resolver-cli --plan --root /opt/eclipse --workspace /home/ben/git-repositories/workshop-intellij-setup/org.knime.base.treeensembles2`
 - JSON output filtered to a bundle:
   - `pde-resolver-cli --root /opt/eclipse --bsn org.eclipse.osgi --json`
 
@@ -53,4 +62,3 @@ shared resolver library and its on‑disk cache.
   (`TargetPlatformCache.buildWithCache`).
 - Profiles resolve their bundle pool automatically using the profile’s
   `org.eclipse.equinox.p2.cache` value.
-
