@@ -13,7 +13,7 @@ object LauncherPlanBuilder {
 
   fun build(configService: ConfigService, options: LauncherOptions): PlanResult {
     val startupLevels = mutableMapOf<String, Int>()
-    val bundleMap = LinkedHashMap<String, BundleStartSpec>()
+    val bundleMap = LinkedHashMap<Pair<String, String>, BundleStartSpec>()
 
     fun registerBundle(bsn: String, version: Version, path: java.nio.file.Path, isWorkspace: Boolean) {
       val level = configService.startUpLevel(bsn)
@@ -26,12 +26,10 @@ object LauncherPlanBuilder {
         autoStart = configService.isAutoStartUp(bsn),
         isWorkspace = isWorkspace
       )
-      val existing = bundleMap[bsn]
-      if (existing == null ||
-        (spec.isWorkspace && !existing.isWorkspace) ||
-        (!existing.isWorkspace && !spec.isWorkspace && spec.version > existing.version)
-      ) {
-        bundleMap[bsn] = spec
+      val key = bsn to path.toAbsolutePath().toString()
+      val existing = bundleMap[key]
+      if (existing == null || (spec.isWorkspace && !existing.isWorkspace)) {
+        bundleMap[key] = spec
       }
     }
 
@@ -52,7 +50,7 @@ object LauncherPlanBuilder {
     val bundles = bundleMap.values.toList()
     val plan = LauncherPlan(
       bundles = bundles,
-      framework = bundleMap[options.frameworkBSN]
+      framework = bundles.firstOrNull { it.bsn == options.frameworkBSN }
     )
     val context = LaunchContext(
       startupLevels = startupLevels,
