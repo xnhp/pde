@@ -191,7 +191,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
           application = application?.takeIf { it.isNotBlank() },
           splashBSN = splashBundlePath.takeIf { it.isNotBlank() }
         )
-        val planResult = LauncherPlanBuilder.build(configServiceDelegate, launchOptions)
+        val planResult = LauncherPlanBuilder.build(project, configServiceDelegate, launchOptions)
         val plan = planResult.plan
         val ctx = planResult.context
 

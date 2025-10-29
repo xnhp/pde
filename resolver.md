@@ -154,6 +154,9 @@ Status and Roadmap
     - Consider batching `ProjectLibraryIndexService` rebuilds.
     - Remove obsolete “Exclude Bundles” message keys.
     - Extend `PluginXmlIndex` to cover source-only `plugin.xml` entries.
+    - Share bundle-selection logic between module resolver and launcher
+      plan builder (reuse resolver version picks when generating
+      launch plans).
 
 Lessons Learned
   - Launch plans must include every target bundle plus workspace dev modules
