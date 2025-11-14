@@ -142,6 +142,18 @@ Status and Roadmap
     - Plugin leverages lazy library creation, stable order entry updates,
       centralised target indexing, and user-facing notifications.
   Next
+  Detailed Plan
+    1. Extract resolver into core (`pde-resolver`)
+       - Define public API in `cn.varsa.pde.resolver.algo` with types such as `WorkspaceBundleDescriptor`, `ResolveOptions`, `ResolvedBundle`, `ResolveResult`, and a `Resolver.resolve` entry point.
+       - Move Require-Bundle/import/re-export helpers from plugin extension methods into core utilities so they work without IntelliJ.
+       - Port the logic from `PdeModuleRuntimeLibraryResolver` into the new core resolver, handling fragments, re-exports, Import-Package fallbacks, optional dependencies, and deterministic ordering.
+       - Capture diagnostics via `ResolveProblem` entries instead of IDE-specific logging.
+       - Ensure the plugin calls the new API and adapts the result back into project libraries/order entries.
+    2. Model workspace bundles independently
+       - Provide a loader (e.g., `WorkspaceBundleLoader.load(path)`) that reads `META-INF/MANIFEST.MF`, resolves Bundle-ClassPath entries, and constructs a `WorkspaceBundleDescriptor`.
+       - Support fragments by recording `Fragment-Host` headers and host version ranges.
+       - Make descriptors usable for tests/CLI by resolving classpath entries for both exploded dirs and jars.
+       - Update plugin + CLI to use the new descriptor so tests and tooling share behaviour.
     - Publish CLI commands that surface unresolved bundles and emit launch
       artefacts via the shared renderers.
     - Reuse `ResolveResult` instances across plugin workflows to avoid
@@ -149,6 +161,17 @@ Status and Roadmap
     - Guard target index reuse with proactive VFS refreshes when roots first
       appear.
   Open TODOs
+    - Add resolver unit tests covering:
+      - Fragment bundles inherit host dependencies (Require-Bundle, Import-Package, re-export).
+      - Require-Bundle version range selection.
+      - Import-Package resolution (target bundles vs project libraries fallback).
+      - Re-export chains (A re-exports B re-exports C).
+      - Workspace vs target precedence for identical BSN/version.
+      - Optional Require-Bundle / Import-Package handling.
+      - Deterministic selection when multiple satisfying bundles exist.
+      - Bundle-ClassPath entries (embedded JARs).
+      - Fragment host selection when multiple host versions available.
+      - Circular Require-Bundle relationships (no infinite loops).
     - Invalidate `PluginTargetIndexService` on target changes.
     - Clean up nested JAR extraction in the compile-only resolver.
     - Consider batching `ProjectLibraryIndexService` rebuilds.
