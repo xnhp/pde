@@ -72,22 +72,31 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       // Stash resolve result for postResolve ordering (per run)
       cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService.getInstance(project).put(area, result)
 
-      // Warn on unresolved bundles for this module
-      if (result.unresolved.isNotEmpty()) {
+      // Surface resolver diagnostics via notifications
+      val problems = result.problems.ifEmpty { result.unresolved.map { unresolved ->
+        ResolveProblem(
+          type = ResolveProblemType.MISSING_BUNDLE,
+          symbol = unresolved.bsn,
+          range = unresolved.range,
+          message = unresolved.reason
+        )
+      } }
+      if (problems.isNotEmpty()) {
         val msg = buildString {
-          append("Unresolved bundles for ")
+          append("Resolver issues for ")
           append(area.name)
           append(':')
-          result.unresolved.forEach { u ->
+          problems.forEach { problem ->
             append("\n • ")
-            append(u.bsn)
-            u.range?.let { r ->
+            append(problem.symbol)
+            problem.range?.let { r ->
               append(" ")
               append(r.toString())
             }
             append(" [")
-            append(u.reason)
-            append(']')
+            append(problem.type)
+            append("] ")
+            append(problem.message)
           }
         }
         cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier.important("PDE Resolver", msg).notify(project)
@@ -160,7 +169,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val tpService: PluginTargetIndexService,
     val moduleByBsn: Map<String, Module>,
     val workspace: List<WorkspaceBundleDescriptor>,
-    val descriptorByModule: Map<Module, WorkspaceBundleDescriptor>,
+    val descriptorByModule: MutableMap<Module, WorkspaceBundleDescriptor>,
     val targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex
   )
 
@@ -187,8 +196,10 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
   private fun Context.workspaceEntry(area: Module): WorkspaceBundleDescriptor? {
     descriptorByModule[area]?.let { return it }
     val path = area.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) } ?: return null
-    return runCatching { WorkspaceBundleLoader.load(path) }
+    val descriptor = runCatching { WorkspaceBundleLoader.load(path) }
       .getOrElse { cache.getManifest(area)?.let { WorkspaceBundleDescriptor(path, it) } }
+    descriptor?.let { descriptorByModule[area] = it }
+    return descriptor
   }
 
   private fun Context.options(includeHosts: Boolean) = ResolveOptions(
