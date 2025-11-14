@@ -13,8 +13,13 @@ import java.nio.file.Path
 
 data class WorkspaceBundleDescriptor(
   val path: Path,
-  val manifest: BundleManifest
-)
+  val manifest: BundleManifest,
+  val classPathEntries: List<Path> = listOf(path.toAbsolutePath().normalize()),
+  val sourceEntries: List<Path> = emptyList(),
+  val fragmentHost: FragmentHost? = null,
+) {
+  data class FragmentHost(val symbolicName: String, val versionRange: VersionRange?)
+}
 
 data class ResolveOptions(
   val whitelistPrefixes: Set<String> = emptySet(),
