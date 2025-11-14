@@ -1,6 +1,7 @@
 package cn.varsa.pde.resolver.algo
 
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
 import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
@@ -9,8 +10,10 @@ import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.manifest.reexportRequiredBundleAndVersion
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
+import java.nio.file.Files
 import java.nio.file.Path
 
+/** Description of a workspace bundle (typically an IDE module). */
 data class WorkspaceBundleDescriptor(
   val path: Path,
   val manifest: BundleManifest,
@@ -27,25 +30,44 @@ data class ResolveOptions(
   val includeHostsForFragments: Boolean = true
 )
 
+enum class BundleOrigin { WORKSPACE, TARGET }
+
 data class ResolvedBundle(
   val bsn: String,
   val version: Version,
   val path: Path,
-  val isWorkspace: Boolean,
-  val isHost: Boolean
+  val origin: BundleOrigin,
+  val classPathEntries: List<Path> = listOf(path),
+  val sourceEntries: List<Path> = emptyList(),
+  val fragmentHost: String? = null,
+  val isHost: Boolean = false,
+  val reexport: Boolean = false
+) {
+  val isWorkspace: Boolean get() = origin == BundleOrigin.WORKSPACE
+}
+
+data class UnresolvedBundle(
+  val bsn: String,
+  val range: VersionRange?,
+  val reason: String
+)
+
+enum class ResolveProblemType { MISSING_BUNDLE, VERSION_OUT_OF_RANGE, MISSING_PACKAGE, OPTIONAL_IGNORED, FRAGMENT_HOST }
+
+data class ResolveProblem(
+  val type: ResolveProblemType,
+  val symbol: String,
+  val range: VersionRange? = null,
+  val message: String
 )
 
 data class ResolveResult(
   val bundles: List<ResolvedBundle>,
   val imports: Map<String, VersionRange>,
   val requires: Map<String, VersionRange>,
-  val unresolved: List<UnresolvedBundle> = emptyList()
-)
-
-data class UnresolvedBundle(
-  val bsn: String,
-  val range: VersionRange?,
-  val reason: String
+  val unresolved: List<UnresolvedBundle> = emptyList(),
+  val moduleDependencies: Set<String> = emptySet(),
+  val problems: List<ResolveProblem> = emptyList()
 )
 
 object Resolver {
@@ -55,17 +77,51 @@ object Resolver {
     entry: WorkspaceBundleDescriptor,
     options: ResolveOptions = ResolveOptions()
   ): ResolveResult {
-    val workspaceByBsn: Map<String, List<WorkspaceBundleDescriptor>> =
-      workspace.groupBy { it.manifest.bundleSymbolicName?.key ?: "" }
+    val workspaceByBsn = workspace.groupBy { it.manifest.bundleSymbolicName?.key ?: "" }
 
     data class Candidate(
       val bsn: String,
       val version: Version,
       val path: Path,
       val manifest: BundleManifest,
-      val isWorkspace: Boolean,
+      val origin: BundleOrigin,
+      val classPathEntries: List<Path>,
+      val sourceEntries: List<Path>,
+      val fragmentHost: String? = null,
       val isHost: Boolean = false
     )
+
+    fun candidateFromWorkspace(desc: WorkspaceBundleDescriptor, isHost: Boolean = false): Candidate {
+      val bsn = desc.manifest.bundleSymbolicName?.key
+        ?: error("Workspace bundle lacks Bundle-SymbolicName header at ${desc.path}")
+      return Candidate(
+        bsn = bsn,
+        version = desc.manifest.bundleVersion,
+        path = desc.path,
+        manifest = desc.manifest,
+        origin = BundleOrigin.WORKSPACE,
+        classPathEntries = desc.classPathEntries.ifEmpty { listOf(desc.path) },
+        sourceEntries = desc.sourceEntries,
+        fragmentHost = desc.fragmentHost?.symbolicName,
+        isHost = isHost
+      )
+    }
+
+    fun candidateFromTarget(rb: TargetResolvedBundle, isHost: Boolean = false): Candidate {
+      val bsn = rb.manifest.bundleSymbolicName?.key
+        ?: error("Target bundle lacks Bundle-SymbolicName header at ${rb.location}")
+      return Candidate(
+        bsn = bsn,
+        version = rb.manifest.bundleVersion,
+        path = rb.location,
+        manifest = rb.manifest,
+        origin = BundleOrigin.TARGET,
+        classPathEntries = computeTargetClassPathEntries(rb),
+        sourceEntries = emptyList(),
+        fragmentHost = rb.manifest.fragmentHost?.key,
+        isHost = isHost
+      )
+    }
 
     fun select(bsn: String, range: VersionRange?): Candidate? {
       if (options.preferWorkspace) {
@@ -75,51 +131,26 @@ object Resolver {
           ?.filter { (_, v) -> range == null || range.includes(v) }
           ?.maxByOrNull { it.second }
           ?.first
-        if (ws != null) {
-          return Candidate(
-            bsn = bsn,
-            version = ws.manifest.bundleVersion,
-            path = ws.path,
-            manifest = ws.manifest,
-            isWorkspace = true
-          )
-        }
+        if (ws != null) return candidateFromWorkspace(ws)
       }
 
-      val t = target.get(bsn, range)
-      return t?.let { rb ->
-        Candidate(
-          bsn = bsn,
-          version = rb.manifest.bundleVersion,
-          path = rb.location,
-          manifest = rb.manifest,
-          isWorkspace = false
-        )
-      }
+      val targetBundle = target.get(bsn, range)
+      return targetBundle?.let { candidateFromTarget(it) }
     }
 
     val selected = LinkedHashMap<String, Candidate>()
     val unresolved = LinkedHashSet<UnresolvedBundle>()
 
-    // Caches to avoid recomputing manifest exports repeatedly
     val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, Version>>()
     fun exportsOf(manifest: BundleManifest): Map<String, Version> =
       manifestExportsCache.getOrPut(manifest) { manifest.exportedPackageAndVersion() }
 
-    // If entry is a fragment, include its host first (optional)
-    // Always register the entry bundle (workspace preferred)
-    entry.manifest.bundleSymbolicName?.key?.let { entryBsn ->
-      val entryCandidate = Candidate(
-        bsn = entryBsn,
-        version = entry.manifest.bundleVersion,
-        path = entry.path,
-        manifest = entry.manifest,
-        isWorkspace = true
-      )
-      selected.putIfAbsent(entryBsn, entryCandidate)
-    }
+    val entrySymbolicName = entry.manifest.bundleSymbolicName?.key
+      ?: error("Entry bundle lacks Bundle-SymbolicName header at ${entry.path}")
+    selected[entrySymbolicName] = candidateFromWorkspace(entry)
 
-    val hostPair = entry.manifest.fragmentHostAndVersionRange()
+    val hostPair = entry.fragmentHost?.let { it.symbolicName to it.versionRange }
+      ?: entry.manifest.fragmentHostAndVersionRange()
     if (options.includeHostsForFragments && hostPair != null) {
       val (hostBsn, hostRange) = hostPair
       val host = select(hostBsn, hostRange)
@@ -135,10 +166,13 @@ object Resolver {
         val cand = select(bsn, range)
         if (cand != null) {
           selected.putIfAbsent(bsn, cand)
-          // Traverse full Require-Bundle closure (include re-exports implicitly)
-          val requiresAll = if (cand.isWorkspace) cand.manifest.requiredBundleAndVersion() else
-            target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
-          for ((rb, rr) in requiresAll) addRequireWithClosure(rb, rr)
+          val requiresAll = if (cand.origin == BundleOrigin.WORKSPACE) {
+            cand.manifest.requiredBundleAndVersion() + cand.manifest.reexportRequiredBundleAndVersion()
+          } else {
+            val nav = target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
+            nav + cand.manifest.reexportRequiredBundleAndVersion()
+          }
+          requiresAll.forEach { (childBsn, childRange) -> addRequireWithClosure(childBsn, childRange) }
         } else {
           unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
         }
@@ -148,11 +182,17 @@ object Resolver {
     val requires = entry.manifest.requiredBundleAndVersion()
     requires.forEach { (bsn, range) -> addRequireWithClosure(bsn, range) }
 
-    // Import-Package resolution: pick providers for requested packages
     val imports = entry.manifest.importedPackageAndVersion()
 
-    // Precompute workspace export providers for faster lookups per package
-    data class PkgProvider(val bsn: String, val version: Version, val path: Path, val manifest: BundleManifest, val isWs: Boolean)
+    data class PkgProvider(
+      val bsn: String,
+      val version: Version,
+      val path: Path,
+      val manifest: BundleManifest,
+      val origin: BundleOrigin,
+      val classPathEntries: List<Path>
+    )
+
     val wsProvidersByPkg: Map<String, List<PkgProvider>> = run {
       val map = HashMap<String, MutableList<PkgProvider>>()
       workspace.forEach { desc ->
@@ -161,14 +201,22 @@ object Resolver {
         val exp = exportsOf(man)
         exp.forEach { (pkg, _) ->
           map.computeIfAbsent(pkg) { mutableListOf() }
-            .add(PkgProvider(bsn, man.bundleVersion, desc.path, man, true))
+            .add(
+              PkgProvider(
+                bsn,
+                man.bundleVersion,
+                desc.path,
+                man,
+                BundleOrigin.WORKSPACE,
+                desc.classPathEntries.ifEmpty { listOf(desc.path) }
+              )
+            )
         }
       }
       map
     }
 
-    // Precompute target export providers only for imported packages using the index
-    val importedPkgs = imports.keys.toSet()
+    val importedPkgs = imports.keys
     val tpProvidersByPkg: Map<String, java.util.NavigableMap<Version, PkgProvider>> = run {
       val map = HashMap<String, java.util.NavigableMap<Version, PkgProvider>>()
       val byPkg = target.exportedBundlesByPackageNav()
@@ -177,7 +225,14 @@ object Resolver {
         val providers = java.util.TreeMap<Version, PkgProvider>()
         nav.forEach { (ver, rb) ->
           val bsn = rb.manifest.bundleSymbolicName?.key ?: return@forEach
-          providers[ver] = PkgProvider(bsn, ver, rb.location, rb.manifest, false)
+          providers[ver] = PkgProvider(
+            bsn,
+            ver,
+            rb.location,
+            rb.manifest,
+            BundleOrigin.TARGET,
+            computeTargetClassPathEntries(rb)
+          )
         }
         if (providers.isNotEmpty()) map[pkg] = providers
       }
@@ -188,38 +243,60 @@ object Resolver {
       if (options.preferWorkspace) {
         val ws = wsProvidersByPkg[pkg]
           ?.asSequence()
-          ?.filter { range.includes(exportsOf(it.manifest)[pkg]) }
+          ?.mapNotNull { provider ->
+            val exported = exportsOf(provider.manifest)[pkg]
+            if (exported != null && range.includes(exported)) provider else null
+          }
           ?.maxByOrNull { it.version }
-        if (ws != null) return Candidate(ws.bsn, ws.version, ws.path, ws.manifest, true)
+        if (ws != null) {
+          return Candidate(
+            bsn = ws.bsn,
+            version = ws.version,
+            path = ws.path,
+            manifest = ws.manifest,
+            origin = BundleOrigin.WORKSPACE,
+            classPathEntries = ws.classPathEntries,
+            sourceEntries = emptyList(),
+            fragmentHost = ws.manifest.fragmentHost?.key
+          )
+        }
       }
 
       val nav = tpProvidersByPkg[pkg] ?: return null
-      val desc = nav.descendingMap()
-      val entry = desc.entries.firstOrNull { e ->
+      val entry = nav.descendingMap().entries.firstOrNull { e ->
         val man = nav[e.key]?.manifest ?: return@firstOrNull false
         val ver = exportsOf(man)[pkg]
         ver != null && range.includes(ver)
       } ?: return null
-      val p = entry.value
-      return Candidate(p.bsn, p.version, p.path, p.manifest, false)
+      val provider = entry.value
+      return Candidate(
+        bsn = provider.bsn,
+        version = provider.version,
+        path = provider.path,
+        manifest = provider.manifest,
+        origin = provider.origin,
+        classPathEntries = provider.classPathEntries,
+        sourceEntries = emptyList(),
+        fragmentHost = provider.manifest.fragmentHost?.key
+      )
     }
 
     imports.forEach { (pkg, range) ->
       val provider = findProviderForPackage(pkg, range)
       if (provider != null && !selected.containsKey(provider.bsn)) {
         selected[provider.bsn] = provider
+      } else if (provider == null) {
+        unresolved.add(UnresolvedBundle(pkg, range, "import-package"))
       }
     }
 
     if (options.whitelistPrefixes.isNotEmpty()) {
-      val keys = target.bundlesByBsn().keys
-      // Single pass over BSNs to match prefixes
-      keys.forEach { bsn ->
+      target.bundlesByBsn().keys.forEach { bsn ->
         if (!selected.containsKey(bsn) && options.whitelistPrefixes.any { bsn.startsWith(it) }) {
           val nav = target.bundlesByBsn()[bsn]
           val rb = nav?.lastEntry()?.value
           if (rb != null) {
-            selected[bsn] = Candidate(bsn, rb.manifest.bundleVersion, rb.location, rb.manifest, false)
+            selected[bsn] = candidateFromTarget(rb)
           }
         }
       }
@@ -229,24 +306,59 @@ object Resolver {
       bsn = c.bsn,
       version = c.version,
       path = c.path,
-      isWorkspace = c.isWorkspace,
+      origin = c.origin,
+      classPathEntries = c.classPathEntries,
+      sourceEntries = c.sourceEntries,
+      fragmentHost = c.fragmentHost,
       isHost = c.isHost
     )
 
     val bundles = mutableListOf<ResolvedBundle>()
-    // Host first, if any
     val hostBsn = hostPair?.first
     if (hostBsn != null) selected[hostBsn]?.let { bundles.add(toResolved(it)) }
-    // Then others in insertion order
     selected.forEach { (bsn, cand) ->
       if (bsn != hostBsn) bundles.add(toResolved(cand))
+    }
+
+    val moduleDependencies = bundles
+      .filter { it.isWorkspace }
+      .map { it.bsn }
+      .toMutableSet()
+      .apply { remove(entrySymbolicName) }
+      .toSet()
+
+    val problems = unresolved.map { u ->
+      val type = when (u.reason) {
+        "fragmentHost" -> ResolveProblemType.FRAGMENT_HOST
+        "import-package" -> ResolveProblemType.MISSING_PACKAGE
+        else -> ResolveProblemType.MISSING_BUNDLE
+      }
+      ResolveProblem(type, u.bsn, u.range, u.reason)
     }
 
     return ResolveResult(
       bundles = bundles,
       imports = imports,
       requires = requires,
-      unresolved = unresolved.toList()
+      unresolved = unresolved.toList(),
+      moduleDependencies = moduleDependencies,
+      problems = problems
     )
+  }
+
+  private fun computeTargetClassPathEntries(rb: TargetResolvedBundle): List<Path> {
+    val manifest = rb.manifest
+    val base = rb.location.toAbsolutePath().normalize()
+    val entries = mutableListOf(base)
+    manifest.bundleClassPath?.keys
+      ?.filter { it != "." }
+      ?.forEach { entry ->
+        if (rb.isDirectory) {
+          val resolved = base.resolve(entry).normalize()
+          if (Files.exists(resolved)) entries.add(resolved)
+        }
+        // For jar bundles we currently expose only the jar itself.
+      }
+    return entries.distinct()
   }
 }
