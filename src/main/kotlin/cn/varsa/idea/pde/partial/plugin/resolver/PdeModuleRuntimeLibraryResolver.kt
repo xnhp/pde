@@ -9,8 +9,10 @@ import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.openapi.resolver.*
 import cn.varsa.idea.pde.partial.plugin.support.*
+import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.algo.*
 import cn.varsa.pde.resolver.manifest.canonicalName
+import java.nio.file.Path
 import com.intellij.openapi.module.*
 import com.intellij.openapi.roots.*
 import com.intellij.openapi.roots.libraries.*
@@ -57,17 +59,14 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val cacheService = BundleManifestCacheService.getInstance(project)
     val bundleManifest = cacheService.getManifest(area) ?: return
 
-    val classesRoot = bundleManifest.bundleClassPath?.keys?.filterNot { it == "." }?.flatMap { binaryName ->
-      area.moduleRootManager.contentRoots.mapNotNull { it.findFileByRelativePath(binaryName) }
-    }?.map { it.protocolUrl }?.distinct() ?: emptyList()
-
     area.updateModel { model ->
-      // 1) Ensure module-level runtime library reflects Bundle-ClassPath
-      ensureModuleRuntimeLibrary(model, classesRoot)
-
-      // 2) Resolve dependencies via core resolver
       val ctx = buildContext(project, cacheService)
       val entryDesc = ctx.workspaceEntry(area) ?: return@updateModel
+
+      // 1) Ensure module-level runtime library reflects Bundle-ClassPath
+      ensureModuleRuntimeLibrary(model, entryDesc.classPathEntries)
+
+      // 2) Resolve dependencies via core resolver
       val result = Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
 
       // Stash resolve result for postResolve ordering (per run)
@@ -161,6 +160,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val tpService: PluginTargetIndexService,
     val moduleByBsn: Map<String, Module>,
     val workspace: List<WorkspaceBundleDescriptor>,
+    val descriptorByModule: Map<Module, WorkspaceBundleDescriptor>,
     val targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex
   )
 
@@ -173,19 +173,22 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       if (bsn != null) bsn to m else null
     }.toMap()
     fun modulePath(m: Module) = m.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) }
+    val descriptorByModule = mutableMapOf<Module, WorkspaceBundleDescriptor>()
     val workspace = allPdeModules.mapNotNull { m ->
-      val man = cache.getManifest(m) ?: return@mapNotNull null
       val path = modulePath(m) ?: return@mapNotNull null
-      WorkspaceBundleDescriptor(path, man)
+      val descriptor = runCatching { WorkspaceBundleLoader.load(path) }
+        .getOrElse { cache.getManifest(m)?.let { WorkspaceBundleDescriptor(path, it) } }
+      descriptor?.also { descriptorByModule[m] = it }
     }
     val targetIndex = tpService.getIndex()
-    return Context(project, cache, tpService, moduleByBsn, workspace, targetIndex)
+    return Context(project, cache, tpService, moduleByBsn, workspace, descriptorByModule, targetIndex)
   }
 
   private fun Context.workspaceEntry(area: Module): WorkspaceBundleDescriptor? {
+    descriptorByModule[area]?.let { return it }
     val path = area.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) } ?: return null
-    val man = cache.getManifest(area) ?: return null
-    return WorkspaceBundleDescriptor(path, man)
+    return runCatching { WorkspaceBundleLoader.load(path) }
+      .getOrElse { cache.getManifest(area)?.let { WorkspaceBundleDescriptor(path, it) } }
   }
 
   private fun Context.options(includeHosts: Boolean) = ResolveOptions(
@@ -194,7 +197,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     includeHostsForFragments = includeHosts
   )
 
-  private fun ensureModuleRuntimeLibrary(model: ModifiableRootModel, classesRoot: List<String>) {
+  private fun ensureModuleRuntimeLibrary(model: ModifiableRootModel, classPathEntries: List<Path>) {
     val libraryTableModel = model.moduleLibraryTable.modifiableModel
     applicationInvokeAndWait {
       val library = libraryTableModel.getLibraryByName(ModuleLibraryName) ?: writeCompute {
@@ -206,7 +209,22 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       }
       val libraryModel = library.modifiableModel
       libraryModel.getUrls(OrderRootType.CLASSES).forEach { libraryModel.removeRoot(it, OrderRootType.CLASSES) }
-      classesRoot.forEach { libraryModel.addRoot(it, OrderRootType.CLASSES) }
+
+      val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+      val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
+
+      classPathEntries.forEach { path ->
+        val vf = local.findFileByNioFile(path) ?: local.refreshAndFindFileByNioFile(path)
+        if (vf != null) {
+          if (vf.isDirectory) {
+            libraryModel.addRoot(vf.url, OrderRootType.CLASSES)
+          } else {
+            val root = jarfs.getJarRootForLocalFile(vf)
+            if (root != null) libraryModel.addRoot(root.url, OrderRootType.CLASSES)
+          }
+        }
+      }
+
       writeRun {
         libraryModel.commit()
         libraryTableModel.commit()
@@ -258,8 +276,8 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       }
     }
     // Also add workspace-modules from resolver result
-    result.bundles.filter { it.isWorkspace }.forEach { rb ->
-      val mod = ctx.moduleByBsn[rb.bsn]
+    result.moduleDependencies.forEach { bsn ->
+      val mod = ctx.moduleByBsn[bsn]
       if (mod != null && mod != area) addModuleDependency(mod)
     }
     return out
@@ -286,31 +304,24 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
         val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
         missing.forEach { (bsn, ver) ->
-          val rb = ctx.targetIndex.bundlesByBsn()[bsn]?.get(ver) ?: return@forEach
+          val rb = result.bundles.firstOrNull { it.bsn == bsn && it.version == ver && !it.isWorkspace }
+            ?: return@forEach
           val libraryName = "$ProjectLibraryNamePrefix$bsn${BundleDefinition.canonicalNameSeparator}$ver"
           val lib = writeCompute { projTableModel.createLibrary(libraryName) }
           val libModel = lib.modifiableModel
-          // Prefer non-refresh find to avoid VFS churn; refresh only when null
-          if (rb.isDirectory) {
-            val dirVf = local.findFileByNioFile(rb.location) ?: local.refreshAndFindFileByNioFile(rb.location)
-            if (dirVf != null) {
-              libModel.addRoot(dirVf.url, OrderRootType.CLASSES)
-              val bcp = rb.manifest.bundleClassPath?.keys ?: emptySet()
-              bcp.filter { it != "." }.forEach { rel ->
-                val child = dirVf.findFileByRelativePath(rel)
-                if (child != null) {
-                  val root = if (child.fileSystem === jarfs) child else jarfs.getJarRootForLocalFile(child)
-                  if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
-                }
+
+          rb.classPathEntries.forEach { entry ->
+            val vf = local.findFileByNioFile(entry) ?: local.refreshAndFindFileByNioFile(entry)
+            if (vf != null) {
+              if (vf.isDirectory) {
+                libModel.addRoot(vf.url, OrderRootType.CLASSES)
+              } else {
+                val root = jarfs.getJarRootForLocalFile(vf)
+                if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
               }
             }
-          } else {
-            val jarVf = local.findFileByNioFile(rb.location) ?: local.refreshAndFindFileByNioFile(rb.location)
-            if (jarVf != null) {
-              val root = jarfs.getJarRootForLocalFile(jarVf)
-              if (root != null) libModel.addRoot(root.url, OrderRootType.CLASSES)
-            }
           }
+
           writeRun { libModel.commit() }
           libsByBsn.computeIfAbsent(bsn) { java.util.TreeMap() }[ver] = lib
         }
