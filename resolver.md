@@ -93,6 +93,7 @@ Status and Roadmap
     - Target platform parsing/indexing handled in `pde-resolver`; plugin providers delegate to it.
     - Workspace resolver APIs shared across runtime, fragment, and launch flows with unified diagnostics/notifier support.
     - Launcher models/assembler/renderers operate from `pde-resolver`, with IDE adapters consuming them.
+    - Compile-only classpath parsing exposed via `CompileClasspathResolver`; IDE and future CLI layers reuse it.
   Next
     - Expose CLI-friendly entry points backed by the new `LaunchEnvironment` / `LaunchPlanner` surfaces.
     - Formalise caching/reuse story for resolver sessions inside plugin services.
