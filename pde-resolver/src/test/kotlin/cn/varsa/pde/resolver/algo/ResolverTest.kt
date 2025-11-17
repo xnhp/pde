@@ -78,6 +78,34 @@ class ResolverTest {
   }
 
   @Test
+  fun requireBundle_prefers_workspace_on_version_ties() {
+    val target = tpIndex(
+      rb("b", "1.0.0"),
+      rb("b", "1.4.0")
+    )
+    val workspace = listOf(
+      wbd("b", "1.4.0")
+    )
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b;bundle-version=\"[1.0.0,2.0.0)\""
+    )
+
+    val preferWorkspace = Resolver.resolve(target, workspace, entry, ResolveOptions(preferWorkspace = true))
+    val workspacePick = preferWorkspace.bundles.firstOrNull { it.bsn == "b" }
+    assertNotNull("workspace bundle with matching version should be selected", workspacePick)
+    assertTrue(workspacePick!!.isWorkspace)
+    assertEquals(Version.parseVersion("1.4.0"), workspacePick.version)
+
+    val preferTarget = Resolver.resolve(target, workspace, entry, ResolveOptions(preferWorkspace = false))
+    val targetPick = preferTarget.bundles.firstOrNull { it.bsn == "b" }
+    assertNotNull("target bundle with matching version should be selected when workspace is not preferred", targetPick)
+    assertFalse(targetPick!!.isWorkspace)
+    assertEquals(Version.parseVersion("1.4.0"), targetPick.version)
+  }
+
+  @Test
   fun requireBundle_skips_workspace_versions_outside_range() {
     val target = tpIndex(
       rb("b", "1.1.0"),
