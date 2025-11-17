@@ -5,64 +5,22 @@ Scope
     the IntelliJ plugin and future CLI tools can consume without behaviour
     changes.
 
-Responsibility 1 – Parse Target Platform
-  Core implementation
-    - `pde-resolver` module supplies:
-      - `cn.varsa.pde.resolver.manifest.BundleManifest` shared model.
-      - `cn.varsa.pde.resolver.support.*` helpers for strings and versions.
-      - `cn.varsa.pde.resolver.index.TargetPlatformIndex` scanning Eclipse SDK
-        roots, target definition profiles, and loose directories/files.
-      - `cn.varsa.pde.resolver.index.ProfileUtils` helpers such as
-        `findProfileFile`, `getBundlePoolPath`, and `mapProfileFile`.
-      - `cn.varsa.pde.resolver.features.FeatureScanner` for SDK, P2, and
-        target profile features.
-      - `cn.varsa.pde.resolver.index.TargetPlatformCache` for fingerprinted,
-        persisted bundle snapshots.
-  Plugin integration
-    - Providers (`DirectoryBundleProvider`, `EclipseSDKBundleProvider`,
-      `EclipseP2BundleProvider`, `TargetDefinitionBundleProvider`) delegate
-      to the shared index and scanners.
-    - Legacy plugin `ProfileUtils` has been removed.
+Responsibility 1 – Parse Target Platform (Done)
+  Highlights
+    - Core `pde-resolver` module owns manifest models, target scanning, caching, and feature discovery.
+    - IntelliJ bundle providers defer entirely to the shared index and cache.
   Tests
-    - `BundleManifestParseTest`, `ProfileUtilsTest`,
-      `TargetPlatformIndexTest`, `TargetPlatformIndexProfileTest`, and
-      `FeatureScanner*Test`.
+    - Existing manifest/index suites (e.g. `BundleManifestParseTest`, `TargetPlatformIndexTest`) continue to protect the contract.
 
-Responsibility 2 – Resolve Workspace Bundles
-  Core implementation
-    - `cn.varsa.pde.resolver.algo.Resolver` accepts a `TargetPlatformIndex`,
-      workspace descriptors, an entry bundle, and `ResolveOptions`.
-    - Produces a `ResolveResult` with ordered bundles (workspace overrides
-      target), `requires` and `imports` diagnostics, and unresolved items.
-    - Reuses manifest parsing helpers and target cache for deterministic,
-      performant lookups.
-  Plugin orchestration
-    - `PdeModuleRuntimeLibraryResolver` builds workspace descriptors, invokes
-      the core resolver, and materialises project libraries on the EDT while
-      reporting unresolved bundles through `PdeNotifier`.
-    - `PdeModuleFragmentLibraryResolver` wires fragment hosts using resolver
-      output and orders fragments before hosts.
-    - `BundleManifestExt` provides lightweight adapters around core models.
-  Supporting launch stack
-    - Core `pde-resolver.launch` package:
-      - `LauncherModels.kt` defines `LauncherOptions`, `BundleStartSpec`,
-        `LauncherPlan`, and `LaunchContext`.
-      - `LauncherAssembler` converts a `ResolveResult` into a launch plan and
-        honours workspace precedence.
-      - `Renderers` expose `ConfigIniRenderer`, `BundlesInfoRenderer`, and
-        `DevPropertiesRenderer`.
-    - IntelliJ adapters:
-      - `LauncherPlanBuilder` gathers target libraries and workspace dev
-        modules via `ConfigService` and produces the core plan/context.
-      - `PDETargetRunConfiguration` runs validation, invokes the plan
-        builder, writes renderer output, and prepares the JVM parameters.
-      - `ConfigService` defines the contract for manifests, startup levels,
-        dev module mapping, and runtime paths.
-    - Supporting services (`TargetDefinitionService`,
-      `PluginTargetIndexService`, `BundleManifestCacheService`, `PDEFacet`,
-      `DevModule`) feed data into the launch flow.
+Responsibility 2 – Resolve Workspace Bundles (Done)
+  Highlights
+    - Core resolver returns deterministic `ResolveResult` data with bundle order, module dependencies, and diagnostics.
+    - Shared helpers (`ResolverContext`, `ResolverDiagnostics`, `ResolverOrdering`) power runtime, fragment, and launcher code paths.
+    - Plugin runtime and fragment resolvers now consume the shared context, reuse cached `ResolveResult` instances via `ResolveSessionService`, and surface issues through the unified notifier.
+  Launch integration
+    - `LauncherPlanBuilder` reuses resolver outputs and reports problems with the same formatter as the IDE resolvers.
 
-Responsibility 3 – Assemble Launch Configuration
+Responsibility 3 – Assemble Launch Configuration (In Progress)
   Core assets
     - Launcher models, assembler, and renderers live in `pde-resolver` and
       are covered by unit tests.
@@ -133,45 +91,31 @@ Architecture Reference
 
 Status and Roadmap
   Completed
-    - Target platform scanning, caching, and feature discovery consolidated
-      in core.
-    - Resolver provides closure over Require-Bundle, Import-Package, and
-      Fragment-Host with deterministic ordering and diagnostics.
-    - Launcher models, assembler, and renderers extracted to core and wired
-      into the plugin run configuration.
-    - Plugin leverages lazy library creation, stable order entry updates,
-      centralised target indexing, and user-facing notifications.
+    - Target platform parsing/indexing handled in `pde-resolver`; plugin providers delegate to it.
+    - Workspace resolver APIs shared across runtime, fragment, and launch flows with unified diagnostics/notifier support.
+    - Launcher models/assembler/renderers operate from `pde-resolver`, with IDE adapters consuming them.
   Next
+    - Advance Responsibility #3 by introducing a core `LaunchEnvironment` and migrating launcher aggregation into `pde-resolver`.
+    - Expose CLI-friendly entry points once core launch orchestration is available.
+    - Formalise caching/reuse story for resolver sessions inside plugin services.
   Detailed Plan
-    1. Extract resolver into core (`pde-resolver`)
-       - Define public API in `cn.varsa.pde.resolver.algo` with types such as `WorkspaceBundleDescriptor`, `ResolveOptions`, `ResolvedBundle`, `ResolveResult`, and a `Resolver.resolve` entry point.
-       - Move Require-Bundle/import/re-export helpers from plugin extension methods into core utilities so they work without IntelliJ.
-       - Port the logic from `PdeModuleRuntimeLibraryResolver` into the new core resolver, handling fragments, re-exports, Import-Package fallbacks, optional dependencies, and deterministic ordering.
-       - Capture diagnostics via `ResolveProblem` entries instead of IDE-specific logging.
-       - Ensure the plugin calls the new API and adapts the result back into project libraries/order entries.
-    2. Model workspace bundles independently
-       - Provide a loader (e.g., `WorkspaceBundleLoader.load(path)`) that reads `META-INF/MANIFEST.MF`, resolves Bundle-ClassPath entries, and constructs a `WorkspaceBundleDescriptor`.
-       - Support fragments by recording `Fragment-Host` headers and host version ranges.
-       - Make descriptors usable for tests/CLI by resolving classpath entries for both exploded dirs and jars.
-       - Update plugin + CLI to use the new descriptor so tests and tooling share behaviour.
-    - Publish CLI commands that surface unresolved bundles and emit launch
-      artefacts via the shared renderers.
-    - Reuse `ResolveResult` instances across plugin workflows to avoid
-      redundant recomputation.
-    - Guard target index reuse with proactive VFS refreshes when roots first
-      appear.
+    1. Extract resolver into core (`pde-resolver`) — Done
+    2. Model workspace bundles independently — Done
+    3. Publish CLI commands that surface unresolved bundles and emit launch artefacts via the shared renderers.
+    4. Reuse `ResolveResult` instances across plugin workflows to avoid redundant recomputation. — Done (cached results now shared via `ResolveSessionService` and consumed by the launcher plan builder)
+    5. Guard target index reuse with proactive VFS refreshes when roots first appear.
   Open TODOs
-    - Add resolver unit tests covering:
-      - Fragment bundles inherit host dependencies (Require-Bundle, Import-Package, re-export).
-      - Require-Bundle version range selection.
-      - Import-Package resolution (target bundles vs project libraries fallback).
-      - Re-export chains (A re-exports B re-exports C).
-      - Workspace vs target precedence for identical BSN/version.
-      - Optional Require-Bundle / Import-Package handling.
-      - Deterministic selection when multiple satisfying bundles exist.
-      - Bundle-ClassPath entries (embedded JARs).
-      - Fragment host selection when multiple host versions available.
-      - Circular Require-Bundle relationships (no infinite loops).
+    - Add resolver unit tests covering: (completed November 17, 2025)
+      - ✅ Fragment bundles inherit host dependencies (Require-Bundle, Import-Package, re-export).
+      - ✅ Require-Bundle version range selection (workspace, target, and tie-breaking coverage).
+      - ✅ Import-Package resolution (target bundles vs project libraries fallback).
+      - ✅ Re-export chains (A re-exports B re-exports C).
+      - ✅ Workspace vs target precedence for identical BSN/version.
+      - ✅ Optional Require-Bundle / Import-Package handling.
+      - ✅ Deterministic selection when multiple satisfying bundles exist.
+      - ✅ Bundle-ClassPath entries (embedded JARs).
+      - ✅ Fragment host selection when multiple host versions available.
+      - ✅ Circular Require-Bundle relationships (no infinite loops).
     - Invalidate `PluginTargetIndexService` on target changes.
     - Clean up nested JAR extraction in the compile-only resolver.
     - Consider batching `ProjectLibraryIndexService` rebuilds.
