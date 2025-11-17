@@ -9,8 +9,16 @@ import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.openapi.resolver.*
 import cn.varsa.idea.pde.partial.plugin.support.*
+import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
+import cn.varsa.pde.resolver.compile.CompileClasspathEntry
+import cn.varsa.pde.resolver.compile.CompileClasspathEnvironment
+import cn.varsa.pde.resolver.compile.CompileClasspathResolver
 import com.intellij.openapi.module.*
 import com.intellij.openapi.roots.*
+import com.intellij.openapi.vfs.JarFileSystem
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
+import java.nio.file.Paths
 import java.util.*
 
 /**
@@ -26,66 +34,57 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
   override fun resolve(area: Module) {
     PDEFacet.getInstance(area) ?: return
 
-    val buildPropertiesFile = area.moduleRootManager.contentRoots.firstNotNullOfOrNull {
-      it.refresh(false, false)
-      it.findChild(BuildProperties)
-    }?.also { it.refresh(false, false) } ?: return
+    val moduleRoot = area.moduleRootManager.contentRoots.firstOrNull() ?: return
+    moduleRoot.refresh(false, false)
+    val buildPropertiesFile = moduleRoot.findChild(BuildProperties)?.also { it.refresh(false, false) } ?: return
 
     val buildProperties = Properties().apply { buildPropertiesFile.inputStream.use { load(it) } }
-    val classPaths = buildProperties.getProperty("jars.extra.classpath")?.splitToSequence(',') ?: return
 
     val cacheService = BundleManifestCacheService.getInstance(area.project)
-    val tpService = PluginTargetIndexService.getInstance(area.project)
+    val targetIndex = PluginTargetIndexService.getInstance(area.project).getIndex()
 
-    val symbolicName2Module =
-      area.project.allPDEModules(area).map { cacheService.getManifest(it)?.bundleSymbolicName?.key to it }
-        .filterNot { it.first == null }.associate { it.first!! to it.second }
+    val allModules = area.project.allPDEModules(area)
+    val symbolicName2Module = allModules.mapNotNull { module ->
+      val manifest = cacheService.getManifest(module)
+      val bsn = manifest?.bundleSymbolicName?.key ?: return@mapNotNull null
+      bsn to module
+    }.toMap()
 
-    val moduleDependency = hashSetOf<Module>()
-    val classesRoot = classPaths.mapNotNull { url ->
-      val urlFragments = url.split('/')
-      if (urlFragments[0] != "platform:") {
-        area.moduleRootManager.contentRoots.firstNotNullOfOrNull { it.findFileByRelativePath(url) }
-      } else if (urlFragments.size > 2 && urlFragments[1].equalAny("plugin", "fragment", ignoreCase = true)) {
-        val bsn = urlFragments[2]
-        val rb = tpService.getBundlesByBSN(bsn)?.lastEntry()?.value
-        val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-        val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
-        val root = rb?.let {
-          if (it.isDirectory) local.findFileByNioFile(it.location)
-          else local.findFileByNioFile(it.location)?.let { jf -> jarfs.getJarRootForLocalFile(jf) }
-        }
-        if (root != null) {
-          if (urlFragments.size == 3) {
-            root
-          } else {
-            val entry = urlFragments.subList(3, urlFragments.size).joinToString("/")
-            val child = root.findFileByRelativePath(entry)
-            if (child != null) {
-              when (child.fileSystem) {
-                local -> jarfs.getJarRootForLocalFile(child) ?: child
-                jarfs -> {
-                  val ext = child.extension?.lowercase()
-                  if (ext == "jar" || ext == "aar" || ext == "war") {
-                    // Extract nested jar entry into project out/tmp_lib and return its jar root
-                    extractNestedJar(area.project, root, child) ?: child
-                  } else child
-                }
-                else -> child
-              }
-            } else null
+    val workspaceDescriptors = symbolicName2Module.mapNotNull { (bsn, module) ->
+      val manifest = cacheService.getManifest(module) ?: return@mapNotNull null
+      val root = module.moduleRootManager.contentRoots.firstOrNull() ?: return@mapNotNull null
+      bsn to WorkspaceBundleDescriptor(Paths.get(root.path), manifest)
+    }.toMap()
+
+    val compileEnv = CompileClasspathEnvironment(
+      moduleRoot = Paths.get(moduleRoot.path),
+      buildProperties = buildProperties,
+      targetIndex = targetIndex,
+      workspaceBundles = workspaceDescriptors
+    )
+
+    val compileResult = CompileClasspathResolver.resolve(compileEnv)
+
+    val moduleDependency = compileResult.workspaceDependencies.mapNotNullTo(linkedSetOf()) { symbolicName2Module[it] }
+    val classesRoot = linkedSetOf<VirtualFile>()
+    val localFs = LocalFileSystem.getInstance()
+    val jarFs = JarFileSystem.getInstance()
+
+    compileResult.entries.forEach { entry ->
+      when (entry) {
+        is CompileClasspathEntry.ModulePath ->
+          localFs.findFileByNioFile(entry.path)?.let { classesRoot += it }
+
+        is CompileClasspathEntry.TargetBundle ->
+          resolveTargetEntry(entry, area.project, jarFs, localFs)?.let { classesRoot += it }
+
+        is CompileClasspathEntry.WorkspaceResource -> {
+          val module = entry.descriptor.manifest.bundleSymbolicName?.key?.let { symbolicName2Module[it] }
+          val vf = module?.moduleRootManager?.contentRoots?.firstNotNullOfOrNull { root ->
+            root.findFileByRelativePath(entry.entryPath)
           }
-        } else symbolicName2Module[bsn]?.let { module ->
-          if (urlFragments.size == 3) {
-            moduleDependency += module
-            null
-          } else {
-            val entry = urlFragments.subList(3, urlFragments.size).joinToString("/")
-            module.moduleRootManager.contentRoots.firstNotNullOfOrNull { it.findFileByRelativePath(entry) }
-          }
+          if (vf != null) classesRoot += vf
         }
-      } else {
-        null
       }
     }
 
@@ -116,6 +115,28 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
       applicationInvokeAndWait {
         moduleDependency.forEach { model.findModuleOrderEntry(it) ?: model.addModuleOrderEntry(it) }
       }
+    }
+  }
+
+  private fun resolveTargetEntry(
+    entry: CompileClasspathEntry.TargetBundle,
+    project: com.intellij.openapi.project.Project,
+    jarFs: JarFileSystem,
+    localFs: LocalFileSystem
+  ): com.intellij.openapi.vfs.VirtualFile? {
+    val bundleFile = localFs.findFileByNioFile(entry.bundle.location) ?: return null
+    val root = if (entry.bundle.isDirectory) bundleFile else jarFs.getJarRootForLocalFile(bundleFile) ?: bundleFile
+    val relativePath = entry.entryPath
+    val target = if (relativePath == null) {
+      root
+    } else {
+      root.findFileByRelativePath(relativePath) ?: return null
+    }
+    return when {
+      target.fileSystem === jarFs && target.extension?.lowercase() in setOf("jar", "aar", "war") ->
+        extractNestedJar(project, root, target)
+      target.fileSystem === localFs -> jarFs.getJarRootForLocalFile(target) ?: target
+      else -> target
     }
   }
 
