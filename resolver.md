@@ -29,25 +29,24 @@ Responsibility 3 – Assemble Launch Configuration (In Progress)
       mapping project state through `ConfigService`.
   Status
     - Legacy `LaunchConfigGenerator` replaced by the shared launcher stack.
+    - Core `LaunchEnvironment` + `LaunchPlanner` live in `pde-resolver`; the IDE now feeds ConfigService data into the core planner via a thin adapter.
   Next focus
-    - Ensure launch orchestration extracted in Responsibility #2 remains a
-      thin adapter layer inside the plugin once core planners exist.
+    - Expose the same LaunchEnvironment surfaces to the CLI entry points and
+      extend renderer coverage tests (config.ini, bundles.info, dev.properties).
 
 Launch Logic Extraction Plan (Responsibility #3)
-  1. Define core inputs
-     - Introduce a typed `LaunchEnvironment` DTO in `pde-resolver` mirroring
+  1. Define core inputs — Done (Nov 17, 2025)
+     - Introduced a typed `LaunchEnvironment` DTO in `pde-resolver` mirroring
        the fields currently surfaced by `ConfigService`.
-  2. Move launch aggregation into core
-     - Port `LauncherPlanBuilder.build` to a core orchestrator that consumes
-       `LaunchEnvironment`, returns `LauncherPlan` plus `LaunchContext`, and
-       preserves workspace precedence and startup semantics.
+  2. Move launch aggregation into core — Done (Nov 17, 2025)
+     - `LaunchPlanner` now consumes `LaunchEnvironment`, returns `LauncherPlan`
+       plus `LaunchContext`, and preserves workspace precedence/startup semantics.
   3. Expose rendering helpers
      - Extend existing renderers to accept simple data containers so they
        can be invoked by the IDE and a CLI without additional adapters.
-  4. Adapt the IntelliJ plugin
-     - Replace `LauncherPlanBuilder` with a thin adapter translating
-       `ConfigService` into `LaunchEnvironment`, delegating plan creation and
-       rendering to the core module.
+  4. Adapt the IntelliJ plugin — Done (Nov 17, 2025)
+     - LauncherPlanBuilder now maps ConfigService/ResolveSession data into
+       `LaunchEnvironment` and delegates plan creation to the core module.
   5. Provide CLI-ready surfaces
      - Add a facade in `pde-resolver` that accepts filesystem inputs,
        constructs a `LaunchEnvironment`, and emits launch artefacts through
@@ -58,9 +57,9 @@ Launch Logic Extraction Plan (Responsibility #3)
        `config.ini`, `bundles.info`, and `dev.properties` payloads.
 
 Testing Prerequisites (target: early regression coverage)
-  - Promote `LauncherPlanBuilder.build` into `pde-resolver` so tests can
+  - ✅ Promote `LauncherPlanBuilder.build` into `pde-resolver` so tests can
     invoke launch planning without IntelliJ dependencies.
-  - Introduce a serialisable `LaunchEnvironment` matching `ConfigService`
+  - ✅ Introduce a serialisable `LaunchEnvironment` matching `ConfigService`
     inputs to feed deterministic target libraries, dev modules, and startup
     levels into tests.
   - Keep launcher renderers accepting DTOs only, allowing tests to call
@@ -95,8 +94,7 @@ Status and Roadmap
     - Workspace resolver APIs shared across runtime, fragment, and launch flows with unified diagnostics/notifier support.
     - Launcher models/assembler/renderers operate from `pde-resolver`, with IDE adapters consuming them.
   Next
-    - Advance Responsibility #3 by introducing a core `LaunchEnvironment` and migrating launcher aggregation into `pde-resolver`.
-    - Expose CLI-friendly entry points once core launch orchestration is available.
+    - Expose CLI-friendly entry points backed by the new `LaunchEnvironment` / `LaunchPlanner` surfaces.
     - Formalise caching/reuse story for resolver sessions inside plugin services.
   Detailed Plan
     1. Extract resolver into core (`pde-resolver`) — Done
