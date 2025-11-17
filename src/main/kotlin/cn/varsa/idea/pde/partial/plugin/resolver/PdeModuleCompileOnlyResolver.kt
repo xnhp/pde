@@ -13,6 +13,13 @@ import com.intellij.openapi.module.*
 import com.intellij.openapi.roots.*
 import java.util.*
 
+/**
+ * Maps Eclipse `build.properties` compile-only classpaths into IntelliJ module order entries.
+ *
+ * Note: this resolver is intentionally separate from the shared `pde-resolver` runtime planner.
+ * It does not attempt dependency resolution; it simply mirrors jars.extra.classpath semantics so
+ * IDEA can compile modules with the same libraries Eclipse would see.
+ */
 class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
   override val displayName: String = message("resolver.pde.buildCompileOnly")
 
