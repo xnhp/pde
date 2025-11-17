@@ -129,6 +129,31 @@ class ResolverTest {
   }
 
   @Test
+  fun requireBundle_picks_highest_version_deterministically() {
+    val target = tpIndex(
+      rb("b", "1.1.0"),
+      rb("b", "1.5.0"),
+      rb("b", "1.7.0")
+    )
+    val workspace = emptyList<WorkspaceBundleDescriptor>()
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b;bundle-version=\"[1.0.0,2.0.0)\""
+    )
+
+    val expectedVersion = Version.parseVersion("1.7.0")
+    repeat(3) { runIndex ->
+      val result = Resolver.resolve(target, workspace, entry)
+      val picks = result.bundles.filter { it.bsn == "b" }
+      assertEquals("run \\#${runIndex + 1} must include exactly one copy of b", 1, picks.size)
+      val pick = picks.single()
+      assertEquals(expectedVersion, pick.version)
+      assertFalse("selected bundle comes from target platform", pick.isWorkspace)
+    }
+  }
+
+  @Test
   fun reexport_closure_pulls_transitive_requirements() {
     // A requires B, B requires C with re-export
     val target = tpIndex(
