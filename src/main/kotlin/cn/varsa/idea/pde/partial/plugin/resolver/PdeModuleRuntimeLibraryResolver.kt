@@ -9,7 +9,6 @@ import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.openapi.resolver.*
 import cn.varsa.idea.pde.partial.plugin.support.*
-import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.algo.*
 import cn.varsa.pde.resolver.manifest.canonicalName
 import java.nio.file.Path
@@ -60,47 +59,22 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val bundleManifest = cacheService.getManifest(area) ?: return
 
     area.updateModel { model ->
-      val ctx = buildContext(project, cacheService)
+      val ctx = buildResolverContext(project, cacheService)
       val entryDesc = ctx.workspaceEntry(area) ?: return@updateModel
+      val session = ResolveSessionService.getInstance(project)
 
       // 1) Ensure module-level runtime library reflects Bundle-ClassPath
       ensureModuleRuntimeLibrary(model, entryDesc.classPathEntries)
 
       // 2) Resolve dependencies via core resolver
-      val result = Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
+      val cached = session.get(area) ?: session.get(entryDesc)
+      val result = cached ?: Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
 
-      // Stash resolve result for postResolve ordering (per run)
-      cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService.getInstance(project).put(area, result)
+      // Stash resolve result for other workflows/postResolve (per run)
+      if (cached == null) session.put(area, entryDesc, result)
 
       // Surface resolver diagnostics via notifications
-      val problems = result.problems.ifEmpty { result.unresolved.map { unresolved ->
-        ResolveProblem(
-          type = ResolveProblemType.MISSING_BUNDLE,
-          symbol = unresolved.bsn,
-          range = unresolved.range,
-          message = unresolved.reason
-        )
-      } }
-      if (problems.isNotEmpty()) {
-        val msg = buildString {
-          append("Resolver issues for ")
-          append(area.name)
-          append(':')
-          problems.forEach { problem ->
-            append("\n • ")
-            append(problem.symbol)
-            problem.range?.let { r ->
-              append(" ")
-              append(r.toString())
-            }
-            append(" [")
-            append(problem.type)
-            append("] ")
-            append(problem.message)
-          }
-        }
-        cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier.important("PDE Resolver", msg).notify(project)
-      }
+      notifyResolverProblems(project, area.name, result)
 
       // 3) Mirror workspace host deps (modules + project-level libs)
       val hostLibs = mirrorHostDependencies(area, model, ctx, result)
@@ -121,14 +95,11 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     val hostBCN = project.fragmentHostManifest(manifest, area)?.canonicalName
 
     area.updateModel { model ->
-      // Reuse cached resolver result if available (avoid recompute)
       val session = cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService.getInstance(project)
-      val cached = session.get(area)
-      val ctx = buildContext(project, cacheService)
+      val ctx = buildResolverContext(project, cacheService)
       val entryDesc = ctx.workspaceEntry(area) ?: return@updateModel
+      val cached = session.get(area) ?: session.get(entryDesc)
       val orderingResult = cached ?: Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
-      // Consume once to keep session small
-      session.remove(area)
 
       val orderEntries = model.orderEntries.toMutableList()
       val orderEntriesMap = orderEntries.associateBy { it.presentableName }
@@ -162,51 +133,6 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
   }
 
   // Helpers
-
-  private data class Context(
-    val project: com.intellij.openapi.project.Project,
-    val cache: BundleManifestCacheService,
-    val tpService: PluginTargetIndexService,
-    val moduleByBsn: Map<String, Module>,
-    val workspace: List<WorkspaceBundleDescriptor>,
-    val descriptorByModule: MutableMap<Module, WorkspaceBundleDescriptor>,
-    val targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex
-  )
-
-  private fun buildContext(project: com.intellij.openapi.project.Project, cache: BundleManifestCacheService): Context {
-    val tpService = PluginTargetIndexService.getInstance(project)
-    val allPdeModules = project.allPDEModules()
-    val moduleByBsn = allPdeModules.mapNotNull { m ->
-      val man = cache.getManifest(m)
-      val bsn = man?.bundleSymbolicName?.key
-      if (bsn != null) bsn to m else null
-    }.toMap()
-    fun modulePath(m: Module) = m.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) }
-    val descriptorByModule = mutableMapOf<Module, WorkspaceBundleDescriptor>()
-    val workspace = allPdeModules.mapNotNull { m ->
-      val path = modulePath(m) ?: return@mapNotNull null
-      val descriptor = runCatching { WorkspaceBundleLoader.load(path) }
-        .getOrElse { cache.getManifest(m)?.let { WorkspaceBundleDescriptor(path, it) } }
-      descriptor?.also { descriptorByModule[m] = it }
-    }
-    val targetIndex = tpService.getIndex()
-    return Context(project, cache, tpService, moduleByBsn, workspace, descriptorByModule, targetIndex)
-  }
-
-  private fun Context.workspaceEntry(area: Module): WorkspaceBundleDescriptor? {
-    descriptorByModule[area]?.let { return it }
-    val path = area.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) } ?: return null
-    val descriptor = runCatching { WorkspaceBundleLoader.load(path) }
-      .getOrElse { cache.getManifest(area)?.let { WorkspaceBundleDescriptor(path, it) } }
-    descriptor?.let { descriptorByModule[area] = it }
-    return descriptor
-  }
-
-  private fun Context.options(includeHosts: Boolean) = ResolveOptions(
-    whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
-    preferWorkspace = true,
-    includeHostsForFragments = includeHosts
-  )
 
   private fun ensureModuleRuntimeLibrary(model: ModifiableRootModel, classPathEntries: List<Path>) {
     val libraryTableModel = model.moduleLibraryTable.modifiableModel
@@ -243,19 +169,10 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     }
   }
 
-  private fun dependencyOrderFrom(
-    result: cn.varsa.pde.resolver.algo.ResolveResult,
-    map: Map<String, OrderEntry>
-  ): List<OrderEntry> = result.bundles.filter { !it.isWorkspace }.map { rb ->
-    val dash = "${rb.bsn}-${rb.version}"
-    val at = "$ProjectLibraryNamePrefix${rb.bsn}${BundleDefinition.canonicalNameSeparator}${rb.version}"
-    listOf(dash, "$ProjectLibraryNamePrefix$dash", at)
-  }.flatten().mapNotNull { map[it] }
-
   private fun mirrorHostDependencies(
     area: Module,
     model: ModifiableRootModel,
-    ctx: Context,
+    ctx: ResolverContext,
     result: cn.varsa.pde.resolver.algo.ResolveResult
   ): List<Library> {
     fun addModuleDependency(moduleToAdd: Module): ModuleOrderEntry =
@@ -296,7 +213,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
   private fun addResolvedLibraries(
     model: ModifiableRootModel,
-    ctx: Context,
+    ctx: ResolverContext,
     result: cn.varsa.pde.resolver.algo.ResolveResult,
     hostLibraries: List<Library>
   ) {

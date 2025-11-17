@@ -139,6 +139,7 @@ object Resolver {
     }
 
     val selected = LinkedHashMap<String, Candidate>()
+    var fragmentHostCandidate: Candidate? = null
     val unresolved = LinkedHashSet<UnresolvedBundle>()
 
     val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, Version>>()
@@ -155,7 +156,9 @@ object Resolver {
       val (hostBsn, hostRange) = hostPair
       val host = select(hostBsn, hostRange)
       if (host != null) {
-        selected.putIfAbsent(hostBsn, host.copy(isHost = true))
+        val resolvedHost = host.copy(isHost = true)
+        selected[hostBsn] = resolvedHost
+        fragmentHostCandidate = resolvedHost
       } else {
         unresolved.add(UnresolvedBundle(hostBsn, hostRange, "fragmentHost"))
       }
@@ -179,10 +182,16 @@ object Resolver {
       }
     }
 
-    val requires = entry.manifest.requiredBundleAndVersion()
+    val requires = LinkedHashMap(entry.manifest.requiredBundleAndVersion())
+    fragmentHostCandidate?.manifest?.requiredBundleAndVersion()?.forEach { (bsn, range) ->
+      requires.putIfAbsent(bsn, range)
+    }
     requires.forEach { (bsn, range) -> addRequireWithClosure(bsn, range) }
 
-    val imports = entry.manifest.importedPackageAndVersion()
+    val imports = LinkedHashMap(entry.manifest.importedPackageAndVersion())
+    fragmentHostCandidate?.manifest?.importedPackageAndVersion()?.forEach { (pkg, range) ->
+      imports.putIfAbsent(pkg, range)
+    }
 
     data class PkgProvider(
       val bsn: String,

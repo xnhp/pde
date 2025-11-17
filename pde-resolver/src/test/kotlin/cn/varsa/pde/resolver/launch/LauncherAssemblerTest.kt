@@ -12,8 +12,8 @@ import java.nio.file.Paths
 class LauncherAssemblerTest {
   @Test
   fun assemblesPlanWithStartLevelsAndFramework() {
-    val rb1 = ResolvedBundle("org.eclipse.osgi", Version.parseVersion("3.18.0"), Paths.get("/tp/osgi.jar"), false, false)
-    val rb2 = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/tp/a.jar"), false, false)
+    val rb1 = ResolvedBundle("org.eclipse.osgi", Version.parseVersion("3.18.0"), Paths.get("/tp/osgi.jar"), cn.varsa.pde.resolver.algo.BundleOrigin.TARGET)
+    val rb2 = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/tp/a.jar"), cn.varsa.pde.resolver.algo.BundleOrigin.TARGET)
     val result = ResolveResult(listOf(rb1, rb2), emptyMap<String, VersionRange>(), emptyMap())
     val ctx = LaunchContext(startupLevels = mapOf("com.example.a" to 2))
     val opts = LauncherOptions(defaultStartLevel = 4)
@@ -29,8 +29,8 @@ class LauncherAssemblerTest {
 
   @Test
   fun rendersConfigIniAndBundlesInfo() {
-    val rb1 = ResolvedBundle("org.eclipse.osgi", Version.parseVersion("3.18.0"), Paths.get("/tp/osgi.jar"), false, false)
-    val rb2 = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/tp/a.jar"), false, false)
+    val rb1 = ResolvedBundle("org.eclipse.osgi", Version.parseVersion("3.18.0"), Paths.get("/tp/osgi.jar"), cn.varsa.pde.resolver.algo.BundleOrigin.TARGET)
+    val rb2 = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/tp/a.jar"), cn.varsa.pde.resolver.algo.BundleOrigin.TARGET)
     val plan = LauncherPlan(
       listOf(
         BundleStartSpec(rb1.bsn, rb1.version, rb1.path, 4, true, false),
@@ -51,8 +51,8 @@ class LauncherAssemblerTest {
 
   @Test
   fun prefersWorkspaceBundles() {
-    val target = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/tp/a.jar"), false, false)
-    val workspace = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/ws/a"), true, false)
+    val target = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/tp/a.jar"), cn.varsa.pde.resolver.algo.BundleOrigin.TARGET)
+    val workspace = ResolvedBundle("com.example.a", Version.parseVersion("1.0.0"), Paths.get("/ws/a"), cn.varsa.pde.resolver.algo.BundleOrigin.WORKSPACE)
     val result = ResolveResult(listOf(target, workspace), emptyMap(), emptyMap())
     val ctx = LaunchContext(startupLevels = mapOf("com.example.a" to 3))
     val plan = LauncherAssembler.from(result, ctx, LauncherOptions(defaultStartLevel = 4))

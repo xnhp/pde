@@ -5,7 +5,12 @@ import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import cn.varsa.idea.pde.partial.plugin.config.TargetDefinitionService
 import cn.varsa.idea.pde.partial.plugin.config.PreferenceService
 import cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier
+import cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService
+import cn.varsa.idea.pde.partial.plugin.resolver.collectProblems
+import cn.varsa.idea.pde.partial.plugin.resolver.formatResolverProblems
 import cn.varsa.pde.resolver.algo.ResolveOptions
+import cn.varsa.pde.resolver.algo.ResolveProblem
+import cn.varsa.pde.resolver.algo.ResolveProblemType
 import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.launch.BundleStartSpec
@@ -50,6 +55,7 @@ object LauncherPlanBuilder {
     }
 
     val targetIndex = PluginTargetIndexService.getInstance(project).getIndex()
+    val resolveSession = ResolveSessionService.getInstance(project)
     val workspaceDescriptors = configService.devModules.mapNotNull { dm ->
       val moduleDir = File(configService.projectDirectory, dm.relativePathToProject)
       val manifest = configService.getManifest(moduleDir) ?: return@mapNotNull null
@@ -62,11 +68,21 @@ object LauncherPlanBuilder {
       includeHostsForFragments = true
     )
 
-    val unresolved = mutableListOf<String>()
+    val problemsByScope = linkedMapOf<String, MutableList<ResolveProblem>>()
+
+    fun recordProblems(scope: String, problems: List<ResolveProblem>) {
+      if (problems.isEmpty()) return
+      problemsByScope.getOrPut(scope) { mutableListOf() }.addAll(problems)
+    }
+
+    fun scopeName(entry: WorkspaceBundleDescriptor): String =
+      entry.manifest.bundleSymbolicName?.key ?: entry.path.fileName?.toString() ?: entry.path.toString()
 
     workspaceDescriptors.forEach { entry ->
-      val result = Resolver.resolve(targetIndex, workspaceDescriptors, entry, resolverOptions)
-      result.unresolved.forEach { unresolved += "${it.bsn}${it.range?.let { r -> " $r" } ?: ""}" }
+      val cached = resolveSession.get(entry)
+      val result = cached ?: Resolver.resolve(targetIndex, workspaceDescriptors, entry, resolverOptions)
+      if (cached == null) resolveSession.put(entry, result)
+      recordProblems(scopeName(entry), result.collectProblems())
       result.bundles.forEach { rb ->
         registerBundle(rb.bsn, rb.version, rb.path, rb.isWorkspace)
       }
@@ -86,7 +102,13 @@ object LauncherPlanBuilder {
         if (rb != null) {
           registerBundle(startBsn, rb.manifest.bundleVersion, rb.location, false)
         } else {
-          unresolved += "$startBsn [startup-level]"
+          recordProblems("Launch Plan", listOf(
+            ResolveProblem(
+              type = ResolveProblemType.MISSING_BUNDLE,
+              symbol = startBsn,
+              message = "startup-level"
+            )
+          ))
         }
       }
     }
@@ -96,9 +118,11 @@ object LauncherPlanBuilder {
       bundles = bundles,
       framework = bundles.firstOrNull { it.bsn == options.frameworkBSN }
     )
-    if (unresolved.isNotEmpty()) {
-      val message = unresolved.joinToString(separator = "\n", prefix = "\n • ")
-      PdeNotifier.important("PDE Resolver", "Unresolved launch dependencies:$message").notify(project)
+    if (problemsByScope.isNotEmpty()) {
+      val message = problemsByScope.entries.joinToString(separator = "\n\n") { (scope, problems) ->
+        formatResolverProblems(scope, problems)
+      }
+      PdeNotifier.important("PDE Resolver", message).notify(project)
     }
     val context = LaunchContext(
       startupLevels = startupLevels,

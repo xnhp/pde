@@ -1,18 +1,19 @@
 package cn.varsa.idea.pde.partial.plugin.resolver
 
-import cn.varsa.idea.pde.partial.common.*
-import cn.varsa.idea.pde.partial.common.support.*
-import cn.varsa.idea.pde.partial.plugin.cache.*
-import cn.varsa.idea.pde.partial.plugin.config.*
-import cn.varsa.idea.pde.partial.plugin.domain.*
-import cn.varsa.idea.pde.partial.plugin.facet.*
-import cn.varsa.idea.pde.partial.plugin.i18n.*
-import cn.varsa.idea.pde.partial.plugin.openapi.resolver.*
+import cn.varsa.idea.pde.partial.common.KotlinOrderEntryName
+import cn.varsa.idea.pde.partial.plugin.cache.BundleManifestCacheService
+import cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService
+import cn.varsa.idea.pde.partial.plugin.facet.PDEFacet
+import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles
+import cn.varsa.idea.pde.partial.plugin.openapi.resolver.ManifestLibraryResolver
 import cn.varsa.idea.pde.partial.plugin.support.*
-import cn.varsa.pde.resolver.manifest.*
-import cn.varsa.pde.resolver.support.contains
-import com.intellij.openapi.module.*
-import com.intellij.openapi.roots.*
+import cn.varsa.pde.resolver.algo.Resolver
+import com.intellij.openapi.module.Module
+import com.intellij.openapi.roots.DependencyScope
+import com.intellij.openapi.roots.JdkOrderEntry
+import com.intellij.openapi.roots.ModuleOrderEntry
+import com.intellij.openapi.roots.ModuleSourceOrderEntry
+import com.intellij.openapi.roots.OrderEntry
 
 class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
   override val displayName: String = EclipsePDEPartialBundles.message("resolver.pde.moduleFragment")
@@ -20,15 +21,28 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
   override fun resolve(area: Module) {
     PDEFacet.getInstance(area) ?: return
 
-    val cacheService = BundleManifestCacheService.getInstance(area.project)
-    val hostAndRange = cacheService.getManifest(area)?.fragmentHostAndVersionRange()
+    val project = area.project
+    val cacheService = BundleManifestCacheService.getInstance(project)
+    cacheService.getManifest(area) ?: return
+
+    val ctx = buildResolverContext(project, cacheService)
+    val entryDesc = ctx.workspaceEntry(area) ?: return
+
+    val session = ResolveSessionService.getInstance(project)
+    val cached = session.get(area) ?: session.get(entryDesc)
+    val result = cached ?: Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
+    if (cached == null) session.put(area, entryDesc, result)
+
+    notifyResolverProblems(project, area.name, result)
 
     area.updateModel { model ->
-      area.project.allPDEModules(area).filter {
-        cacheService.getManifest(it)?.run {
-          bundleSymbolicName?.key == hostAndRange?.first && bundleVersion in hostAndRange?.second
-        } == true
-      }.forEach { model.findModuleOrderEntry(it) ?: model.addModuleOrderEntry(it) }
+      result.moduleDependencies.forEach { bsn ->
+        val dependencyModule = ctx.moduleByBsn[bsn] ?: return@forEach
+        if (dependencyModule == area) return@forEach
+        val entry = model.findModuleOrderEntry(dependencyModule) ?: model.addModuleOrderEntry(dependencyModule)
+        entry.scope = DependencyScope.COMPILE
+        entry.isExported = true
+      }
     }
   }
 
@@ -37,132 +51,33 @@ class PdeModuleFragmentLibraryResolver : ManifestLibraryResolver {
 
     val project = area.project
     val cacheService = BundleManifestCacheService.getInstance(project)
-    val tpService = PluginTargetIndexService.getInstance(project)
+    val ctx = buildResolverContext(project, cacheService)
+    val entryDesc = ctx.workspaceEntry(area) ?: return
 
-    val manifest = cacheService.getManifest(area) ?: return
-
-    // Build workspace descriptors and module lookup by BSN
-    val allPdeModules = project.allPDEModules(area)
-    allPdeModules.mapNotNull { m ->
-      val man = cacheService.getManifest(m)
-      val bsn = man?.bundleSymbolicName?.key
-      if (bsn != null) bsn to m else null
-    }.toMap()
-
-    // Determine fragment host manifest (workspace preferred)
-    val hostManifestAndPath = manifest.fragmentHostAndVersionRange()?.let { (hostBsn, hostRange) ->
-      val hostModule = allPdeModules.find { m ->
-        val man = cacheService.getManifest(m)
-        val bsn = man?.bundleSymbolicName?.key
-        val ver = man?.bundleVersion
-        bsn == hostBsn && (ver in hostRange)
-      }
-      if (hostModule != null) {
-        val man = cacheService.getManifest(hostModule)!!
-        val path = hostModule.moduleRootManager.contentRoots.firstOrNull()?.path
-        Triple(hostBsn, man, path?.let { java.nio.file.Paths.get(it) })
-      } else {
-        val hostBundle = tpService.getBundlesByBSN(hostBsn, hostRange)
-        val man = hostBundle?.manifest
-        val path = hostBundle?.location
-        if (man != null && path != null) Triple(hostBsn, man, path) else null
-      }
-    }
-
-    // Prepare resolver inputs (workspace + target index)
-    val workspace = allPdeModules.mapNotNull { m ->
-      val man = cacheService.getManifest(m) ?: return@mapNotNull null
-      val path = m.moduleRootManager.contentRoots.firstOrNull()?.path?.let { java.nio.file.Paths.get(it) }
-        ?: return@mapNotNull null
-      cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor(path, man)
-    }
-    val targetIndex = PluginTargetIndexService.getInstance(project).getIndex()
-
-    val options = cn.varsa.pde.resolver.algo.ResolveOptions(
-      whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
-      preferWorkspace = true,
-      includeHostsForFragments = false
-    )
-
-    val hostAndName = hostManifestAndPath?.let { (_, hostMan, _) ->
-      hostMan to hostMan.canonicalName
-    }
+    val session = ResolveSessionService.getInstance(project)
+    val cached = session.get(area) ?: session.get(entryDesc)
+    val result = cached ?: Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
 
     area.updateModel { model ->
       val orderEntries = model.orderEntries.toMutableList()
       val orderEntriesMap = orderEntries.associateBy { it.presentableName }
+      val dependencyOrder = dependencyOrderFrom(result, orderEntriesMap)
+      if (dependencyOrder.isEmpty()) return@updateModel
 
-      // Use core resolver to compute host dependencies order (libraries only)
-      val dependencyOrder = hostManifestAndPath?.let { (_, hostMan, hostPath) ->
-        val entry = cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor(hostPath!!, hostMan)
-        val result = cn.varsa.pde.resolver.algo.Resolver.resolve(targetIndex, workspace, entry, options)
-        val names = result.bundles.filter { !it.isWorkspace }.map { rb ->
-          val dash = "${rb.bsn}-${rb.version}"
-          val at = "$ProjectLibraryNamePrefix${rb.bsn}${BundleDefinition.canonicalNameSeparator}${rb.version}"
-          listOf(dash, "$ProjectLibraryNamePrefix$dash", at)
-        }.flatten()
-        names.mapNotNull { n -> orderEntriesMap[n] }
+      val anchor: (OrderEntry) -> Boolean = { entry ->
+        entry is JdkOrderEntry || entry is ModuleSourceOrderEntry || entry.presentableName.startsWith(KotlinOrderEntryName)
       }
-      // Build fragment->host mapping for present library order entries
-      val libEntries = orderEntries.filterIsInstance<LibraryOrderEntry>()
-        .mapNotNull { it.library?.name?.let { n -> it to n } }
-        .filter { it.second.startsWith(ProjectLibraryNamePrefix) }
 
-      data class LibKey(val entry: LibraryOrderEntry, val bsn: String, val ver: org.osgi.framework.Version)
-      fun parseLib(name: String): Pair<String, org.osgi.framework.Version>? {
-        val tail = name.substringAfterLast(ProjectLibraryNamePrefix)
-        val bsn = tail.substringBeforeLast(BundleDefinition.canonicalNameSeparator)
-        val verText = tail.substringAfterLast(BundleDefinition.canonicalNameSeparator)
-        val ver = try { org.osgi.framework.Version.parseVersion(verText) } catch (_: Exception) { return null }
-        return bsn to ver
-      }
-      val presentLibs: List<LibKey> = libEntries.mapNotNull { (entry, name) ->
-        val (bsn, ver) = parseLib(name) ?: return@mapNotNull null
-        LibKey(entry, bsn, ver)
-      }
-      val libsByBsn: Map<String, java.util.NavigableMap<org.osgi.framework.Version, LibraryOrderEntry>> =
-        presentLibs.groupBy { it.bsn }.mapValues { (_, list) ->
-          val nav = java.util.TreeMap<org.osgi.framework.Version, LibraryOrderEntry>()
-          list.forEach { nav[it.ver] = it.entry }
-          nav
-        }
+      val initialAnchor = orderEntries.indexOfLast(anchor) + 1
 
-      val fragment2HostOrder: Map<OrderEntry, OrderEntry> = presentLibs.mapNotNull { key ->
-        val bcn = key.bsn + BundleDefinition.canonicalNameSeparator + key.ver
-        val bundle = tpService.getBundleByBCN(bcn)
-        val hostPair = bundle?.manifest?.fragmentHostAndVersionRange() ?: return@mapNotNull null
-        val hostNav = libsByBsn[hostPair.first] ?: return@mapNotNull null
-        val hostEntry = hostNav.descendingMap().entries.firstOrNull { hostPair.second.includes(it.key) }?.value
-          ?: hostNav.lastEntry()?.value
-        if (hostEntry != null) key.entry to hostEntry else null
-      }.toMap()
-
-      fun isAnchor(e: OrderEntry): Boolean =
-        e is JdkOrderEntry || e is ModuleSourceOrderEntry || e.presentableName.startsWith(
-          KotlinOrderEntryName
-        ) || e.presentableName.equalAny(
-          ModuleLibraryName, "$ProjectLibraryNamePrefix${hostAndName?.second}"
-        ) || e.presentableName == hostAndName?.second
-
-      // Initial anchor index before any changes (may shift after removals)
-      val initialAnchorIndex = orderEntries.indexOfLast { isAnchor(it) } + 1
-      val arrangeOrderEntries = orderEntries.apply {
-        dependencyOrder?.also { deps ->
-          // Remove any existing occurrences first to avoid duplicates and index drift
-          removeAll(deps)
-          // Recompute anchor index after removals to avoid out-of-bounds
-          val anchorIndex = (indexOfLast { isAnchor(it) } + 1).let { if (it <= 0) initialAnchorIndex else it }
-          val insertAt = anchorIndex.coerceAtMost(size)
-          addAll(insertAt, deps)
-        }
-
-        fragment2HostOrder.forEach { (fragment, host) ->
-          remove(fragment)
-          val hostIndex = indexOf(host)
-          if (hostIndex >= 0) add(hostIndex, fragment) else add(fragment)
-        }
+      val arranged = orderEntries.apply {
+        removeAll(dependencyOrder)
+        val anchorIndex = (indexOfLast(anchor) + 1).let { idx -> if (idx <= 0) initialAnchor else idx }
+          .coerceAtMost(size)
+        addAll(anchorIndex, dependencyOrder)
       }.toTypedArray()
-      model.rearrangeOrderEntries(arrangeOrderEntries)
+
+      model.rearrangeOrderEntries(arranged)
     }
   }
 }

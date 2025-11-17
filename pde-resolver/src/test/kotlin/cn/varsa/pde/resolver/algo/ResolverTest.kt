@@ -150,6 +150,41 @@ class ResolverTest {
   }
 
   @Test
+  fun fragment_inherits_host_dependencies() {
+    val target = tpIndex(
+      rb(
+        "host",
+        "1.0.0",
+        REQUIRE_BUNDLE to "org.example.require;bundle-version=\"[1.0.0,2.0.0)\", org.example.reexport;bundle-version=\"[1.0.0,2.0.0)\";${VISIBILITY_DIRECTIVE}:=${VISIBILITY_REEXPORT}",
+        IMPORT_PACKAGE to "org.example.hostpkg;version=\"[1.0.0,2.0.0)\""
+      ),
+      rb("org.example.require", "1.1.0"),
+      rb(
+        "org.example.reexport",
+        "1.0.0",
+        REQUIRE_BUNDLE to "org.example.transitive;bundle-version=\"[1.0.0,2.0.0)\""
+      ),
+      rb("org.example.transitive", "1.0.0"),
+      rb("org.example.pkgprovider", "1.0.0", EXPORT_PACKAGE to "org.example.hostpkg;version=\"1.5.0\"")
+    )
+    val fragment = wbd(
+      "fragment",
+      "1.0.0",
+      FRAGMENT_HOST to "host;bundle-version=\"[1.0.0,1.0.0]\""
+    )
+    val workspace = listOf(fragment)
+
+    val result = Resolver.resolve(target, workspace, fragment, ResolveOptions(includeHostsForFragments = true))
+    val bsns = result.bundles.map { it.bsn }
+
+    assertTrue("host bundle present", bsns.contains("host"))
+    assertTrue("host require-bundle dependency present", bsns.contains("org.example.require"))
+    assertTrue("host re-export dependency pulled in", bsns.contains("org.example.reexport"))
+    assertTrue("transitive dependency of re-export present", bsns.contains("org.example.transitive"))
+    assertTrue("host import-package provider present", bsns.contains("org.example.pkgprovider"))
+  }
+
+  @Test
   fun whitelist_prefixes_adds_bundles() {
     val target = tpIndex(
       rb("org.eclipse.swt", "3.0.0"),
