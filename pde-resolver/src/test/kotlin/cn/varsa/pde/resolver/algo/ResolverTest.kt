@@ -117,6 +117,31 @@ class ResolverTest {
   }
 
   @Test
+  fun reexport_chain_pulls_all_transitive_requirements() {
+    // Workspace A re-exports B, which re-exports C. Both B and C must be selected once.
+    val target = tpIndex(
+      rb(
+        "b",
+        "1.0.0",
+        REQUIRE_BUNDLE to "c;bundle-version=\"[1.0.0,1.0.0]\";$VISIBILITY_DIRECTIVE:=$VISIBILITY_REEXPORT"
+      ),
+      rb("c", "1.0.0")
+    )
+    val workspace = emptyList<WorkspaceBundleDescriptor>()
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b;bundle-version=\"[1.0.0,1.0.0]\";$VISIBILITY_DIRECTIVE:=$VISIBILITY_REEXPORT"
+    )
+
+    val result = Resolver.resolve(target, workspace, entry)
+    val counts = result.bundles.groupingBy { it.bsn }.eachCount()
+
+    assertEquals("b must be pulled exactly once", 1, counts["b"] ?: 0)
+    assertEquals("c must be pulled exactly once via re-export chain", 1, counts["c"] ?: 0)
+  }
+
+  @Test
   fun transitive_require_bundle_are_included() {
     // A requires B (no re-export), B requires C (no re-export) -> expect B and C
     val target = tpIndex(
