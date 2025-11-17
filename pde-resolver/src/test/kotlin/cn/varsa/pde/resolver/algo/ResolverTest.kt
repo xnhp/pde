@@ -78,6 +78,29 @@ class ResolverTest {
   }
 
   @Test
+  fun requireBundle_skips_workspace_versions_outside_range() {
+    val target = tpIndex(
+      rb("b", "1.1.0"),
+      rb("b", "1.9.0"),
+      rb("b", "2.4.0")
+    )
+    val workspace = listOf(
+      wbd("b", "2.2.0")
+    )
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b;bundle-version=\"[1.0.0,2.0.0)\""
+    )
+
+    val result = Resolver.resolve(target, workspace, entry, ResolveOptions(preferWorkspace = true))
+    val picked = result.bundles.firstOrNull { it.bsn == "b" }
+    assertNotNull(picked)
+    assertFalse("workspace version outside the declared range must be ignored", picked!!.isWorkspace)
+    assertEquals(Version.parseVersion("1.9.0"), picked.version)
+  }
+
+  @Test
   fun reexport_closure_pulls_transitive_requirements() {
     // A requires B, B requires C with re-export
     val target = tpIndex(
