@@ -5,6 +5,7 @@ import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import org.junit.Assert.*
 import org.junit.Test
+import org.osgi.framework.Constants.BUNDLE_CLASSPATH
 import org.osgi.framework.Constants.BUNDLE_SYMBOLICNAME
 import org.osgi.framework.Constants.BUNDLE_VERSION
 import org.osgi.framework.Constants.EXPORT_PACKAGE
@@ -15,6 +16,7 @@ import org.osgi.framework.Constants.VISIBILITY_DIRECTIVE
 import org.osgi.framework.Constants.VISIBILITY_REEXPORT
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
+import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.NavigableMap
 import java.util.TreeMap
@@ -151,6 +153,46 @@ class ResolverTest {
       assertEquals(expectedVersion, pick.version)
       assertFalse("selected bundle comes from target platform", pick.isWorkspace)
     }
+  }
+
+  @Test
+  fun bundle_classpath_entries_include_embedded_jars() {
+    val bundleDir = Files.createTempDirectory("resolver-bundle-classpath").toAbsolutePath().normalize()
+    bundleDir.toFile().deleteOnExit()
+
+    val libDir = bundleDir.resolve("lib")
+    Files.createDirectories(libDir)
+    val embeddedJar = libDir.resolve("embedded.jar")
+    Files.createFile(embeddedJar)
+    embeddedJar.toFile().deleteOnExit()
+
+    val manifest = bm(
+      BUNDLE_SYMBOLICNAME to "embedded.bundle",
+      BUNDLE_VERSION to "1.0.0",
+      BUNDLE_CLASSPATH to ".,lib/embedded.jar"
+    )
+
+    val targetBundle = ResolvedBundle(
+      location = bundleDir,
+      manifest = manifest,
+      isDirectory = true
+    )
+    val target = tpIndex(targetBundle)
+
+    val consumer = wbd(
+      "consumer",
+      "1.0.0",
+      REQUIRE_BUNDLE to "embedded.bundle"
+    )
+
+    val result = Resolver.resolve(target, emptyList(), consumer)
+    val resolved = result.bundles.firstOrNull { it.bsn == "embedded.bundle" }
+    assertNotNull("embedded bundle should be resolved from target", resolved)
+    val classPathEntries = resolved!!.classPathEntries.map { it.toAbsolutePath().normalize() }
+
+    val expectedEntries = listOf(bundleDir, embeddedJar)
+    assertEquals("bundle-classpath must include both base dir and embedded jar", expectedEntries, classPathEntries)
+    assertEquals("class path entries should not contain duplicates", classPathEntries.size, classPathEntries.toSet().size)
   }
 
   @Test
