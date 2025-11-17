@@ -1,14 +1,15 @@
 package cn.varsa.pde.resolver.manifest
 
+import cn.varsa.pde.resolver.support.VersionRangeAny
+import cn.varsa.pde.resolver.support.contains
 import cn.varsa.pde.resolver.support.parseVersion
 import cn.varsa.pde.resolver.support.parseVersionRange
-import cn.varsa.pde.resolver.support.VersionRangeAny
+import org.osgi.framework.Constants.BUNDLE_VERSION_ATTRIBUTE
+import org.osgi.framework.Constants.RESOLUTION_DIRECTIVE
+import org.osgi.framework.Constants.RESOLUTION_OPTIONAL
+import org.osgi.framework.Constants.VERSION_ATTRIBUTE
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
-import org.osgi.framework.Constants.BUNDLE_VERSION_ATTRIBUTE
-import org.osgi.framework.Constants.VERSION_ATTRIBUTE
-
-import cn.varsa.pde.resolver.support.contains
 
 fun BundleManifest.fragmentHostAndVersionRange(): Pair<String, VersionRange>? =
   fragmentHost?.run { key to (value.attribute[BUNDLE_VERSION_ATTRIBUTE].parseVersionRange()) }
@@ -47,16 +48,21 @@ fun BundleManifest.isBundleRequired(
   } == true
 
 fun BundleManifest.requiredBundleAndVersion(): Map<String, VersionRange> =
-  requireBundle?.mapValues { (_, attrs) -> attrs.attribute[BUNDLE_VERSION_ATTRIBUTE].parseVersionRange() }
+  requireBundle?.mandatoryClauses()
+    ?.mapValues { (_, attrs) -> attrs.attribute[BUNDLE_VERSION_ATTRIBUTE].parseVersionRange() }
     ?: emptyMap()
 
 fun BundleManifest.reexportRequiredBundleAndVersion(): Map<String, VersionRange> =
-  requireBundle?.filter { it.value.directive["visibility"] == "reexport" }
+  requireBundle?.mandatoryClauses()?.filter { it.value.directive["visibility"] == "reexport" }
     ?.mapValues { (_, attrs) -> attrs.attribute[BUNDLE_VERSION_ATTRIBUTE].parseVersionRange() } ?: emptyMap()
 
 fun BundleManifest.importedPackageAndVersion(): Map<String, VersionRange> =
-  importPackage?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersionRange() } ?: emptyMap()
+  importPackage?.mandatoryClauses()
+    ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersionRange() } ?: emptyMap()
 
 fun BundleManifest.exportedPackageAndVersion(): Map<String, Version> =
   exportPackage?.mapKeys { it.key.substringBefore(".*") }
     ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersion() } ?: emptyMap()
+
+private fun Map<String, Attrs>.mandatoryClauses(): Map<String, Attrs> =
+  filterNot { (_, attrs) -> attrs.directive[RESOLUTION_DIRECTIVE] == RESOLUTION_OPTIONAL }

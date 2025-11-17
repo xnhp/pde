@@ -186,6 +186,39 @@ class ResolverTest {
   }
 
   @Test
+  fun optional_dependencies_are_ignored_when_missing() {
+    val target = tpIndex(
+      rb("mandatory.bundle", "1.0.0"),
+      rb("pkg.provider", "1.0.0", EXPORT_PACKAGE to "pkg.required;version=\"1.2.0\"")
+    )
+    val workspace = emptyList<WorkspaceBundleDescriptor>()
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "mandatory.bundle;bundle-version=\"[1.0.0,1.0.0]\", optional.bundle;bundle-version=\"[1.0.0,2.0.0)\";resolution:=optional",
+      IMPORT_PACKAGE to "pkg.required;version=\"[1.2.0,2.0.0)\", pkg.optional;version=\"[1.0.0,2.0.0)\";resolution:=optional"
+    )
+
+    val result = Resolver.resolve(target, workspace, entry)
+
+    val selectedBsns = result.bundles.map { it.bsn }
+    assertTrue("mandatory bundle must resolve", selectedBsns.contains("mandatory.bundle"))
+    assertTrue("required package provider must resolve", selectedBsns.contains("pkg.provider"))
+    assertFalse("optional bundle must not be selected", selectedBsns.contains("optional.bundle"))
+
+    assertTrue("requires map must include mandatory bundle", result.requires.keys.contains("mandatory.bundle"))
+    assertFalse("requires map must omit optional bundle", result.requires.keys.contains("optional.bundle"))
+    assertTrue("imports map must include required package", result.imports.keys.contains("pkg.required"))
+    assertFalse("imports map must omit optional package", result.imports.keys.contains("pkg.optional"))
+
+    assertTrue("no unresolved entries expected", result.unresolved.isEmpty())
+    assertTrue(
+      "problem list must not mention optional dependencies",
+      result.problems.none { it.symbol == "optional.bundle" || it.symbol == "pkg.optional" }
+    )
+  }
+
+  @Test
   fun importPackage_selects_provider_workspace_then_target() {
     val target = tpIndex(
       rb("y", "2.0.0", EXPORT_PACKAGE to "p;version=\"1.3.0\"")
