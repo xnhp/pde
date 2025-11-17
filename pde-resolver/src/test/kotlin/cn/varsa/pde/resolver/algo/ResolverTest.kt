@@ -326,6 +326,36 @@ class ResolverTest {
   }
 
   @Test
+  fun fragment_selects_highest_matching_host_version() {
+    val target = tpIndex(
+      rb("host", "1.0.0"),
+      rb("host", "1.5.0"),
+      rb("host", "2.2.0")
+    )
+    val fragment = wbd(
+      "frag",
+      "1.0.0",
+      FRAGMENT_HOST to "host;bundle-version=\"[1.0.0,2.0.0)\""
+    )
+    val workspace = listOf(fragment)
+
+    val result = Resolver.resolve(target, workspace, fragment)
+
+    val hosts = result.bundles.filter { it.bsn == "host" }
+    assertEquals("exactly one host bundle must be selected", 1, hosts.size)
+    val host = hosts.single()
+    assertEquals(Version.parseVersion("1.5.0"), host.version)
+    assertTrue("selected host must be marked as host", host.isHost)
+
+    val hostIndex = result.bundles.indexOf(host)
+    val fragmentIndex = result.bundles.indexOfFirst { it.bsn == "frag" }
+    assertTrue(
+      "resolver must emit host before fragment",
+      hostIndex >= 0 && fragmentIndex >= 0 && hostIndex < fragmentIndex
+    )
+  }
+
+  @Test
   fun fragment_inherits_host_dependencies() {
     val target = tpIndex(
       rb(
