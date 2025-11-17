@@ -12,12 +12,15 @@ import cn.varsa.idea.pde.partial.plugin.support.*
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.compile.CompileClasspathEntry
 import cn.varsa.pde.resolver.compile.CompileClasspathEnvironment
+import cn.varsa.pde.resolver.compile.CompileClasspathMaterializer
+import cn.varsa.pde.resolver.compile.CompileClasspathMaterializerOptions
 import cn.varsa.pde.resolver.compile.CompileClasspathResolver
 import com.intellij.openapi.module.*
 import com.intellij.openapi.roots.*
 import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
 
@@ -65,27 +68,21 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
 
     val compileResult = CompileClasspathResolver.resolve(compileEnv)
 
-    val moduleDependency = compileResult.workspaceDependencies.mapNotNullTo(linkedSetOf()) { symbolicName2Module[it] }
+    val extractionRoot = area.project.presentableUrl?.let { Paths.get(it, "out", "tmp_lib") } ?: return
+    val materialized = CompileClasspathMaterializer.materialize(
+      compileResult,
+      CompileClasspathMaterializerOptions(extractionRoot)
+    )
+
+    val moduleDependency = materialized.workspaceDependencies.mapNotNullTo(linkedSetOf()) { symbolicName2Module[it] }
     val classesRoot = linkedSetOf<VirtualFile>()
     val localFs = LocalFileSystem.getInstance()
     val jarFs = JarFileSystem.getInstance()
 
-    compileResult.entries.forEach { entry ->
-      when (entry) {
-        is CompileClasspathEntry.ModulePath ->
-          localFs.findFileByNioFile(entry.path)?.let { classesRoot += it }
-
-        is CompileClasspathEntry.TargetBundle ->
-          resolveTargetEntry(entry, area.project, jarFs, localFs)?.let { classesRoot += it }
-
-        is CompileClasspathEntry.WorkspaceResource -> {
-          val module = entry.descriptor.manifest.bundleSymbolicName?.key?.let { symbolicName2Module[it] }
-          val vf = module?.moduleRootManager?.contentRoots?.firstNotNullOfOrNull { root ->
-            root.findFileByRelativePath(entry.entryPath)
-          }
-          if (vf != null) classesRoot += vf
-        }
-      }
+    materialized.classpath.forEach { path ->
+      val vf = localFs.refreshAndFindFileByNioFile(path) ?: return@forEach
+      val root = if (Files.isDirectory(path)) vf else jarFs.getJarRootForLocalFile(vf) ?: vf
+      classesRoot += root
     }
 
     area.updateModel { model ->
@@ -117,63 +114,6 @@ class PdeModuleCompileOnlyResolver : BuildLibraryResolver {
       }
     }
   }
-
-  private fun resolveTargetEntry(
-    entry: CompileClasspathEntry.TargetBundle,
-    project: com.intellij.openapi.project.Project,
-    jarFs: JarFileSystem,
-    localFs: LocalFileSystem
-  ): com.intellij.openapi.vfs.VirtualFile? {
-    val bundleFile = localFs.findFileByNioFile(entry.bundle.location) ?: return null
-    val root = if (entry.bundle.isDirectory) bundleFile else jarFs.getJarRootForLocalFile(bundleFile) ?: bundleFile
-    val relativePath = entry.entryPath
-    val target = if (relativePath == null) {
-      root
-    } else {
-      root.findFileByRelativePath(relativePath) ?: return null
-    }
-    return when {
-      target.fileSystem === jarFs && target.extension?.lowercase() in setOf("jar", "aar", "war") ->
-        extractNestedJar(project, root, target)
-      target.fileSystem === localFs -> jarFs.getJarRootForLocalFile(target) ?: target
-      else -> target
-    }
-  }
-
-  private fun extractNestedJar(
-    project: com.intellij.openapi.project.Project,
-    bundleRoot: com.intellij.openapi.vfs.VirtualFile,
-    entry: com.intellij.openapi.vfs.VirtualFile
-  ): com.intellij.openapi.vfs.VirtualFile? {
-    val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
-    val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-
-    val rootEntry = jarfs.getRootByEntry(bundleRoot)
-    val rel = entry.presentableUrl.substringAfter(rootEntry?.presentableUrl ?: bundleRoot.presentableUrl, "")
-    val safeName = sanitizeExtractName(bundleRoot.name, rel)
-    val projectVf = local.findFileByPath(project.presentableUrl ?: return null) ?: return null
-    val outDir = readCompute { projectVf.findChild("out") } ?: writeComputeAndWait {
-      projectVf.createChildDirectory(this, "out")
-    }
-    val tmpLib = readCompute { outDir.findChild("tmp_lib") } ?: writeComputeAndWait {
-      outDir.createChildDirectory(this, "tmp_lib")
-    }
-    val target = readCompute { tmpLib.findChild(safeName) } ?: writeComputeAndWait {
-      tmpLib.createChildData(this, safeName)
-    }
-    writeComputeAndWait {
-      target.getOutputStream(target, entry.modificationStamp, entry.timeStamp).use { os ->
-        entry.inputStream.use { ins -> ins.copyTo(os) }
-      }
-    }
-    return jarfs.getJarRootForLocalFile(target)
-  }
-
-  companion object {
-    fun sanitizeExtractName(bundleName: String, rel: String): String =
-      (bundleName + rel).replace(Regex("[^A-Za-z0-9._-]"), "_")
-  }
-
   override fun postResolve(area: Module) {
     PDEFacet.getInstance(area) ?: return
 
