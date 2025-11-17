@@ -156,6 +156,28 @@ class ResolverTest {
   }
 
   @Test
+  fun requireBundle_handles_circular_dependencies_without_duplication() {
+    val target = tpIndex(
+      rb("b", "1.0.0", REQUIRE_BUNDLE to "c"),
+      rb("c", "1.0.0", REQUIRE_BUNDLE to "b")
+    )
+    val workspace = emptyList<WorkspaceBundleDescriptor>()
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b"
+    )
+
+    val result = Resolver.resolve(target, workspace, entry)
+
+    val bCount = result.bundles.count { it.bsn == "b" }
+    val cCount = result.bundles.count { it.bsn == "c" }
+    assertEquals("bundle b must be included exactly once", 1, bCount)
+    assertEquals("bundle c must be included exactly once", 1, cCount)
+    assertTrue("no unresolved requirements expected when circular bundles resolve", result.unresolved.isEmpty())
+  }
+
+  @Test
   fun bundle_classpath_entries_include_embedded_jars() {
     val bundleDir = Files.createTempDirectory("resolver-bundle-classpath").toAbsolutePath().normalize()
     bundleDir.toFile().deleteOnExit()
