@@ -31,8 +31,8 @@ Responsibility 3 – Assemble Launch Configuration (In Progress)
     - Legacy `LaunchConfigGenerator` replaced by the shared launcher stack.
     - Core `LaunchEnvironment` + `LaunchPlanner` live in `pde-resolver`; the IDE now feeds ConfigService data into the core planner via a thin adapter.
   Next focus
-    - Expose the same LaunchEnvironment surfaces to the CLI entry points and
-      extend renderer coverage tests (config.ini, bundles.info, dev.properties).
+    - Outstanding work items are tracked via Taskwarrior under the
+      `intellij-pde-plugin` project.
 
 Launch Logic Extraction Plan (Responsibility #3)
   1. Define core inputs — Done (Nov 17, 2025)
@@ -42,19 +42,14 @@ Launch Logic Extraction Plan (Responsibility #3)
      - `LaunchPlanner` now consumes `LaunchEnvironment`, returns `LauncherPlan`
        plus `LaunchContext`, and preserves workspace precedence/startup semantics.
   3. Expose rendering helpers
-     - Extend existing renderers to accept simple data containers so they
-       can be invoked by the IDE and a CLI without additional adapters.
+     - Outstanding work is tracked in Taskwarrior (`Responsibility 3 – Expose rendering helpers`).
   4. Adapt the IntelliJ plugin — Done (Nov 17, 2025)
      - LauncherPlanBuilder now maps ConfigService/ResolveSession data into
        `LaunchEnvironment` and delegates plan creation to the core module.
   5. Provide CLI-ready surfaces
-     - Add a facade in `pde-resolver` that accepts filesystem inputs,
-       constructs a `LaunchEnvironment`, and emits launch artefacts through
-       injectable writers for future CLI consumption.
+     - See Taskwarrior task `Responsibility 3 – Provide CLI-ready launch surfaces`.
   6. Guard behaviour parity
-     - Back the refactor with regression tests covering workspace override,
-       startup levels, splash paths, framework selection, and generated
-       `config.ini`, `bundles.info`, and `dev.properties` payloads.
+     - See Taskwarrior task `Responsibility 3 – Guard behaviour parity with launch regression tests`.
 
 Testing Prerequisites (target: early regression coverage)
   - ✅ Promote `LauncherPlanBuilder.build` into `pde-resolver` so tests can
@@ -62,12 +57,7 @@ Testing Prerequisites (target: early regression coverage)
   - ✅ Introduce a serialisable `LaunchEnvironment` matching `ConfigService`
     inputs to feed deterministic target libraries, dev modules, and startup
     levels into tests.
-  - Keep launcher renderers accepting DTOs only, allowing tests to call
-    `ConfigIniRenderer`, `BundlesInfoRenderer`, and `DevPropertiesRenderer`
-    directly.
-  - Reuse resolver fixtures to capture representative `ResolveResult`
-    scenarios and compare generated artefacts against golden strings,
-    catching workspace precedence or configuration regressions early.
+  - Remaining prerequisites (DTO-only renderers, fixture reuse) are managed via Taskwarrior tasks (`Testing prereq – …`).
 
 
 Architecture Reference
@@ -95,8 +85,7 @@ Status and Roadmap
     - Launcher models/assembler/renderers operate from `pde-resolver`, with IDE adapters consuming them.
     - Compile-only classpath parsing exposed via `CompileClasspathResolver`; IDE and future CLI layers reuse it.
   Next
-    - Expose CLI-friendly entry points backed by the new `LaunchEnvironment` / `LaunchPlanner` surfaces.
-    - Formalise caching/reuse story for resolver sessions inside plugin services.
+    - See Taskwarrior for the current backlog (project `intellij-pde-plugin`).
   Detailed Plan
     1. Extract resolver into core (`pde-resolver`) — Done
     2. Model workspace bundles independently — Done
@@ -104,28 +93,7 @@ Status and Roadmap
     4. Reuse `ResolveResult` instances across plugin workflows to avoid redundant recomputation. — Done (cached results now shared via `ResolveSessionService` and consumed by the launcher plan builder)
     5. Guard target index reuse with proactive VFS refreshes when roots first appear.
   Open TODOs
-    - Add resolver unit tests covering: (completed November 17, 2025)
-      - ✅ Fragment bundles inherit host dependencies (Require-Bundle, Import-Package, re-export).
-      - ✅ Require-Bundle version range selection (workspace, target, and tie-breaking coverage).
-      - ✅ Import-Package resolution (target bundles vs project libraries fallback).
-      - ✅ Re-export chains (A re-exports B re-exports C).
-      - ✅ Workspace vs target precedence for identical BSN/version.
-      - ✅ Optional Require-Bundle / Import-Package handling.
-      - ✅ Deterministic selection when multiple satisfying bundles exist.
-      - ✅ Bundle-ClassPath entries (embedded JARs).
-      - ✅ Fragment host selection when multiple host versions available.
-      - ✅ Circular Require-Bundle relationships (no infinite loops).
-    - Invalidate `PluginTargetIndexService` on target changes.
-    - Clean up nested JAR extraction in the compile-only resolver.
-    - Consider batching `ProjectLibraryIndexService` rebuilds.
-    - Remove obsolete “Exclude Bundles” message keys.
-    - Extend `PluginXmlIndex` to cover source-only `plugin.xml` entries.
-    - Share bundle-selection logic between module resolver and launcher
-      plan builder (reuse resolver version picks when generating
-      launch plans).
-    - Reintroduce launch preflight check that validates compiler outputs
-      live under each bundle module (e.g. `<module>/out/production`,
-      `<module>/out/tests`) instead of the project root.
+    - Historical list removed; refer to Taskwarrior (`task project:intellij-pde-plugin list`) for the authoritative backlog.
 
 Lessons Learned
   - Launch plans must include every target bundle plus workspace dev modules
