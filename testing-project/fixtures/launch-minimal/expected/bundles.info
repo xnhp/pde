@@ -1,0 +1,3 @@
+#version=1
+org.eclipse.osgi,1.0.0,target/plugins/org.eclipse.osgi,4,true
+org.example.app,1.0.0,workspace/org.example.app,4,true
