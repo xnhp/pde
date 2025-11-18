@@ -4,8 +4,20 @@ import org.osgi.framework.Version
 import java.nio.file.Path
 
 /**
- * Accumulates resolver outputs and supplemental bundles while enforcing workspace precedence
- * and duplicate suppression so multiple consumers can share the same selection semantics.
+ * Accumulates resolver outputs (and optional supplemental bundles) while enforcing
+ * workspace-over-target precedence plus duplicate suppression.  This lets every consumer
+ * (IDE module resolvers, LaunchPlanner, future CLI flows) share identical semantics when
+ * deciding which BSNs/versions should appear in the runtime/compile classpath.
+ *
+ * Conceptually, the accumulator:
+ *  - Collects {@link ResolveResult} bundles and ad-hoc injections (startup requirements,
+ *    supplemental libraries) keyed by BSN.
+ *  - Ensures workspace bundles replace target ones for the same BSN when
+ *    {@code preferWorkspace} is enabled.
+ *  - Deduplicates entries that point at the same (version, path) pair so later consumers
+ *    don't reimplement suppression logic.
+ *  - Exposes helper methods such as {@link #ensureBundle} so callers can lazily fetch
+ *    missing bundles (e.g., from the target index) only when needed.
  */
 class BundleSelectionAccumulator(private val preferWorkspace: Boolean = true) {
   private data class CandidateKey(val version: Version, val path: Path)
