@@ -14,6 +14,7 @@ dependencies {
   implementation(kotlin("stdlib"))
   implementation(project(":pde-resolver"))
   implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
+  testImplementation(kotlin("test"))
 }
 
 application {
