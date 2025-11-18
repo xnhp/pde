@@ -8,7 +8,6 @@ import cn.varsa.idea.pde.partial.plugin.config.TargetDefinitionService
 import cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier
 import cn.varsa.idea.pde.partial.plugin.resolver.formatResolverProblems
 import cn.varsa.pde.resolver.algo.ResolveOptions
-import cn.varsa.pde.resolver.algo.ResolveResult
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.launch.LaunchContext
 import cn.varsa.pde.resolver.launch.LaunchEnvironment
@@ -63,7 +62,7 @@ object LauncherPlanBuilder {
     val planResult = LaunchPlanner.build(
       environment = environment,
       options = options,
-      session = ServiceLaunchResolveSession(resolveSession)
+      session = resolveSession.asLaunchSession()
     )
 
     if (planResult.problemsByScope.isNotEmpty()) {
@@ -75,11 +74,4 @@ object LauncherPlanBuilder {
 
     return PlanResult(planResult.plan, planResult.context)
   }
-}
-
-private class ServiceLaunchResolveSession(
-  private val delegate: ResolveSessionService
-) : LaunchResolveSession {
-  override fun get(entry: WorkspaceBundleDescriptor): ResolveResult? = delegate.get(entry)
-  override fun put(entry: WorkspaceBundleDescriptor, result: ResolveResult) = delegate.put(entry, result)
 }
