@@ -9,7 +9,9 @@ import cn.varsa.idea.pde.partial.plugin.facet.*
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.openapi.resolver.*
 import cn.varsa.idea.pde.partial.plugin.support.*
-import cn.varsa.pde.resolver.algo.*
+import cn.varsa.pde.resolver.algo.BundleSelectionAccumulator
+import cn.varsa.pde.resolver.algo.ResolveResult
+import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.manifest.canonicalName
 import java.nio.file.Path
 import com.intellij.openapi.module.*
@@ -69,6 +71,9 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       // 2) Resolve dependencies via core resolver
       val cached = session.get(area) ?: session.get(entryDesc)
       val result = cached ?: Resolver.resolve(ctx.targetIndex, ctx.workspace, entryDesc, ctx.options(includeHosts = true))
+      val selection = BundleSelectionAccumulator()
+      selection.add(result)
+      val selectedBundles = selection.entries()
 
       // Stash resolve result for other workflows/postResolve (per run)
       if (cached == null) session.put(area, entryDesc, result)
@@ -80,7 +85,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       val hostLibs = mirrorHostDependencies(area, model, ctx, result)
 
       // 4) Add resolved target libraries (create lazily in project table)
-      addResolvedLibraries(model, ctx, result, hostLibs)
+      addResolvedLibraries(model, ctx, selectedBundles, hostLibs)
       // Keep shared project library index coherent after potential batch creation
       ProjectLibraryIndexService.getInstance(project).rebuild(project)
     }
@@ -214,7 +219,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
   private fun addResolvedLibraries(
     model: ModifiableRootModel,
     ctx: ResolverContext,
-    result: cn.varsa.pde.resolver.algo.ResolveResult,
+    selectedBundles: List<cn.varsa.pde.resolver.algo.ResolvedBundle>,
     hostLibraries: List<Library>
   ) {
     val libsByBsn = projectLibrariesIndex(ctx.project)
@@ -222,7 +227,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
     // Batch create: collect missing libs then create in one project-table commit
     val missing = mutableListOf<Pair<String, Version>>()
-    result.bundles.filter { !it.isWorkspace }.forEach { rb ->
+    selectedBundles.filter { !it.isWorkspace }.forEach { rb ->
       val nav = libsByBsn[rb.bsn]
       if (nav?.get(rb.version) == null) missing += rb.bsn to rb.version
     }
@@ -232,7 +237,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
         val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
         val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
         missing.forEach { (bsn, ver) ->
-          val rb = result.bundles.firstOrNull { it.bsn == bsn && it.version == ver && !it.isWorkspace }
+          val rb = selectedBundles.firstOrNull { it.bsn == bsn && it.version == ver && !it.isWorkspace }
             ?: return@forEach
           val libraryName = "$ProjectLibraryNamePrefix$bsn${BundleDefinition.canonicalNameSeparator}$ver"
           val lib = writeCompute { projTableModel.createLibrary(libraryName) }
@@ -257,7 +262,7 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
       }
     }
 
-    result.bundles.filter { !it.isWorkspace }.forEach { rb ->
+    selectedBundles.filter { !it.isWorkspace }.forEach { rb ->
       val lib = libsByBsn[rb.bsn]?.get(rb.version)
       if (lib != null && addedLibs.add(lib)) {
         val existing = model.findLibraryOrderEntry(lib)

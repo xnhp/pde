@@ -1,10 +1,10 @@
 package cn.varsa.pde.resolver.launch
 
+import cn.varsa.pde.resolver.algo.BundleSelectionAccumulator
 import cn.varsa.pde.resolver.algo.ResolveProblem
 import cn.varsa.pde.resolver.algo.ResolveProblemType
 import cn.varsa.pde.resolver.algo.ResolveResult
 import cn.varsa.pde.resolver.algo.Resolver
-import org.osgi.framework.Version
 
 object LaunchPlanner {
   data class PlanResult(
@@ -19,7 +19,7 @@ object LaunchPlanner {
     session: LaunchResolveSession? = null
   ): PlanResult {
     val startupLevels = environment.startupLevels.toMutableMap()
-    val bundleMap = linkedMapOf<String, MutableList<BundleStartSpec>>()
+    val selector = BundleSelectionAccumulator(preferWorkspace = true)
     val problems = linkedMapOf<String, MutableList<ResolveProblem>>()
 
     fun levelFor(bsn: String): Int =
@@ -31,30 +31,6 @@ object LaunchPlanner {
       environment.autoStartBundles[bsn]
         ?: environment.autoStartProvider?.invoke(bsn)
         ?: (options.autoStartDefault && level >= 0)
-
-    fun registerBundle(bsn: String, version: Version, path: java.nio.file.Path, isWorkspace: Boolean) {
-      val level = levelFor(bsn)
-      val auto = autoStartFor(bsn, level)
-      startupLevels[bsn] = level
-      val spec = BundleStartSpec(
-        bsn = bsn,
-        version = version,
-        location = path,
-        startLevel = level,
-        autoStart = auto,
-        isWorkspace = isWorkspace
-      )
-      val list = bundleMap.getOrPut(bsn) { mutableListOf() }
-      if (isWorkspace) {
-        list.clear()
-        list += spec
-      } else {
-        if (list.any { it.isWorkspace }) return
-        if (list.none { it.location == spec.location || it.version == spec.version }) {
-          list += spec
-        }
-      }
-    }
 
     fun recordProblems(scope: String, items: List<ResolveProblem>) {
       if (items.isEmpty()) return
@@ -84,20 +60,18 @@ object LaunchPlanner {
         environment.resolverOptions
       ).also { session?.put(entry, it) }
       recordProblems(scopeName(entry), result.toProblemList())
-      result.bundles.forEach { rb ->
-        registerBundle(rb.bsn, rb.version, rb.path, rb.isWorkspace)
-      }
+      selector.add(result)
     }
 
     environment.libraryBundles.forEach { bundle ->
-      registerBundle(bundle.bsn, bundle.version, bundle.location, bundle.isWorkspace)
+      selector.registerSupplemental(bundle.bsn, bundle.version, bundle.location, bundle.isWorkspace)
     }
 
     environment.requiredStartupBundles.forEach { bsn ->
-      if (!bundleMap.containsKey(bsn)) {
+      if (!selector.contains(bsn)) {
         val rb = environment.targetIndex.get(bsn)
         if (rb != null) {
-          registerBundle(bsn, rb.manifest.bundleVersion, rb.location, false)
+          selector.registerSupplemental(bsn, rb.manifest.bundleVersion, rb.location, false)
         } else {
           recordProblems(
             scope = "Launch Plan",
@@ -113,7 +87,19 @@ object LaunchPlanner {
       }
     }
 
-    val bundles = bundleMap.values.flatMap { it }
+    val bundles = selector.entries().map { rb ->
+      val level = levelFor(rb.bsn)
+      val auto = autoStartFor(rb.bsn, level)
+      startupLevels[rb.bsn] = level
+      BundleStartSpec(
+        bsn = rb.bsn,
+        version = rb.version,
+        location = rb.path,
+        startLevel = level,
+        autoStart = auto,
+        isWorkspace = rb.isWorkspace
+      )
+    }
     val plan = LauncherPlan(
       bundles = bundles,
       framework = bundles.firstOrNull { it.bsn == options.frameworkBSN },
