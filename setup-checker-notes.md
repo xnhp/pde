@@ -1,0 +1,6 @@
+- state of branches
+- tp up-to-date?
+- module compile output paths?
+- bundles successfully resolved?
+- proper jvm version used?
+- java compiler set to "eclipse"
