@@ -6,6 +6,7 @@
 build
 # Allow resolver tests (override broad 'test/' ignore)
 !pde-resolver/src/test/**
+testing-project
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/cmake,clion,macos,windows,linux,maven,gradle,eclipse,java,svn,git,kotlin,vuejs,intellij,jetbrains,webstorm,c++,c,visualstudio,visualstudiocode,csharp,xcode,cocoapods,appcode,vue,objective-c,swiftpackagemanager
