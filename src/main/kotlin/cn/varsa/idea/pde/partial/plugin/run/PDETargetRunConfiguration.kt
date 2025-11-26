@@ -19,7 +19,6 @@ import com.intellij.execution.configurations.*
 import com.intellij.execution.filters.*
 import com.intellij.execution.runners.*
 import com.intellij.execution.util.*
-import com.intellij.lang.xml.*
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.*
 import com.intellij.openapi.options.*
@@ -27,12 +26,12 @@ import com.intellij.openapi.project.*
 import com.intellij.openapi.roots.*
 import com.intellij.openapi.util.*
 import com.intellij.openapi.vfs.*
-import com.intellij.psi.*
-import com.intellij.psi.search.*
-import com.intellij.psi.xml.*
 import com.intellij.util.execution.*
-import org.jdom.*
+import cn.varsa.pde.resolver.product.ProductConfigurationParser
+import org.jdom.Element
 import java.io.*
+import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.*
 
 class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory, name: String) :
@@ -62,28 +61,18 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
   /**
    * Finds all files with the ".product" extension within the project content roots.
    */
-  private fun findProductFiles(project: Project): List<XmlFile> {
-    val foundFiles = mutableListOf<XmlFile>()
+  private fun findProductFiles(project: Project): List<Path> {
+    val foundFiles = mutableListOf<Path>()
     val projectFileIndex = ProjectFileIndex.getInstance(project)
-
-    // Use ReadAction for safety when interacting with VFS/Index during iteration
     ReadAction.run<Throwable> {
       projectFileIndex.iterateContent { virtualFile ->
-        // Check if it's a file, part of project content, and has the correct extension
         if (!virtualFile.isDirectory &&
-          projectFileIndex.isInContent(virtualFile) && // Check content status first potentially
-          PRODUCT_EXTENSION.equals(virtualFile.extension, ignoreCase = true))
-        {
-          val fileContent = VfsUtilCore.loadText(virtualFile)
-          if (fileContent.isNotBlank()) {
-            val psiFileFactory = PsiFileFactory.getInstance(project)
-            val xmlPsiFile = psiFileFactory.createFileFromText(
-              virtualFile.name, XMLLanguage.INSTANCE, fileContent, false, true
-            )
-            if (xmlPsiFile is XmlFile) foundFiles.add(xmlPsiFile)
-          }
+          projectFileIndex.isInContent(virtualFile) &&
+          PRODUCT_EXTENSION.equals(virtualFile.extension, ignoreCase = true)
+        ) {
+          foundFiles += Paths.get(virtualFile.path)
         }
-        true // Continue iterating
+        true
       }
     }
     return foundFiles
@@ -195,26 +184,18 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
         val plan = planResult.plan
         val ctx = planResult.context
 
-        val configProps = ConfigIniRenderer.toProperties(plan, launchOptions).apply {
-          this["osgi.install.area"] = configServiceDelegate.installArea.protocolUrl
-          this["osgi.instance.area.default"] = configServiceDelegate.instanceArea.protocolUrl
-          this["osgi.configuration.cascaded"] = false.toString()
-          this["org.eclipse.equinox.simpleconfigurator.configUrl"] =
-            configServiceDelegate.bundlesInfoFile.protocolUrl
-          this["eclipse.p2.data.area"] = "@config.dir/.p2"
-          this["osgi.bundles"] = "org.eclipse.equinox.simpleconfigurator@1:start"
-          this["org.eclipse.update.reconcile"] = "false"
-          properties.forEach { (k, v) -> if (k is String && v is String) this.putIfAbsent(k, v) }
-        }
-
-        configServiceDelegate.configurationDirectory.makeDirs()
-        configServiceDelegate.configIniFile.touchFile().outputStream().use { configProps.store(it, "Configuration File") }
-
-        val devProps = DevPropertiesRenderer.toProperties(ctx)
-        configServiceDelegate.devPropertiesFile.touchFile().outputStream().use { devProps.store(it, "Development File") }
-
-        val bundlesInfo = BundlesInfoRenderer.toText(plan)
-        configServiceDelegate.bundlesInfoFile.touchFile().printWriter().use { it.write(bundlesInfo) }
+        val layout = RuntimeLayoutWriter.LayoutPaths(
+          configDir = configServiceDelegate.configurationDirectory.toPath(),
+          configIniFile = configServiceDelegate.configIniFile.toPath(),
+          devPropertiesFile = configServiceDelegate.devPropertiesFile.toPath(),
+          bundlesInfoFile = configServiceDelegate.bundlesInfoFile.toPath()
+        )
+        val defaults = RuntimeLayoutWriter.Defaults(
+          installArea = configServiceDelegate.installArea.toPath(),
+          instanceArea = configServiceDelegate.instanceArea.toPath(),
+          fallbackConfig = properties
+        )
+        RuntimeLayoutWriter.write(layout, plan, ctx, launchOptions, defaults)
 
         parameters.programParametersList.addAll("-data", configServiceDelegate.dataPath.absolutePath)
         parameters.programParametersList.addAll(
@@ -250,30 +231,13 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
     }
   }
 
-  private fun findPluginConfigurations() : Map<String, Int> {
-    if (product == null || productFiles.isEmpty()) {
-      return emptyMap() // Return empty map immediately if no product name or no files
+  private fun findPluginConfigurations(): Map<String, Int> {
+    val productId = product ?: return emptyMap()
+    productFiles.forEach { path ->
+      val parsed = ProductConfigurationParser.parseAutoStartPlugins(path, productId)
+      if (parsed != null) return parsed
     }
-
-    val configurationMap = ReadAction.compute<Map<String, Int>, Throwable> {
-      productFiles.find { it.rootTag?.getAttributeValue("id") == product }?.rootTag?.findFirstSubTag("configurations")
-        ?.findSubTags("plugin") // This returns Array<XmlTag>, not null if parent exists
-        ?.mapNotNull { pluginTag -> // mapNotNull filters out null results automatically
-          val symbol = pluginTag.getAttributeValue("id")
-          val autoStart = pluginTag.getAttributeValue("autoStart")
-          val isAutoStart = ("true" == autoStart)
-
-          if (isAutoStart && symbol != null) {
-            pluginTag.getAttributeValue("startLevel")?.toIntOrNull()?.let { startLevelInt ->
-              if (startLevelInt > 0) symbol to startLevelInt
-              else symbol to 4 // Creates Pair<String, Int>
-            }
-          } else {
-            null // Explicitly return null if autoStart condition fails, mapNotNull filters this out
-          }
-        }?.toMap() ?: emptyMap()
-    }
-    return configurationMap
+    return emptyMap()
   }
 
   private val configServiceDelegate = object : ConfigService {

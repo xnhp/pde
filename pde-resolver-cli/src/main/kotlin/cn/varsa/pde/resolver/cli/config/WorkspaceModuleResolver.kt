@@ -1,44 +1,18 @@
 package cn.varsa.pde.resolver.cli.config
 
-import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
-import cn.varsa.pde.resolver.manifest.BundleManifest
-import java.nio.file.Files
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.inputStream
-
-data class WorkspaceInputs(
-  val descriptors: List<WorkspaceBundleDescriptor>,
-  val devProperties: Map<String, List<String>>
-)
+import cn.varsa.pde.resolver.launch.WorkspaceInputs
+import cn.varsa.pde.resolver.workspace.WorkspaceModuleBuilder
+import cn.varsa.pde.resolver.workspace.WorkspaceModuleDefinition
 
 object WorkspaceModuleResolver {
   private val defaultClassRoots = listOf("build/classes/java/main", "out/production")
 
   fun resolve(context: LaunchConfigContext): WorkspaceInputs {
-    val descriptors = mutableListOf<WorkspaceBundleDescriptor>()
-    val devProps = linkedMapOf<String, List<String>>()
-    context.config.workspaceModules.forEach { module ->
+    val definitions = context.config.workspaceModules.map { module ->
       val modulePath = context.baseDir.resolve(module.path).normalize()
-      val manifest = loadManifest(modulePath)
-        ?: error("Missing MANIFEST.MF for workspace module ${module.path}")
-      val bsn = manifest.bundleSymbolicName?.key
-        ?: error("Workspace module ${module.path} lacks Bundle-SymbolicName")
-      val classRoots = (module.classes?.takeIf { it.isNotEmpty() } ?: defaultClassRoots)
-      val classPaths = classRoots.map { modulePath.resolve(it).normalize() }.filter { Files.exists(it) }
-      descriptors += WorkspaceBundleDescriptor(
-        path = modulePath,
-        manifest = manifest,
-        classPathEntries = classPaths
-      )
-      devProps[bsn] = classRoots
+      val classRoots = module.classes?.takeIf { it.isNotEmpty() } ?: defaultClassRoots
+      WorkspaceModuleDefinition(moduleDir = modulePath, classRoots = classRoots)
     }
-    return WorkspaceInputs(descriptors = descriptors, devProperties = devProps)
-  }
-
-  private fun loadManifest(modulePath: Path): BundleManifest? {
-    val manifestFile = modulePath.resolve("META-INF/MANIFEST.MF")
-    if (!manifestFile.exists()) return null
-    return manifestFile.inputStream().use { BundleManifest.parse(java.util.jar.Manifest(it)) }
+    return WorkspaceModuleBuilder.build(definitions)
   }
 }

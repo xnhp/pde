@@ -10,6 +10,9 @@ import kotlin.io.path.inputStream
 data class LaunchConfig(
   val product: String? = null,
   val application: String? = null,
+  val productFiles: List<String> = emptyList(),
+  val startupLevelsFile: String? = null,
+  val whitelistFile: String? = null,
   val splash: String? = null,
   val dataDir: String? = null,
   val configDir: String? = null,

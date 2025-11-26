@@ -1,5 +1,6 @@
 package cn.varsa.pde.resolver.cli.config
 
+import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
@@ -12,6 +13,9 @@ data class LaunchLayout(
   val configIniFile: Path get() = configDir.resolve("config.ini")
   val devPropertiesFile: Path get() = configDir.resolve("dev.properties")
   val bundlesInfoFile: Path get() = configDir.resolve("org.eclipse.equinox.simpleconfigurator").resolve("bundles.info")
+
+  fun asRuntimeLayout(): RuntimeLayoutWriter.LayoutPaths =
+    RuntimeLayoutWriter.LayoutPaths(configDir, configIniFile, devPropertiesFile, bundlesInfoFile)
 }
 
 object LaunchLayoutResolver {

@@ -5,17 +5,25 @@ import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
-import cn.varsa.pde.resolver.cli.config.*
+import cn.varsa.pde.resolver.product.ProductConfigurationParser
+import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
+import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
+import cn.varsa.pde.resolver.cli.config.LaunchLayout
+import cn.varsa.pde.resolver.cli.config.LaunchLayoutResolver
+import cn.varsa.pde.resolver.cli.config.TargetDefinitionStartupParser
+import cn.varsa.pde.resolver.cli.config.TargetFileParser
+import cn.varsa.pde.resolver.cli.config.TargetLaunchArgs
+import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
+import cn.varsa.pde.resolver.cli.config.WhitelistFileLoader
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
 import kotlinx.cli.multiple
 import java.io.File
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
-import kotlin.io.path.createDirectories
-import kotlin.io.path.outputStream
-import kotlin.io.path.writeText
+import java.util.Properties
 
 fun launchMain(args: Array<String>) {
   val parser = ArgParser("pde-resolver launch")
@@ -77,7 +85,8 @@ fun launchMain(args: Array<String>) {
     product = product,
     application = application,
     splashBSN = splash,
-    frameworkBSN = framework
+    frameworkBSN = framework,
+    autoStartDefault = false
   )
 
   val planResult = LaunchPlanner.build(environment, options)
@@ -109,37 +118,47 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
   val targetIndex = TargetPlatformCache.buildWithCache(targetPaths)
   val layout = LaunchLayoutResolver.resolve(context)
   LaunchLayoutResolver.cleanIfRequested(layout, context.config.cleanRuntime)
+  val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(context)
+  val productStartupLevels = loadProductStartupLevels(context)
+  val combinedStartup = targetDefinitionStartupLevels + productStartupLevels + context.config.startupLevels
+  val resolverWhitelist = resolveWhitelist(context)
   val workspaceEntries = if (workspaceInputs.descriptors.isNotEmpty()) {
     workspaceInputs.descriptors
   } else {
     listOfNotNull(syntheticEntry(context, targetIndex))
   }
-  val supplementalBundles = if (context.config.workspaceModules.isEmpty()) {
+  val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
+  val supplementalBundles = if (!hasWorkspaceModules) {
     targetIndex.bundlesByBsn().flatMap { (bsn, nav) ->
       nav.entries.map { entry ->
         LaunchEnvironment.SupplementalBundle(bsn, entry.key, entry.value.location, isWorkspace = false)
       }
     }
   } else emptyList()
+  val devProperties = workspaceInputs.devProperties
   val env = LaunchEnvironment(
     targetIndex = targetIndex,
     workspaceEntries = workspaceEntries,
-    devProperties = workspaceInputs.devProperties,
+    devProperties = devProperties,
     libraryBundles = supplementalBundles,
     resolverOptions = ResolveOptions(
-      whitelistPrefixes = context.config.whitelist.toSet(),
-      preferWorkspace = context.config.workspaceModules.isNotEmpty(),
+      whitelistPrefixes = resolverWhitelist,
+      preferWorkspace = hasWorkspaceModules,
       includeHostsForFragments = true
     ),
-    startupLevels = context.config.startupLevels
+    requiredStartupBundles = combinedStartup.keys,
+    startupLevels = combinedStartup,
+    autoStartBundles = combinedStartup.keys.associateWith { true }
   )
   val options = LauncherOptions(
     product = context.config.product,
     application = context.config.application,
-    splashBSN = context.config.splash
+    splashBSN = context.config.splash,
+    autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
-  writeLaunchArtifacts(context, layout, planResult, options, targetPaths.first())
+  val fallbackConfig = loadExistingConfig(targetPaths)
+  writeLaunchArtifacts(context, layout, planResult, options, targetPaths.first(), fallbackConfig)
   println("Launch plan built:")
   println("  bundles: ${planResult.plan.bundles.size}")
   println("  workspace bundles: ${planResult.plan.bundles.count { it.isWorkspace }}")
@@ -239,29 +258,15 @@ private fun writeLaunchArtifacts(
   layout: LaunchLayout,
   planResult: LaunchPlanner.PlanResult,
   options: LauncherOptions,
-  installArea: Path
+  installArea: Path,
+  fallbackConfig: Properties
 ) {
-  layout.configDir.createDirectories()
-  val configProps = ConfigIniRenderer.toProperties(planResult.plan, options).apply {
-    put("osgi.install.area", installArea.toUri().toString())
-    put("osgi.instance.area.default", layout.dataDir.toUri().toString())
-    put("org.eclipse.equinox.simpleconfigurator.configUrl", layout.bundlesInfoFile.toUri().toString())
-    put("eclipse.p2.data.area", "@config.dir/.p2")
-    put("osgi.configuration.cascaded", "false")
-    put("org.eclipse.update.reconcile", "false")
-    put("osgi.bundles", "org.eclipse.equinox.simpleconfigurator@1:start")
-    context.config.splash?.takeIf { it.isNotBlank() }?.let { splashBsn ->
-      put("osgi.splashPath", installArea.resolve("plugins").resolve("$splashBsn").toUri().toString())
-    }
-  }
-  layout.configIniFile.outputStream().use { configProps.store(it, "pde-resolver-cli") }
-
-  val devProps = DevPropertiesRenderer.toProperties(planResult.context)
-  layout.devPropertiesFile.outputStream().use { devProps.store(it, "pde-resolver-cli") }
-
-  layout.bundlesInfoFile.parent.createDirectories()
-  val bundlesInfo = BundlesInfoRenderer.toText(planResult.plan)
-  layout.bundlesInfoFile.writeText(bundlesInfo)
+  val defaults = RuntimeLayoutWriter.Defaults(
+    installArea = installArea,
+    instanceArea = layout.dataDir,
+    fallbackConfig = fallbackConfig
+  )
+  RuntimeLayoutWriter.write(layout.asRuntimeLayout(), planResult.plan, planResult.context, options, defaults)
 }
 
 private fun loadWorkspaceDescriptor(root: String): WorkspaceBundleDescriptor {
@@ -269,6 +274,66 @@ private fun loadWorkspaceDescriptor(root: String): WorkspaceBundleDescriptor {
   val manifestFile = path.resolve("META-INF/MANIFEST.MF").toFile()
   val manifest = manifestFile.inputStream().use { BundleManifest.parse(java.util.jar.Manifest(it)) }
   return WorkspaceBundleDescriptor(path, manifest)
+}
+
+private fun loadProductStartupLevels(context: LaunchConfigContext): Map<String, Int> {
+  if (context.config.productFiles.isEmpty()) return emptyMap()
+  val productId = context.config.product
+  context.config.productFiles.forEach { entry ->
+    val path = context.baseDir.resolve(entry).normalize()
+    if (Files.exists(path)) {
+      val parsed = ProductConfigurationParser.parseAutoStartPlugins(path, productId)
+      if (parsed != null) return parsed
+    }
+  }
+  return emptyMap()
+}
+
+private fun loadTargetDefinitionStartupLevels(context: LaunchConfigContext): Map<String, Int> {
+  val configured = context.config.startupLevelsFile?.let { context.baseDir.resolve(it).normalize() }
+  val defaultFile = context.baseDir.resolve("startupLevels.xml")
+  val candidates = listOfNotNull(configured, defaultFile)
+  candidates.forEach { candidate ->
+    TargetDefinitionStartupParser.parse(candidate)?.let { return it }
+  }
+  return emptyMap()
+}
+
+private fun resolveWhitelist(context: LaunchConfigContext): Set<String> {
+  val defaults = context.config.whitelist.toSet()
+  val fileEntries = loadWhitelistOverrides(context)
+  val combined = when {
+    fileEntries != null -> fileEntries + defaults
+    else -> defaults
+  }
+  return if (combined.isNotEmpty()) combined else DEFAULT_WHITELIST
+}
+
+private fun loadWhitelistOverrides(context: LaunchConfigContext): Set<String>? {
+  val configured = context.config.whitelistFile?.let { context.baseDir.resolve(it).normalize() }
+  val defaultFile = context.baseDir.resolve("whitelist.txt")
+  val candidates = listOfNotNull(configured, defaultFile)
+  candidates.forEach { candidate ->
+    WhitelistFileLoader.load(candidate)?.let { return it }
+  }
+  return null
+}
+
+private val DEFAULT_WHITELIST = setOf(
+  "org.eclipse.jdt.annotation",
+  "org.eclipse.io",
+  "org.eclipse.swt"
+)
+
+private fun loadExistingConfig(targetRoots: List<Path>): Properties {
+  val props = Properties()
+  val configPath = targetRoots.asSequence()
+    .map { it.resolve("configuration").resolve("config.ini") }
+    .firstOrNull { Files.exists(it) }
+  configPath?.let { path ->
+    path.toFile().inputStream().use { props.load(it) }
+  }
+  return props
 }
 
 private fun parseDevProperties(entries: List<String>): Map<String, List<String>> = entries
@@ -280,16 +345,12 @@ private fun parseDevProperties(entries: List<String>): Map<String, List<String>>
   .toMap()
 
 private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts: LauncherOptions) {
-  val outDir = dir.toFile()
-  if (!outDir.exists()) outDir.mkdirs()
-
-  val config = ConfigIniRenderer.toProperties(plan, opts)
-  val bundles = BundlesInfoRenderer.toText(plan)
-  val devProps = DevPropertiesRenderer.toProperties(ctx)
-
-  File(outDir, "config.ini").outputStream().use { config.store(it, null) }
-  File(outDir, "bundles.info").writeText(bundles)
-  File(outDir, "dev.properties").outputStream().use { devProps.store(it, null) }
+  val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(dir)
+  val defaults = RuntimeLayoutWriter.Defaults(
+    installArea = dir,
+    instanceArea = dir
+  )
+  RuntimeLayoutWriter.write(layout, plan, ctx, opts, defaults)
 }
 
 fun main(args: Array<String>) {

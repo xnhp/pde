@@ -8,13 +8,14 @@ import cn.varsa.idea.pde.partial.plugin.config.TargetDefinitionService
 import cn.varsa.idea.pde.partial.plugin.helper.PdeNotifier
 import cn.varsa.idea.pde.partial.plugin.resolver.formatResolverProblems
 import cn.varsa.pde.resolver.algo.ResolveOptions
-import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.launch.LaunchContext
 import cn.varsa.pde.resolver.launch.LaunchEnvironment
 import cn.varsa.pde.resolver.launch.LaunchPlanner
 import cn.varsa.pde.resolver.launch.LaunchResolveSession
 import cn.varsa.pde.resolver.launch.LauncherOptions
 import cn.varsa.pde.resolver.launch.LauncherPlan
+import cn.varsa.pde.resolver.workspace.WorkspaceModuleBuilder
+import cn.varsa.pde.resolver.workspace.WorkspaceModuleDefinition
 import com.intellij.openapi.project.Project
 import java.io.File
 
@@ -24,11 +25,17 @@ object LauncherPlanBuilder {
   fun build(project: Project, configService: ConfigService, options: LauncherOptions): PlanResult {
     val targetIndex = PluginTargetIndexService.getInstance(project).getIndex()
     val resolveSession = ResolveSessionService.getInstance(project)
-    val workspaceDescriptors = configService.devModules.mapNotNull { dm ->
+    val moduleDefinitions = configService.devModules.mapNotNull { dm ->
       val moduleDir = File(configService.projectDirectory, dm.relativePathToProject)
       val manifest = configService.getManifest(moduleDir) ?: return@mapNotNull null
-      WorkspaceBundleDescriptor(moduleDir.toPath(), manifest)
+      WorkspaceModuleDefinition(
+        moduleDir = moduleDir.toPath(),
+        classRoots = dm.compilerClassRelativePathToModule,
+        manifestOverride = manifest
+      )
     }
+    val workspaceInputs = WorkspaceModuleBuilder.build(moduleDefinitions)
+    val workspaceDescriptors = workspaceInputs.descriptors
 
     val resolverOptions = ResolveOptions(
       whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
@@ -45,7 +52,7 @@ object LauncherPlanBuilder {
       )
     }
 
-    val devProperties = configService.devModules.associate { it.bundleSymbolicName to it.compilerClassRelativePathToModule }
+    val devProperties = workspaceInputs.devProperties
     val requiredStartupBundles = TargetDefinitionService.getInstance(project).startupLevels.keys.toSet()
 
     val environment = LaunchEnvironment(

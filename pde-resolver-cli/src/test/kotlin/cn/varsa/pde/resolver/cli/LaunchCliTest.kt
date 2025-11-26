@@ -29,7 +29,7 @@ class LaunchCliTest {
     )
 
     assertTrue(File(output, "config.ini").exists())
-    assertTrue(File(output, "bundles.info").exists())
+    assertTrue(File(output, "org.eclipse.equinox.simpleconfigurator/bundles.info").exists())
     assertTrue(File(output, "dev.properties").exists())
   }
 

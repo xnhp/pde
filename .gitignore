@@ -6,6 +6,7 @@
 build
 # Allow resolver tests (override broad 'test/' ignore)
 !pde-resolver/src/test/**
+!pde-resolver-cli/src/test/**
 testing-project
 
 
@@ -1026,6 +1027,8 @@ xcuserdata
 
 docs/_book
 test/
+!pde-resolver-cli/src/test/
+!pde-resolver-cli/src/test/**
 
 ### Vuejs ###
 # Recommended template: Node.gitignore

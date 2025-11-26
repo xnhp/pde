@@ -13,6 +13,30 @@ shared resolver library and its on‑disk cache.
 
 ## Usage
 
+### Startup level data
+
+- Provide a `startupLevels.xml` next to your `launch.yaml` (or point `startupLevelsFile` to
+  another file). The content should mirror IntelliJ’s `<bundleLevel bundleSymbolicName="…"
+  startupLevel="…"/>` entries from the “Startup” tab.
+- The CLI does **not** read `.idea/eclipse-partial.xml` automatically; explicitly export or
+  copy the desired startup-level configuration into `startupLevels.xml` if you want parity
+  with your IDE run configuration.
+
+- Bundle whitelist (“Advanced” tab) can be shared the same way: create a plain text file
+  `whitelist.txt` next to `launch.yaml` (or set `whitelistFile`). Each non-empty, non-comment
+  line should contain one prefix such as `org.eclipse.io`. The CLI unions those entries with
+  the `whitelist` array defined in YAML; if both are missing it falls back to the default
+  trio (`org.eclipse.jdt.annotation`, `org.eclipse.io`, `org.eclipse.swt`).
+
+### Workspace modules
+
+- If the `workspaceModules` array is empty and the project contains `.idea/modules.xml`, the
+  CLI auto-discovers modules by reading the `.iml` files referenced there. It uses the
+  compiled output directories declared in each module to populate `dev.properties` and to
+  create workspace bundle descriptors (MANIFEST.MF must live under `module/META-INF`).
+- Building modules from IntelliJ/Gradle before running the CLI ensures the compiled class
+  roots exist under `build/classes/java/main` or `out/production` so discovery succeeds.
+
 - `--root, -r <path>`
   - Root path to scan. Repeatable.
   - Accepts:
