@@ -12,6 +12,7 @@ data class LaunchConfig(
   val application: String? = null,
   val productFiles: List<String> = emptyList(),
   val startupLevelsFile: String? = null,
+  val targetFile: String? = null,
   val whitelistFile: String? = null,
   val splash: String? = null,
   val dataDir: String? = null,

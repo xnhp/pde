@@ -28,14 +28,29 @@ shared resolver library and its on‑disk cache.
   the `whitelist` array defined in YAML; if both are missing it falls back to the default
   trio (`org.eclipse.jdt.annotation`, `org.eclipse.io`, `org.eclipse.swt`).
 
+### Target file
+
+- Set `targetFile: path/to/Your.target` in `launch.yaml`. The CLI reads this file to pick up
+  the VM/program arguments defined by the target definition. You can still override it with
+  `--target-file` on the command line if needed.
+
 ### Workspace modules
 
-- If the `workspaceModules` array is empty and the project contains `.idea/modules.xml`, the
-  CLI auto-discovers modules by reading the `.iml` files referenced there. It uses the
-  compiled output directories declared in each module to populate `dev.properties` and to
-  create workspace bundle descriptors (MANIFEST.MF must live under `module/META-INF`).
-- Building modules from IntelliJ/Gradle before running the CLI ensures the compiled class
-  roots exist under `build/classes/java/main` or `out/production` so discovery succeeds.
+Example entry inside `launch.yaml`:
+
+```
+workspaceModules:
+  - path: ../workspace/org.example.bundle
+    classes:
+      - build/classes/java/main
+      - build/classes/java/test
+```
+
+- `path` must point to a built bundle (directory or exploded JAR containing
+  `META-INF/MANIFEST.MF`). Paths can be relative to `launch.yaml`.
+- `classes` is optional; if omitted we default to `build/classes/java/main` and
+  `out/production`. These directories must already contain compiled `.class` files—the CLI
+  does not build sources.
 
 - `--root, -r <path>`
   - Root path to scan. Repeatable.
