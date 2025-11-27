@@ -41,15 +41,14 @@ fun launchMain(args: Array<String>) {
   val splash by parser.option(ArgType.String, fullName = "splash")
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val outputDirOpt by parser.option(ArgType.String, fullName = "output", shortName = "o", description = "Output directory for config.ini/bundles.info/dev.properties")
-  val targetFileOpt by parser.option(ArgType.String, fullName = "target-file", description = "Eclipse .target file")
 
   parser.parse(args)
 
   if (configFile != null) {
     val configContext = LaunchConfigLoader.load(Paths.get(configFile!!))
-    val yamlTargetPath = configContext.config.targetFile?.let { configContext.baseDir.resolve(it).normalize() }
-    val cliTargetPath = targetFileOpt?.let { Paths.get(it) }
-    val targetPath = cliTargetPath ?: yamlTargetPath ?: error("Set --target-file or targetFile in launch.yaml")
+    val targetPath = configContext.config.targetFile
+      ?.let { configContext.baseDir.resolve(it).normalize() }
+      ?: error("Set targetFile in launch.yaml")
     val targetArgs = runCatching { TargetFileParser.parse(targetPath) }
       .onFailure { println("Warning: failed to parse target file args: ${it.message}") }
       .getOrNull()
