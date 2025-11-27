@@ -31,8 +31,9 @@ shared resolver library and its on‑disk cache.
 ### Target file
 
 - Set `targetFile: path/to/Your.target` in `launch.yaml`. The CLI reads this file to pick up
-  the VM/program arguments defined by the target definition. You can still override it with
-  `--target-file` on the command line if needed.
+  the VM/program arguments defined by the target definition when `inheritTargetArgs` is set
+  to `true` (default). Set `inheritTargetArgs: false` if you want to ignore the `.target`
+  file’s arguments and rely solely on the `vmArgs` / `programArgs` arrays in YAML.
 
 ### Workspace modules
 

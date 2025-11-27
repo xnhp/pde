@@ -49,9 +49,11 @@ fun launchMain(args: Array<String>) {
     val targetPath = configContext.config.targetFile
       ?.let { configContext.baseDir.resolve(it).normalize() }
       ?: error("Set targetFile in launch.yaml")
-    val targetArgs = runCatching { TargetFileParser.parse(targetPath) }
-      .onFailure { println("Warning: failed to parse target file args: ${it.message}") }
-      .getOrNull()
+    val targetArgs = if (configContext.config.inheritTargetArgs) {
+      runCatching { TargetFileParser.parse(targetPath) }
+        .onFailure { println("Warning: failed to parse target file args: ${it.message}") }
+        .getOrNull()
+    } else null
     describeConfig(configContext, targetPath, targetArgs)
     if (dryRun) {
       println("Dry run: validation only. Exiting.")
