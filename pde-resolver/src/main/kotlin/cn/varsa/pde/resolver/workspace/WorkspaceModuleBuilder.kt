@@ -20,12 +20,20 @@ object WorkspaceModuleBuilder {
     val descriptors = mutableListOf<WorkspaceBundleDescriptor>()
     val devProps = linkedMapOf<String, List<String>>()
     definitions.forEach { definition ->
-      val manifest = definition.manifestOverride ?: loadManifest(definition.moduleDir) ?: return@forEach
-      val bsn = manifest.bundleSymbolicName?.key ?: definition.moduleDir.fileName.toString()
+      val moduleDir = definition.moduleDir.toAbsolutePath().normalize()
+      if (!Files.exists(moduleDir)) {
+        throw WorkspaceModuleException("Workspace module directory not found: $moduleDir")
+      }
+      if (!Files.isDirectory(moduleDir)) {
+        throw WorkspaceModuleException("Workspace module path is not a directory: $moduleDir")
+      }
+      val manifest = definition.manifestOverride ?: loadManifest(moduleDir)
+        ?: throw WorkspaceModuleException("Missing META-INF/MANIFEST.MF in workspace module: $moduleDir")
+      val bsn = manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
       val classRoots = (definition.classRoots.takeIf { it.isNotEmpty() } ?: defaultClassRoots)
-      val classPathEntries = classRoots.map { definition.moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
+      val classPathEntries = classRoots.map { moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
       descriptors += WorkspaceBundleDescriptor(
-        path = definition.moduleDir,
+        path = moduleDir,
         manifest = manifest,
         classPathEntries = classPathEntries
       )
