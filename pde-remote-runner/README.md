@@ -2,7 +2,7 @@
 
 Helper CLI that mirrors Eclipse's `RemoteTestRunnerClient` so headless PDE launches can
 stream test events back into local logs or CI reporters. The tool binds to a localhost
-port, prints JSON + human instructions with the selected port/token, then waits for the
+port, prints JSON + human instructions with the selected port, then waits for the
 PDE runtime to connect using the standard `-port <value>` argument.
 
 ## Build and Usage
@@ -13,7 +13,7 @@ PDE runtime to connect using the standard `-port <value>` argument.
   - `./gradlew :pde-remote-runner:installDist`
   - `./build/install/pde-remote-runner/bin/pde-remote-runner --listen-host 0.0.0.0`
 - Typical workflow:
-  1. Start the helper and capture the emitted JSON payload to learn the port/token.
+  1. Start the helper and capture the emitted JSON payload to learn the selected port.
   2. Launch `pde-resolver launch ... --programArg "-port <port>"` (or add to
      `launch.yaml`). The PDE runtime connects back automatically.
   3. Observe streaming logs / TeamCity service messages, or inspect the generated
@@ -39,7 +39,7 @@ JUnit artifact and TeamCity live service messages.
 ## JSON announcement example
 
 ```
-{"host":"127.0.0.1","port":50521,"token":"b6f327f0841c","timeoutSeconds":120,
+{"host":"127.0.0.1","port":50521,"timeoutSeconds":120,
  "instructions":["Add '-port 50521' to PDE launch program arguments.",
    "Example: pde-resolver launch --programArg \"-port 50521\""],
  "issuedAt":"2025-12-01T20:15:04.312Z"}

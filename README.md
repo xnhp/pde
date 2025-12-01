@@ -59,7 +59,7 @@ instance of IntelliJ IDEA with the plugin installed
 Headless PDE launches can mirror IntelliJ's remote JUnit client by using the new
 `pde-remote-runner` module. Build it with `./gradlew :pde-remote-runner:installDist` and run the
 generated script before invoking `pde-resolver launch`. The helper prints a JSON blob with the
-allocated port/token, streams test progress to the console (with optional TeamCity or JUnit XML
+allocated port, streams test progress to the console (with optional TeamCity or JUnit XML
 reports), and exits with a non-zero code whenever the remote test suite reports failures.
 
 ## Comparison

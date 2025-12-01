@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
-import java.util.UUID
 import kotlin.system.exitProcess
 import kotlin.concurrent.thread
 
@@ -65,11 +64,9 @@ class RemoteRunnerApp {
     }
 
     server.soTimeout = timeoutSeconds.coerceAtLeast(1) * 1000
-    val token = UUID.randomUUID().toString().replace("-", "").take(12)
     val announcement = RunnerAnnouncement(
       host = listenHost,
       port = server.localPort,
-      token = token,
       timeoutSeconds = timeoutSeconds,
       instructions = listOf(
         "Add '-port ${server.localPort}' to PDE launch program arguments.",
@@ -78,7 +75,7 @@ class RemoteRunnerApp {
       issuedAt = Instant.now().toString()
     )
     println(mapper.writeValueAsString(announcement))
-    println("[INFO] Listening on ${announcement.host}:${announcement.port} (token ${announcement.token})")
+    println("[INFO] Listening on ${announcement.host}:${announcement.port}")
     println("[INFO] Waiting up to ${timeoutSeconds}s for RemoteTestRunner connection...")
 
     val client = try {
@@ -131,7 +128,6 @@ class RemoteRunnerApp {
 data class RunnerAnnouncement(
   val host: String,
   val port: Int,
-  val token: String,
   val timeoutSeconds: Int,
   val instructions: List<String>,
   val issuedAt: String
