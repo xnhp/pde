@@ -1,4 +1,4 @@
-package cn.varsa.idea.pde.partial.plugin.run
+package cn.varsa.pde.remoterunner.protocol
 
 /**
  * Constants for message IDs used in a test communication protocol.

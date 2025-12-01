@@ -48,6 +48,7 @@ dependencies {
 
   // Use core resolver in plugin code
   implementation(project(":pde-resolver"))
+  implementation(project(":remote-test-runner"))
 }
 
 // Configure IntelliJ Platform Gradle Plugin - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-extension.html

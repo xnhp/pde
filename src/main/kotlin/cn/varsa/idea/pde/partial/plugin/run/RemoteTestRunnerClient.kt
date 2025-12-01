@@ -1,6 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.run
 
 import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
+import cn.varsa.pde.remoterunner.protocol.MessageIds
 import com.intellij.execution.ExecutionResult
 import com.intellij.openapi.util.Key
 import java.net.ServerSocket
