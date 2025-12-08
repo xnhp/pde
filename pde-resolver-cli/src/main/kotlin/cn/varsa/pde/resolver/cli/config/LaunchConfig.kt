@@ -26,6 +26,7 @@ data class LaunchConfig(
   @JsonAlias("vmArgs")
   val additionalVmArgs: List<String> = emptyList(),
   val programArgs: List<String> = emptyList(),
+  val debugTests: Boolean = false,
   val profilePath: String? = null,
   val startupLevels: Map<String, Int> = emptyMap(),
   val whitelist: List<String> = listOf(

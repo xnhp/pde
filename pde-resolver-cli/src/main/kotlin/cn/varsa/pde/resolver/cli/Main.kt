@@ -6,6 +6,7 @@ import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.product.ProductConfigurationParser
+import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
 import cn.varsa.pde.resolver.cli.config.LaunchLayout
@@ -24,6 +25,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Properties
+
+internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
+internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 
 fun launchMain(args: Array<String>) {
   val parser = ArgParser("pde-launch")
@@ -108,6 +112,15 @@ private fun describeConfig(config: LaunchConfigContext, targetFile: Path?, targe
   println("  profile path: ${config.config.profilePath ?: "<unspecified>"}")
   println("  target vm args: ${targetArgs?.vmArgs?.size ?: 0}")
   println("  target program args: ${targetArgs?.programArgs?.size ?: 0}")
+  if (config.config.debugTests) {
+    val applicable = config.config.application?.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true) == true
+    val message = if (applicable) {
+      "enabled (JDWP on port $DEFAULT_TEST_DEBUG_PORT)"
+    } else {
+      "requested but only applies when application=$PDE_JUNIT_PLUGIN_TEST_APPLICATION"
+    }
+    println("  test debug: $message")
+  }
 }
 
 private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?) {
@@ -196,6 +209,7 @@ private fun assembleCommand(
   val vmArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.vmArgs ?: emptyList())
     addAll(configVmArgs)
+    addAll(buildTestDebugVmArgs(context.config, this))
   }
   val programArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.programArgs ?: emptyList())
@@ -239,6 +253,13 @@ private fun assembleCommand(
     add("org.eclipse.equinox.launcher.Main")
     addAll(launchArgs)
   }
+}
+
+internal fun buildTestDebugVmArgs(config: LaunchConfig, existingVmArgs: List<String>): List<String> {
+  if (!config.debugTests) return emptyList()
+  if (!config.application.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true)) return emptyList()
+  if (existingVmArgs.any { it.contains("jdwp", ignoreCase = true) }) return emptyList()
+  return listOf("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:$DEFAULT_TEST_DEBUG_PORT")
 }
 
 private fun expandArgs(raw: List<String>): List<String> = raw.flatMap { tokenizeArgString(it) }

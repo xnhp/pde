@@ -48,6 +48,14 @@ shared resolver library and its on‑disk cache.
   p2 profile to launch against. The CLI follows the profile’s `org.eclipse.equinox.p2.cache`
   pointer automatically, so you no longer need to add bundle pool directories explicitly.
 
+### Remote debugging PDE tests
+
+- Set `debugTests: true` in `launch.yaml` to start the PDE JUnit application with a JDWP
+  agent listening on port `5005` (server=y, suspend=y). This only applies when
+  `application` is `org.eclipse.pde.junit.runtime.coretestapplication` so normal launches
+  stay unaffected. Attach IntelliJ’s Remote JVM Debug configuration to port `5005` to
+  debug the test run.
+
 ### Workspace modules
 
 Example entry inside `launch.yaml`:
