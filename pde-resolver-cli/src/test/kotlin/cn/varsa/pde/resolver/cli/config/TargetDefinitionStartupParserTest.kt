@@ -8,7 +8,33 @@ import kotlin.test.assertNull
 
 class TargetDefinitionStartupParserTest {
   @Test
-  fun parsesBundleLevels() {
+  fun parsesBundleLevelsFromYaml() {
+    val yaml = """
+      startupLevels:
+        org.eclipse.osgi: -1
+        org.eclipse.equinox.common: 2
+    """.trimIndent()
+    val path = createTempFile(prefix = "startup", suffix = ".yaml")
+    path.writeText(yaml)
+
+    val parsed = TargetDefinitionStartupParser.parse(path)
+    assertEquals(mapOf("org.eclipse.osgi" to -1, "org.eclipse.equinox.common" to 2), parsed)
+  }
+
+  @Test
+  fun returnsNullWhenYamlMissingStartupLevels() {
+    val yaml = """
+      other:
+        someBundle: 1
+    """.trimIndent()
+    val path = createTempFile(prefix = "startup-missing", suffix = ".yaml")
+    path.writeText(yaml)
+    val parsed = TargetDefinitionStartupParser.parse(path)
+    assertNull(parsed)
+  }
+
+  @Test
+  fun parsesLegacyXmlFile() {
     val xml = """
       <project version="4">
         <component name="TcRacTargetDefinitions">
@@ -24,14 +50,5 @@ class TargetDefinitionStartupParserTest {
 
     val parsed = TargetDefinitionStartupParser.parse(path)
     assertEquals(mapOf("org.eclipse.osgi" to -1, "org.eclipse.equinox.common" to 2), parsed)
-  }
-
-  @Test
-  fun returnsNullWhenComponentMissing() {
-    val xml = """<project version="4"></project>"""
-    val path = createTempFile(prefix = "startup-missing", suffix = ".xml")
-    path.writeText(xml)
-    val parsed = TargetDefinitionStartupParser.parse(path)
-    assertNull(parsed)
   }
 }

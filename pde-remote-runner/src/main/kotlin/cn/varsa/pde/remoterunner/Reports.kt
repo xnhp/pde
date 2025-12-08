@@ -43,7 +43,8 @@ class JUnitXmlReporter(private val target: Path) {
       append(" timestamp=\"$timestamp\"")
       appendLine(">")
       results.forEach { result ->
-        append("  <testcase classname=\"${xmlEscape(result.descriptor.className)}\" name=\"${xmlEscape(result.descriptor.methodName ?: result.descriptor.printableName)}\"")
+        val displayName = result.descriptor.displayName ?: result.descriptor.methodName ?: result.descriptor.printableName
+        append("  <testcase classname=\"${xmlEscape(result.descriptor.className)}\" name=\"${xmlEscape(displayName)}\"")
         val duration = Duration.between(result.startedAt, result.finishedAt).toMillis() / 1000.0
         append(" time=\"${"%.3f".format(duration)}\"")
         appendLine(">");

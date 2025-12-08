@@ -15,12 +15,19 @@ shared resolver library and its on‑disk cache.
 
 ### Startup level data
 
-- Provide a `startupLevels.xml` next to your `launch.yaml` (or point `startupLevelsFile` to
-  another file). The content should mirror IntelliJ’s `<bundleLevel bundleSymbolicName="…"
-  startupLevel="…"/>` entries from the “Startup” tab.
+- Provide a `startupLevels.yaml` next to your `launch.yaml` (or point `startupLevelsFile` to
+  another file). Example:
+
+  ```yaml
+  startupLevels:
+    org.eclipse.osgi: -1
+    org.eclipse.equinox.common: 2
+  ```
+
 - The CLI does **not** read `.idea/eclipse-partial.xml` automatically; explicitly export or
-  copy the desired startup-level configuration into `startupLevels.xml` if you want parity
-  with your IDE run configuration.
+  copy the desired startup-level configuration into `startupLevels.yaml` if you want parity
+  with your IDE run configuration. Legacy `startupLevels.xml` files are still understood but
+  will eventually be phased out.
 
 - Bundle whitelist (“Advanced” tab) can be shared the same way: create a plain text file
   `whitelist.txt` next to `launch.yaml` (or set `whitelistFile`). Each non-empty, non-comment
@@ -33,7 +40,13 @@ shared resolver library and its on‑disk cache.
 - Set `targetFile: path/to/Your.target` in `launch.yaml`. The CLI reads this file to pick up
   the VM/program arguments defined by the target definition when `inheritTargetArgs` is set
   to `true` (default). Set `inheritTargetArgs: false` if you want to ignore the `.target`
-  file’s arguments and rely solely on the `vmArgs` / `programArgs` arrays in YAML.
+  file’s arguments and rely solely on the `additionalVmArgs` / `programArgs` arrays in YAML. For backward compatibility you can still spell it `vmArgs`, but future configs should migrate to `additionalVmArgs`.
+
+### Profile path
+
+- Set `profilePath: path/to/profileRegistry/MyProfile.profile` to tell the resolver which
+  p2 profile to launch against. The CLI follows the profile’s `org.eclipse.equinox.p2.cache`
+  pointer automatically, so you no longer need to add bundle pool directories explicitly.
 
 ### Workspace modules
 

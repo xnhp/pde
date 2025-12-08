@@ -13,6 +13,7 @@ data class RemoteTestDescriptor(
   val rawName: String,
   val className: String,
   val methodName: String?,
+  val displayName: String?,
   val printableName: String
 )
 
@@ -60,6 +61,7 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
   fun process(reader: BufferedReader): RemoteTestSummary {
     val summary = RemoteTestSummary()
     val active = mutableMapOf<String, ActiveTest>()
+    val displayNames = mutableMapOf<String, String?>()
     var currentTestId: String? = null
     var runCompleted = false
     try {
@@ -68,22 +70,22 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
         if (rawLine.isBlank()) continue
         when {
           rawLine.startsWith(MessageIds.TEST_RUN_START) -> handleRunStart(rawLine)
-          rawLine.startsWith(MessageIds.TEST_TREE) -> Unit // Tree entries currently unused
+          rawLine.startsWith(MessageIds.TEST_TREE) -> handleTestTree(rawLine, displayNames)
           rawLine.startsWith(MessageIds.TEST_START) -> {
-            val descriptor = parseDescriptor(rawLine)
+            val descriptor = parseDescriptor(rawLine, displayNames)
             val case = ActiveTest(descriptor)
             active[descriptor.id] = case
             currentTestId = descriptor.id
             listener.testStarted(descriptor)
           }
           rawLine.startsWith(MessageIds.TEST_FAILED) -> {
-            val descriptor = parseDescriptor(rawLine)
+            val descriptor = parseDescriptor(rawLine, displayNames)
             val case = active[descriptor.id]
             case?.status = RemoteTestStatus.FAILED
             currentTestId = descriptor.id
           }
           rawLine.startsWith(MessageIds.TEST_ERROR) -> {
-            val descriptor = parseDescriptor(rawLine)
+            val descriptor = parseDescriptor(rawLine, displayNames)
             val case = active[descriptor.id]
             case?.status = RemoteTestStatus.ERROR
             currentTestId = descriptor.id
@@ -101,7 +103,7 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
               currentTestId?.let { active[it]?.trace = text }
             }
           rawLine.startsWith(MessageIds.TEST_END) -> {
-            val descriptor = parseDescriptor(rawLine)
+            val descriptor = parseDescriptor(rawLine, displayNames)
             currentTestId = null
             val case = active.remove(descriptor.id)
             if (case != null) {
@@ -152,7 +154,17 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
     listener.runStarted(RunStartedEvent(total, version))
   }
 
-  private fun parseDescriptor(line: String): RemoteTestDescriptor {
+  private fun handleTestTree(line: String, names: MutableMap<String, String?>) {
+    val payload = line.substring(MessageIds.MSG_HEADER_LENGTH)
+    val parts = payload.split(',', limit = 9)
+    if (parts.isNotEmpty()) {
+      val id = parts[0]
+      val displayName = parts.getOrNull(6)?.takeUnless { it.isBlank() }
+      names[id] = displayName
+    }
+  }
+
+  private fun parseDescriptor(line: String, names: Map<String, String?>): RemoteTestDescriptor {
     val payload = line.substring(MessageIds.MSG_HEADER_LENGTH)
     val comma = payload.indexOf(',')
     require(comma > 0) { "Malformed remote test payload: $payload" }
@@ -162,12 +174,14 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
     val close = name.lastIndexOf(')')
     val method = if (open > 0 && close > open) name.substring(0, open) else null
     val clazz = if (open > 0 && close > open) name.substring(open + 1, close) else name
-    val printable = if (method != null) "$clazz.$method" else clazz
+    val display = names[id]
+    val printable = display ?: if (method != null) "$clazz.$method" else clazz
     return RemoteTestDescriptor(
       id = id,
       rawName = name,
       className = clazz,
       methodName = method,
+      displayName = display,
       printableName = printable
     )
   }

@@ -1,5 +1,9 @@
 package cn.varsa.pde.resolver.cli.config
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import org.w3c.dom.Element
 import java.nio.file.Files
 import java.nio.file.Path
@@ -8,9 +12,49 @@ import kotlin.io.path.inputStream
 
 object TargetDefinitionStartupParser {
   private const val COMPONENT_NAME = "TcRacTargetDefinitions"
+  private val yamlMapper = ObjectMapper(YAMLFactory())
+    .registerModule(KotlinModule.Builder().build())
 
   fun parse(path: Path): Map<String, Int>? {
     if (!Files.exists(path)) return null
+    val fileName = path.fileName?.toString().orEmpty().lowercase()
+    return if (fileName.endsWith(".xml")) parseLegacyXml(path) else parseYaml(path)
+  }
+
+  private fun parseYaml(path: Path): Map<String, Int>? {
+    val root = path.inputStream().use { yamlMapper.readTree(it) } ?: return null
+    val mapNode = when {
+      root.isObject && root.has("startupLevels") -> root.get("startupLevels")
+      root.isObject && root.hasOnlyValueNodes() -> root
+      else -> null
+    } ?: return null
+    if (!mapNode.isObject) return null
+    val result = linkedMapOf<String, Int>()
+    mapNode.fields().forEach { (bsnRaw, valueNode) ->
+      val bsn = bsnRaw.trim()
+      if (bsn.isEmpty()) return@forEach
+      val level = extractLevel(valueNode) ?: return@forEach
+      result[bsn] = level
+    }
+    return result
+  }
+
+  private fun extractLevel(node: JsonNode): Int? = when {
+    node.isInt || node.isLong || node.isShort -> node.intValue()
+    node.isTextual -> node.asText().toIntOrNull()
+    else -> null
+  }
+
+  private fun JsonNode.hasOnlyValueNodes(): Boolean {
+    val iterator = fields()
+    while (iterator.hasNext()) {
+      val value = iterator.next().value
+      if (!value.isValueNode) return false
+    }
+    return true
+  }
+
+  private fun parseLegacyXml(path: Path): Map<String, Int>? {
     val factory = DocumentBuilderFactory.newInstance().apply {
       isNamespaceAware = false
       isIgnoringComments = true

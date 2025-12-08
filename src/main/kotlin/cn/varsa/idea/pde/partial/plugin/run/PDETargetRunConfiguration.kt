@@ -26,6 +26,7 @@ import com.intellij.openapi.project.*
 import com.intellij.openapi.roots.*
 import com.intellij.openapi.util.*
 import com.intellij.openapi.vfs.*
+import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.util.execution.*
 import cn.varsa.pde.resolver.product.ProductConfigurationParser
 import org.jdom.Element
@@ -70,7 +71,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
           projectFileIndex.isInContent(virtualFile) &&
           PRODUCT_EXTENSION.equals(virtualFile.extension, ignoreCase = true)
         ) {
-          foundFiles += Paths.get(virtualFile.path)
+          foundFiles.add(Paths.get(virtualFile.path))
         }
         true
       }

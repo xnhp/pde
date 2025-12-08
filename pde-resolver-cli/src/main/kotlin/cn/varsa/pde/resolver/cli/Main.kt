@@ -26,7 +26,7 @@ import java.nio.file.Paths
 import java.util.Properties
 
 fun launchMain(args: Array<String>) {
-  val parser = ArgParser("pde-resolver launch")
+  val parser = ArgParser("pde-launch")
   val configFile by parser.option(
     ArgType.String,
     fullName = "config",
@@ -48,12 +48,14 @@ fun launchMain(args: Array<String>) {
     val configContext = LaunchConfigLoader.load(Paths.get(configFile!!))
     val targetPath = configContext.config.targetFile
       ?.let { configContext.baseDir.resolve(it).normalize() }
-      ?: error("Set targetFile in launch.yaml")
-    val targetArgs = if (configContext.config.inheritTargetArgs) {
+    val targetArgs = if (configContext.config.inheritTargetArgs && targetPath != null) {
       runCatching { TargetFileParser.parse(targetPath) }
         .onFailure { println("Warning: failed to parse target file args: ${it.message}") }
         .getOrNull()
     } else null
+    if (configContext.config.inheritTargetArgs && targetPath == null) {
+      println("Warning: inheritTargetArgs=true but targetFile is not set; skipping target argument import.")
+    }
     describeConfig(configContext, targetPath, targetArgs)
     if (dryRun) {
       println("Dry run: validation only. Exiting.")
@@ -97,46 +99,49 @@ fun launchMain(args: Array<String>) {
   }
 }
 
-private fun describeConfig(config: LaunchConfigContext, targetFile: Path, targetArgs: TargetLaunchArgs?) {
+private fun describeConfig(config: LaunchConfigContext, targetFile: Path?, targetArgs: TargetLaunchArgs?) {
   println("Loaded launch config from ${config.file}")
-  println("  product: ${config.config.product ?: "<unspecified>"}")
+  println("  product: ${config.config.product?.takeUnless { it.isBlank() } ?: "<unspecified>"}")
   println("  application: ${config.config.application ?: "<unspecified>"}")
   println("  workspace modules: ${config.config.workspaceModules.size}")
-  println("  target file: $targetFile")
-  println("  target roots: ${config.config.targetRoots.size}")
+  println("  target file: ${targetFile ?: "<unspecified>"}")
+  println("  profile path: ${config.config.profilePath ?: "<unspecified>"}")
   println("  target vm args: ${targetArgs?.vmArgs?.size ?: 0}")
   println("  target program args: ${targetArgs?.programArgs?.size ?: 0}")
 }
 
 private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?) {
   val workspaceInputs = WorkspaceModuleResolver.resolve(context)
-  val targetRoots = context.config.targetRoots.takeIf { it.isNotEmpty() }
-    ?: error("No target roots defined in YAML config")
-  val targetPaths = targetRoots.map { context.baseDir.resolve(it).normalize() }
-  val targetIndex = TargetPlatformCache.buildWithCache(targetPaths)
+  val profilePath = context.config.profilePath?.let { context.baseDir.resolve(it).normalize() }
+    ?: error("profilePath missing in YAML config")
+  if (!Files.exists(profilePath)) {
+    error("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
+  }
+  val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
   val layout = LaunchLayoutResolver.resolve(context)
   LaunchLayoutResolver.cleanIfRequested(layout, context.config.cleanRuntime)
   val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(context)
   val productStartupLevels = loadProductStartupLevels(context)
   val combinedStartup = targetDefinitionStartupLevels + productStartupLevels + context.config.startupLevels
   val resolverWhitelist = resolveWhitelist(context)
-  val workspaceEntries = if (workspaceInputs.descriptors.isNotEmpty()) {
+  val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
+  val workspaceEntries = if (hasWorkspaceModules) {
     workspaceInputs.descriptors
   } else {
     listOfNotNull(syntheticEntry(context, targetIndex))
   }
-  val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
-  val supplementalBundles = if (!hasWorkspaceModules) {
-    targetIndex.bundlesByBsn().flatMap { (bsn, nav) ->
-      nav.entries.map { entry ->
-        LaunchEnvironment.SupplementalBundle(bsn, entry.key, entry.value.location, isWorkspace = false)
+  val supplementalBundles = targetIndex.bundlesByBsn().flatMap { (bsn, nav) ->
+    nav.entries
+      .map { it.key to it.value }
+      .filter { (_, bundle) -> bundle.manifest.eclipseSourceBundle == null }
+      .map { (version, bundle) ->
+        LaunchEnvironment.SupplementalBundle(bsn, version, bundle.location, isWorkspace = false)
       }
-    }
-  } else emptyList()
+  }
   val devProperties = workspaceInputs.devProperties
   val env = LaunchEnvironment(
-    targetIndex = targetIndex,
-    workspaceEntries = workspaceEntries,
+      targetIndex = targetIndex,
+      workspaceEntries = workspaceEntries,
     devProperties = devProperties,
     libraryBundles = supplementalBundles,
     resolverOptions = ResolveOptions(
@@ -148,15 +153,16 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
     startupLevels = combinedStartup,
     autoStartBundles = combinedStartup.keys.associateWith { true }
   )
+  val productId = context.config.product?.takeUnless { it.isBlank() }
   val options = LauncherOptions(
-    product = context.config.product,
+    product = productId,
     application = context.config.application,
     splashBSN = context.config.splash,
     autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
-  val fallbackConfig = loadExistingConfig(targetPaths)
-  writeLaunchArtifacts(context, layout, planResult, options, targetPaths.first(), fallbackConfig)
+  val fallbackConfig = loadExistingConfig(profilePath)
+  writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig)
   println("Launch plan built:")
   println("  bundles: ${planResult.plan.bundles.size}")
   println("  workspace bundles: ${planResult.plan.bundles.count { it.isWorkspace }}")
@@ -185,13 +191,15 @@ private fun assembleCommand(
   launcherJar: Path
 ): List<String> {
   val javaBin = System.getenv("JAVA_HOME")?.let { Path.of(it, "bin", "java").toString() } ?: "java"
+  val configVmArgs = expandArgs(context.config.additionalVmArgs)
+  val configProgramArgs = expandArgs(context.config.programArgs)
   val vmArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.vmArgs ?: emptyList())
-    addAll(context.config.vmArgs)
+    addAll(configVmArgs)
   }
   val programArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.programArgs ?: emptyList())
-    addAll(context.config.programArgs)
+    addAll(configProgramArgs)
   }
   val stdArgs = listOf(
     "-clean",
@@ -211,8 +219,10 @@ private fun assembleCommand(
     }
     add("-application")
     add(context.config.application ?: error("application missing"))
-    add("-product")
-    add(context.config.product ?: error("product missing"))
+    context.config.product?.takeUnless { it.isBlank() }?.let {
+      add("-product")
+      add(it)
+    }
     add("-data")
     add(layout.dataDir.toString())
     add("-configuration")
@@ -229,6 +239,46 @@ private fun assembleCommand(
     add("org.eclipse.equinox.launcher.Main")
     addAll(launchArgs)
   }
+}
+
+private fun expandArgs(raw: List<String>): List<String> = raw.flatMap { tokenizeArgString(it) }
+
+internal fun tokenizeArgString(input: String): List<String> {
+  if (input.isBlank()) return emptyList()
+  val tokens = mutableListOf<String>()
+  val current = StringBuilder()
+  var quote: Char? = null
+  var index = 0
+  while (index < input.length) {
+    val ch = input[index]
+    when {
+      quote == null && ch.isWhitespace() -> {
+        if (current.isNotEmpty()) {
+          tokens += current.toString()
+          current.setLength(0)
+        }
+      }
+      ch == '\\' && index + 1 < input.length -> {
+        current.append(input[index + 1])
+        index++
+      }
+      ch == '"' || ch == '\'' -> {
+        if (quote == null) {
+          quote = ch
+        } else if (quote == ch) {
+          quote = null
+        } else {
+          current.append(ch)
+        }
+      }
+      else -> current.append(ch)
+    }
+    index++
+  }
+  if (current.isNotEmpty()) {
+    tokens += current.toString()
+  }
+  return tokens
 }
 
 private fun resolveLauncherJar(targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex): Path {
@@ -289,8 +339,10 @@ private fun loadProductStartupLevels(context: LaunchConfigContext): Map<String, 
 
 private fun loadTargetDefinitionStartupLevels(context: LaunchConfigContext): Map<String, Int> {
   val configured = context.config.startupLevelsFile?.let { context.baseDir.resolve(it).normalize() }
-  val defaultFile = context.baseDir.resolve("startupLevels.xml")
-  val candidates = listOfNotNull(configured, defaultFile)
+  val defaultYaml = context.baseDir.resolve("startupLevels.yaml")
+  val defaultYml = context.baseDir.resolve("startupLevels.yml")
+  val legacyXml = context.baseDir.resolve("startupLevels.xml")
+  val candidates = listOfNotNull(configured, defaultYaml, defaultYml, legacyXml).distinct()
   candidates.forEach { candidate ->
     TargetDefinitionStartupParser.parse(candidate)?.let { return it }
   }
@@ -323,13 +375,11 @@ private val DEFAULT_WHITELIST = setOf(
   "org.eclipse.swt"
 )
 
-private fun loadExistingConfig(targetRoots: List<Path>): Properties {
+private fun loadExistingConfig(profilePath: Path): Properties {
   val props = Properties()
-  val configPath = targetRoots.asSequence()
-    .map { it.resolve("configuration").resolve("config.ini") }
-    .firstOrNull { Files.exists(it) }
-  configPath?.let { path ->
-    path.toFile().inputStream().use { props.load(it) }
+  val configPath = profilePath.resolve("configuration").resolve("config.ini")
+  if (Files.exists(configPath)) {
+    configPath.toFile().inputStream().use { props.load(it) }
   }
   return props
 }

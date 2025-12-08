@@ -1,5 +1,6 @@
 package cn.varsa.pde.resolver.cli.config
 
+import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -22,9 +23,10 @@ data class LaunchConfig(
   val cleanRuntime: Boolean = false,
   val targetModules: List<String> = emptyList(),
   val workspaceModules: List<WorkspaceModule> = emptyList(),
-  val vmArgs: List<String> = emptyList(),
+  @JsonAlias("vmArgs")
+  val additionalVmArgs: List<String> = emptyList(),
   val programArgs: List<String> = emptyList(),
-  val targetRoots: List<String> = emptyList(),
+  val profilePath: String? = null,
   val startupLevels: Map<String, Int> = emptyMap(),
   val whitelist: List<String> = listOf(
     "org.eclipse.jdt.annotation",
