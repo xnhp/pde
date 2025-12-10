@@ -224,6 +224,8 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
   ) {
     val libsByBsn = projectLibrariesIndex(ctx.project)
     val addedLibs = hashSetOf<Library>()
+    val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+    val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
 
     // Batch create: collect missing libs then create in one project-table commit
     val missing = mutableListOf<Pair<String, Version>>()
@@ -234,8 +236,6 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
     if (missing.isNotEmpty()) {
       applicationInvokeAndWait {
         val projTableModel = ctx.project.libraryTable().modifiableModel
-        val local = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-        val jarfs = com.intellij.openapi.vfs.JarFileSystem.getInstance()
         missing.forEach { (bsn, ver) ->
           val rb = selectedBundles.firstOrNull { it.bsn == bsn && it.version == ver && !it.isWorkspace }
             ?: return@forEach
@@ -264,9 +264,28 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
     selectedBundles.filter { !it.isWorkspace }.forEach { rb ->
       val lib = libsByBsn[rb.bsn]?.get(rb.version)
-      if (lib != null && addedLibs.add(lib)) {
-        val existing = model.findLibraryOrderEntry(lib)
-        if (existing == null) model.addLibraryEntry(lib)
+      if (lib != null) {
+        val expectedRoots = rb.classPathEntries.mapNotNull { entry ->
+          val vf = local.findFileByNioFile(entry) ?: local.refreshAndFindFileByNioFile(entry)
+          when {
+            vf == null -> null
+            vf.isDirectory -> vf.url
+            else -> jarfs.getJarRootForLocalFile(vf)?.url
+          }
+        }.toSet()
+
+        val currentRoots = lib.getUrls(OrderRootType.CLASSES).toSet()
+        if (currentRoots != expectedRoots) {
+          val libModel = lib.modifiableModel
+          libModel.getUrls(OrderRootType.CLASSES).forEach { libModel.removeRoot(it, OrderRootType.CLASSES) }
+          expectedRoots.forEach { libModel.addRoot(it, OrderRootType.CLASSES) }
+          writeRun { libModel.commit() }
+        }
+
+        if (addedLibs.add(lib)) {
+          val existing = model.findLibraryOrderEntry(lib)
+          if (existing == null) model.addLibraryEntry(lib)
+        }
       }
     }
     hostLibraries.forEach { lib -> if (addedLibs.add(lib)) model.addLibraryEntry(lib) }
