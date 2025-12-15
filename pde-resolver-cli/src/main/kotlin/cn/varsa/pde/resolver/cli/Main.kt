@@ -422,9 +422,58 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
   RuntimeLayoutWriter.write(layout, plan, ctx, opts, defaults)
 }
 
+private fun compileMain(args: Array<String>) {
+  val parser = ArgParser("pde-compile")
+  val targetRoots by parser.option(ArgType.String, fullName = "target-root", shortName = "t", description = "Target root/profile (repeatable)").multiple()
+  val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
+  val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
+  parser.parse(args)
+
+  if (targetRoots.isEmpty()) {
+    System.err.println("No --target-root specified")
+    return
+  }
+
+  val targetPaths = targetRoots.map { Paths.get(it) }
+  val targetIndex = TargetPlatformCache.buildWithCache(targetPaths)
+  val workspaceDescriptors = workspaceRoots.map { loadWorkspaceDescriptor(it) }
+
+  val env = LaunchEnvironment(
+    targetIndex = targetIndex,
+    workspaceEntries = workspaceDescriptors,
+    resolverOptions = ResolveOptions(
+      whitelistPrefixes = emptySet(),
+      preferWorkspace = true,
+      includeHostsForFragments = true
+    ),
+    autoStartBundles = emptyMap(),
+    startupLevels = emptyMap(),
+    devProperties = emptyMap()
+  )
+  val options = LauncherOptions(
+    frameworkBSN = framework,
+    autoStartDefault = false
+  )
+
+  val planResult = LaunchPlanner.build(env, options)
+
+  println("Resolved ${planResult.selectedBundles.size} bundles (workspace preference on).")
+  planResult.selectedBundles.forEachIndexed { idx, rb ->
+    val origin = if (rb.isWorkspace) "workspace" else "target"
+    val cp = rb.classPathEntries.joinToString(separator = File.pathSeparator)
+    println("${idx + 1}. ${rb.bsn}@${rb.version} [$origin]")
+    println("    path: ${rb.path}")
+    println("    classpath: $cp")
+  }
+}
+
 fun main(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "launch") {
     launchMain(args.drop(1).toTypedArray())
+    return
+  }
+  if (args.isNotEmpty() && args[0] == "compile") {
+    compileMain(args.drop(1).toTypedArray())
     return
   }
 
