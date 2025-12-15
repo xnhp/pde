@@ -16,8 +16,6 @@ import cn.varsa.pde.resolver.cli.config.TargetFileParser
 import cn.varsa.pde.resolver.cli.config.TargetLaunchArgs
 import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
 import cn.varsa.pde.resolver.cli.config.WhitelistFileLoader
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
@@ -30,7 +28,6 @@ import java.util.Properties
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
-private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
 fun launchMain(args: Array<String>) {
   val parser = ArgParser("pde-launch")
@@ -48,7 +45,6 @@ fun launchMain(args: Array<String>) {
   val splash by parser.option(ArgType.String, fullName = "splash")
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val outputDirOpt by parser.option(ArgType.String, fullName = "output", shortName = "o", description = "Output directory for config.ini/bundles.info/dev.properties")
-  val planJson by parser.option(ArgType.String, fullName = "plan-json", description = "Write resolved bundle plan to JSON (for pde compile)")
 
   parser.parse(args)
 
@@ -69,7 +65,7 @@ fun launchMain(args: Array<String>) {
       println("Dry run: validation only. Exiting.")
       return
     }
-    executeLaunch(configContext, targetArgs, planJson)
+    executeLaunch(configContext, targetArgs)
     return
   }
 
@@ -98,7 +94,6 @@ fun launchMain(args: Array<String>) {
   )
 
   val planResult = LaunchPlanner.build(environment, options)
-  planJson?.let { writePlanJson(planResult, it) }
   val outDir = outputDirOpt?.let { Paths.get(it) }
   if (outDir != null) {
     writeOutputs(outDir, planResult.plan, planResult.context, options)
@@ -128,7 +123,7 @@ private fun describeConfig(config: LaunchConfigContext, targetFile: Path?, targe
   }
 }
 
-private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?, planJson: String?) {
+private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?) {
   val workspaceInputs = WorkspaceModuleResolver.resolve(context)
   val profilePath = context.config.profilePath?.let { context.baseDir.resolve(it).normalize() }
     ?: error("profilePath missing in YAML config")
@@ -179,7 +174,6 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
     autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
-  planJson?.let { writePlanJson(planResult, it) }
   val fallbackConfig = loadExistingConfig(profilePath)
   writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig)
   println("Launch plan built:")
@@ -418,51 +412,6 @@ private fun parseDevProperties(entries: List<String>): Map<String, List<String>>
     else parts[0] to parts[1].split(',').filter { it.isNotBlank() }
   }
   .toMap()
-
-private data class PlanBundleJson(
-  val bsn: String,
-  val version: String,
-  val origin: String,
-  val location: String,
-  val classPath: List<String>,
-  val startLevel: Int?,
-  val autoStart: Boolean?,
-  val fragmentHost: String?,
-  val isHost: Boolean,
-  val isWorkspace: Boolean
-)
-
-private data class PlanJsonOutput(
-  val bundles: List<PlanBundleJson>,
-  val framework: String?
-)
-
-private fun writePlanJson(planResult: LaunchPlanner.PlanResult, pathString: String) {
-  val path = Paths.get(pathString).toAbsolutePath().normalize()
-  path.parent?.let { Files.createDirectories(it) }
-  val startSpecs = planResult.plan.bundles.associateBy { it.bsn }
-  val bundles = planResult.selectedBundles.map { rb ->
-    val spec = startSpecs[rb.bsn]
-    PlanBundleJson(
-      bsn = rb.bsn,
-      version = rb.version.toString(),
-      origin = rb.origin.name.lowercase(),
-      location = rb.path.toString(),
-      classPath = rb.classPathEntries.map { it.toString() },
-      startLevel = spec?.startLevel,
-      autoStart = spec?.autoStart,
-      fragmentHost = rb.fragmentHost,
-      isHost = rb.isHost,
-      isWorkspace = rb.isWorkspace
-    )
-  }
-  val payload = PlanJsonOutput(
-    bundles = bundles,
-    framework = planResult.plan.framework?.bsn
-  )
-  jsonMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), payload)
-  println("Wrote plan JSON to $path")
-}
 
 private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts: LauncherOptions) {
   val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(dir)
