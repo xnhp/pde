@@ -5,12 +5,14 @@ import cn.varsa.pde.resolver.algo.ResolveProblem
 import cn.varsa.pde.resolver.algo.ResolveProblemType
 import cn.varsa.pde.resolver.algo.ResolveResult
 import cn.varsa.pde.resolver.algo.Resolver
+import cn.varsa.pde.resolver.algo.ResolvedBundle
 
 object LaunchPlanner {
   data class PlanResult(
     val plan: LauncherPlan,
     val context: LaunchContext,
-    val problemsByScope: Map<String, List<ResolveProblem>> = emptyMap()
+    val problemsByScope: Map<String, List<ResolveProblem>> = emptyMap(),
+    val selectedBundles: List<ResolvedBundle> = emptyList()
   )
 
   fun build(
@@ -117,7 +119,8 @@ object LaunchPlanner {
     return PlanResult(
       plan = plan,
       context = context,
-      problemsByScope = problems.mapValues { it.value.toList() }
+      problemsByScope = problems.mapValues { it.value.toList() },
+      selectedBundles = selector.entries()
     )
   }
 }
