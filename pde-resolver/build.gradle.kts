@@ -19,4 +19,5 @@ dependencies {
   api("org.osgi:org.osgi.core:6.0.0")
 
   testImplementation(libs.junit)
+  testImplementation(kotlin("test"))
 }
