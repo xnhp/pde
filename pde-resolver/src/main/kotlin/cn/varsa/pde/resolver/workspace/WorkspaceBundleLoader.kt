@@ -7,6 +7,7 @@ import org.osgi.framework.Constants.BUNDLE_VERSION_ATTRIBUTE
 import java.io.File
 import java.nio.file.Path
 import java.util.jar.JarFile
+import java.util.Properties
 
 /**
  * Build [WorkspaceBundleDescriptor] instances from filesystem bundles.
@@ -22,6 +23,12 @@ object WorkspaceBundleLoader {
 
     val absolute = path.toAbsolutePath().normalize()
     val classPathEntries = computeClassPathEntries(file, absolute, manifest)
+    val buildProps = if (file.isDirectory) loadBuildProperties(file) else null
+    val sourceRoots = computeSourceRoots(absolute, buildProps)
+    val resources = computeResourceRules(buildProps)
+    val compilerPrefs = if (file.isDirectory) loadCompilerPrefs(file) else emptyMap()
+    val executionEnvironment = manifest[org.osgi.framework.Constants.BUNDLE_REQUIREDEXECUTIONENVIRONMENT]
+    val outputDir = computeOutputDir(absolute, buildProps)
     val fragmentHost = manifest.fragmentHost?.let { entry ->
       WorkspaceBundleDescriptor.FragmentHost(
         symbolicName = entry.key,
@@ -33,7 +40,13 @@ object WorkspaceBundleLoader {
       path = absolute,
       manifest = manifest,
       classPathEntries = classPathEntries,
-      fragmentHost = fragmentHost
+      fragmentHost = fragmentHost,
+      sourceRoots = sourceRoots,
+      resourceIncludes = resources.first,
+      resourceExcludes = resources.second,
+      compilerPrefs = compilerPrefs,
+      executionEnvironment = executionEnvironment,
+      outputDirectory = outputDir
     )
   }
 
@@ -64,5 +77,44 @@ object WorkspaceBundleLoader {
         // For jar bundles we currently expose only the jar itself.
       }
     return entries.distinct()
+  }
+
+  private fun loadBuildProperties(dir: File): java.util.Properties? {
+    val file = File(dir, "build.properties")
+    if (!file.isFile) return null
+    return java.util.Properties().apply { file.inputStream().use { load(it) } }
+  }
+
+  private fun computeSourceRoots(base: Path, props: java.util.Properties?): List<Path> {
+    if (props == null) return listOf(base.resolve("src")).filter { it.toFile().exists() }
+    val sourceKeys = props.stringPropertyNames().filter { it.startsWith("source.") }
+    if (sourceKeys.isEmpty()) {
+      val candidate = base.resolve("src")
+      return listOf(candidate).filter { it.toFile().exists() }
+    }
+    return sourceKeys.flatMap { key ->
+      props.getProperty(key)?.split(',')?.map { it.trim() } ?: emptyList()
+    }.filter { it.isNotEmpty() }
+      .map { base.resolve(it).normalize() }
+  }
+
+  private fun computeResourceRules(props: java.util.Properties?): Pair<List<String>, List<String>> {
+    if (props == null) return emptyList<String>() to emptyList()
+    val includes = props.getProperty("bin.includes")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    val excludes = props.getProperty("bin.excludes")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    return includes to excludes
+  }
+
+  private fun loadCompilerPrefs(dir: File): Map<String, String> {
+    val prefsFile = File(dir, ".settings/org.eclipse.jdt.core.prefs")
+    if (!prefsFile.isFile) return emptyMap()
+    return java.util.Properties().apply { prefsFile.inputStream().use { load(it) } }
+      .entries.associate { it.key.toString() to it.value.toString() }
+  }
+
+  private fun computeOutputDir(base: Path, props: java.util.Properties?): Path? {
+    val outProp = props?.getProperty("output..") ?: props?.getProperty("output")
+    return outProp?.takeIf { it.isNotBlank() }?.let { base.resolve(it).normalize() }
+      ?: base.resolve("bin").takeIf { it.toFile().exists() }
   }
 }

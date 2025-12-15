@@ -20,6 +20,12 @@ data class WorkspaceBundleDescriptor(
   val classPathEntries: List<Path> = listOf(path.toAbsolutePath().normalize()),
   val sourceEntries: List<Path> = emptyList(),
   val fragmentHost: FragmentHost? = null,
+  val sourceRoots: List<Path> = emptyList(),
+  val resourceIncludes: List<String> = emptyList(),
+  val resourceExcludes: List<String> = emptyList(),
+  val compilerPrefs: Map<String, String> = emptyMap(),
+  val executionEnvironment: String? = null,
+  val outputDirectory: Path? = null
 ) {
   data class FragmentHost(val symbolicName: String, val versionRange: VersionRange?)
 }
