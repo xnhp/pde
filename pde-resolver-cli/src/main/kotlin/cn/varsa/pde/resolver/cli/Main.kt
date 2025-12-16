@@ -5,6 +5,7 @@ import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.compile.CompileSpecBuilder
 import cn.varsa.pde.resolver.product.ProductConfigurationParser
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
@@ -20,6 +21,8 @@ import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
 import kotlinx.cli.multiple
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -28,6 +31,7 @@ import java.util.Properties
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
+private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
 fun launchMain(args: Array<String>) {
   val parser = ArgParser("pde-launch")
@@ -427,6 +431,7 @@ private fun compileMain(args: Array<String>) {
   val targetRoots by parser.option(ArgType.String, fullName = "target-root", shortName = "t", description = "Target root/profile (repeatable)").multiple()
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
+  val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
   parser.parse(args)
 
   if (targetRoots.isEmpty()) {
@@ -456,14 +461,23 @@ private fun compileMain(args: Array<String>) {
   )
 
   val planResult = LaunchPlanner.build(env, options)
+  val specs = CompileSpecBuilder.from(planResult, workspaceDescriptors)
 
-  println("Resolved ${planResult.selectedBundles.size} bundles (workspace preference on).")
-  planResult.selectedBundles.forEachIndexed { idx, rb ->
-    val origin = if (rb.isWorkspace) "workspace" else "target"
-    val cp = rb.classPathEntries.joinToString(separator = File.pathSeparator)
-    println("${idx + 1}. ${rb.bsn}@${rb.version} [$origin]")
-    println("    path: ${rb.path}")
-    println("    classpath: $cp")
+  if (json) {
+    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(specs))
+    return
+  }
+
+  println("Resolved ${specs.size} bundles (workspace preference on).")
+  specs.forEachIndexed { idx, spec ->
+    println("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
+    println("    classpath: ${spec.classpath.joinToString(File.pathSeparator)}")
+    if (spec.isWorkspace) {
+      println("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
+      println("    resources include: ${spec.resourceIncludes.joinToString()}")
+      println("    resources exclude: ${spec.resourceExcludes.joinToString()}")
+      println("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
+    }
   }
 }
 

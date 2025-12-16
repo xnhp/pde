@@ -32,7 +32,8 @@ class CompileMainDryRunTest {
         arrayOf(
           "compile",
           "--target-root", tpDir.toString(),
-          "--workspace", workspace.toString()
+          "--workspace", workspace.toString(),
+          "--json"
         )
       )
     } finally {
@@ -41,8 +42,9 @@ class CompileMainDryRunTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("org.example.test@1.0.0"))
-    assertTrue(output.contains("[workspace]"))
+    assertTrue(output.contains("\"bsn\" : \"org.example.test\""))
+    assertTrue(output.contains("\"origin\" : \"workspace\""))
+    assertTrue(output.contains("sourceRoots"))
   }
 
   private fun createFramework(tpDir: Path) {
