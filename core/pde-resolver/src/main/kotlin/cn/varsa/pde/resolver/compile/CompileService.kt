@@ -24,6 +24,7 @@ object CompileService {
       bsn = rb.bsn,
       version = rb.version.toString(),
       origin = if (rb.isWorkspace) "workspace" else "target",
+      bundlePath = rb.path.toString(),
       classpath = rb.classPathEntries.map { it.toString() },
       sourceRoots = w?.sourceRoots?.map { it.toString() } ?: emptyList(),
       resourceIncludes = w?.resourceIncludes ?: emptyList(),

@@ -6,6 +6,7 @@ import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.compile.CompileService
+import cn.varsa.pde.resolver.compile.CompileExecutor
 import cn.varsa.pde.resolver.product.ProductConfigurationParser
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
@@ -432,6 +433,7 @@ private fun compileMain(args: Array<String>) {
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
+  val execute by parser.option(ArgType.Boolean, fullName = "execute", description = "Run ECJ compilation (default: dry-run specs)").default(false)
   parser.parse(args)
 
   if (targetRoots.isEmpty()) {
@@ -468,15 +470,27 @@ private fun compileMain(args: Array<String>) {
     return
   }
 
-  println("Resolved ${specs.size} bundles (workspace preference on).")
-  specs.forEachIndexed { idx, spec ->
-    println("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
-    println("    classpath: ${spec.classpath.joinToString(File.pathSeparator)}")
-    if (spec.isWorkspace) {
-      println("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
-      println("    resources include: ${spec.resourceIncludes.joinToString()}")
-      println("    resources exclude: ${spec.resourceExcludes.joinToString()}")
-      println("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
+  if (!execute) {
+    println("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
+    specs.forEachIndexed { idx, spec ->
+      println("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
+      println("    classpath: ${spec.classpath.joinToString(File.pathSeparator)}")
+      if (spec.isWorkspace) {
+        println("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
+        println("    resources include: ${spec.resourceIncludes.joinToString()}")
+        println("    resources exclude: ${spec.resourceExcludes.joinToString()}")
+        println("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
+      }
+    }
+    return
+  }
+
+  val results = CompileExecutor.compile(specs)
+  results.forEach { r ->
+    val status = if (r.success) "OK" else "FAIL"
+    println("${r.bsn}: $status")
+    if (!r.success) {
+      println(r.output)
     }
   }
 }

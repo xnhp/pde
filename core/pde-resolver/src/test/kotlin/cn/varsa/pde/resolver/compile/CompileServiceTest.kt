@@ -48,6 +48,7 @@ class CompileServiceTest {
 
     assertEquals("org.example.test", spec.bsn)
     assertEquals("workspace", spec.origin)
+    assertEquals(wsPath.toString(), spec.bundlePath)
     assertTrue(spec.classpath.contains(wsPath.toString()))
     assertTrue(spec.sourceRoots.contains(wsPath.resolve("src").toString()))
     assertEquals(listOf("META-INF/", ".", "icons/"), spec.resourceIncludes)
@@ -78,6 +79,7 @@ class CompileServiceTest {
     val spec = CompileService.buildSpecs(plan, emptyList()).specs.single()
 
     assertEquals("target", spec.origin)
+    assertEquals(tpPath.toString(), spec.bundlePath)
     assertTrue(spec.sourceRoots.isEmpty())
     assertTrue(spec.resourceIncludes.isEmpty())
     assertTrue(spec.resourceExcludes.isEmpty())
