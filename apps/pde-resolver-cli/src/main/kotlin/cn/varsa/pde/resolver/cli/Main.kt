@@ -5,7 +5,7 @@ import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
-import cn.varsa.pde.resolver.compile.CompileSpecBuilder
+import cn.varsa.pde.resolver.compile.CompileService
 import cn.varsa.pde.resolver.product.ProductConfigurationParser
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
@@ -461,7 +461,7 @@ private fun compileMain(args: Array<String>) {
   )
 
   val planResult = LaunchPlanner.build(env, options)
-  val specs = CompileSpecBuilder.from(planResult, workspaceDescriptors)
+  val specs = CompileService.buildSpecs(planResult, workspaceDescriptors).specs
 
   if (json) {
     println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(specs))
