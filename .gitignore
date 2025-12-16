@@ -5,9 +5,8 @@
 .kotlin
 build
 # Allow resolver tests (override broad 'test/' ignore)
-!pde-resolver/src/test/**
-!pde-resolver-cli/src/test/**
-testing-project
+!core/pde-resolver/src/test/**
+!apps/pde-resolver-cli/src/test/**
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/cmake,clion,macos,windows,linux,maven,gradle,eclipse,java,svn,git,kotlin,vuejs,intellij,jetbrains,webstorm,c++,c,visualstudio,visualstudiocode,csharp,xcode,cocoapods,appcode,vue,objective-c,swiftpackagemanager
@@ -1027,8 +1026,12 @@ xcuserdata
 
 docs/_book
 test/
-!pde-resolver-cli/src/test/
-!pde-resolver-cli/src/test/**
+!apps/**/src/test/
+!apps/**/src/test/**
+!core/**/src/test/
+!core/**/src/test/**
+!intellij/**/src/test/
+!intellij/**/src/test/**
 
 ### Vuejs ###
 # Recommended template: Node.gitignore

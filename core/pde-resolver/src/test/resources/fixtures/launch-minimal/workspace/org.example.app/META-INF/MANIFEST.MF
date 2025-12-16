@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Bundle-SymbolicName: org.example.app
+Bundle-Version: 1.0.0
+Require-Bundle: org.eclipse.osgi;bundle-version="[1.0.0,2.0.0)"
