@@ -18,10 +18,18 @@ data class BundleCompileResult(
 )
 
 object CompileExecutor {
-  fun compile(specs: List<CompileSpec>, failOnProcessors: Boolean = true): List<BundleCompileResult> =
-    specs.map { compileBundle(it, failOnProcessors) }
+  fun compile(
+    specs: List<CompileSpec>,
+    failOnProcessors: Boolean = true,
+    resourceCopier: ResourceCopier = DefaultResourceCopier
+  ): List<BundleCompileResult> =
+    specs.map { compileBundle(it, failOnProcessors, resourceCopier) }
 
-  private fun compileBundle(spec: CompileSpec, failOnProcessors: Boolean): BundleCompileResult {
+  private fun compileBundle(
+    spec: CompileSpec,
+    failOnProcessors: Boolean,
+    resourceCopier: ResourceCopier
+  ): BundleCompileResult {
     val bundleRoot = Path.of(spec.bundlePath)
     val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("bin")
     outDir.createDirectories()
@@ -57,7 +65,7 @@ object CompileExecutor {
     val compiler = Main(writer, writer, false, null, null)
     val success = compiler.compile(args.toTypedArray())
 
-    copyResources(bundleRoot, outDir, spec.resourceIncludes, spec.resourceExcludes)
+    resourceCopier.copy(bundleRoot, outDir, spec.resourceIncludes, spec.resourceExcludes)
 
     return BundleCompileResult(spec.bsn, success = success, output = baos.toString())
   }
@@ -67,20 +75,4 @@ object CompileExecutor {
       Files.exists(bundleRoot.resolve("factorypath.xml")) ||
       false
 
-  private fun copyResources(root: Path, outDir: Path, includes: List<String>, excludes: List<String>) {
-    if (includes.isEmpty()) return
-    val includeMatchers = includes.map { root.fileSystem.getPathMatcher("glob:${it}") }
-    val excludeMatchers = excludes.map { root.fileSystem.getPathMatcher("glob:${it}") }
-    Files.walk(root).use { stream ->
-      stream.filter { Files.isRegularFile(it) && it.toString().endsWith(".java").not() }.forEach { file ->
-        val rel = runCatching { file.relativeTo(root) }.getOrNull() ?: return@forEach
-        val relStr = rel.toString().replace('\\', '/')
-        if (includeMatchers.none { it.matches(rel) }) return@forEach
-        if (excludeMatchers.any { it.matches(rel) }) return@forEach
-        val target = outDir.resolve(rel)
-        target.parent?.createDirectories()
-        Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-      }
-    }
-  }
 }
