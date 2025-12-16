@@ -44,7 +44,7 @@ class CompileMainDryRunTest {
     val output = out.toString()
     assertTrue(output.contains("\"bsn\" : \"org.example.test\""))
     assertTrue(output.contains("\"origin\" : \"workspace\""))
-    assertTrue(output.contains("sourceRoots"))
+    assertTrue(output.contains("\"sourceRoots\""))
   }
 
   private fun createFramework(tpDir: Path) {
