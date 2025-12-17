@@ -434,6 +434,7 @@ private fun compileMain(args: Array<String>) {
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
   val execute by parser.option(ArgType.Boolean, fullName = "execute", description = "Run ECJ compilation (default: dry-run specs)").default(false)
+  val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results (when --execute) to JSON file")
   parser.parse(args)
 
   if (targetRoots.isEmpty()) {
@@ -486,6 +487,10 @@ private fun compileMain(args: Array<String>) {
   }
 
   val results = CompileExecutor.compile(specs)
+  resultsJson?.let { path ->
+    jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
+    println("Wrote results to $path")
+  }
   results.forEach { r ->
     val status = if (r.success) "OK" else "FAIL"
     println("${r.bsn}: $status")
