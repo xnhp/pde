@@ -30,5 +30,14 @@ class ResourceCopierTest {
     assertTrue(out.resolve("src/Foo.java").notExists()) // Java sources are not copied
   }
 
+  @Test
+  fun `defaults to include all when bin includes missing`() {
+    val root = Files.createTempDirectory("rc-default")
+    val out = Files.createTempDirectory("rc-default-out")
+    root.resolve("file.txt").writeText("x")
+    DefaultResourceCopier.copy(root, out, includes = emptyList(), excludes = emptyList())
+    assertTrue(out.resolve("file.txt").toFile().exists())
+  }
+
   private fun Path.notExists(): Boolean = !this.toFile().exists()
 }

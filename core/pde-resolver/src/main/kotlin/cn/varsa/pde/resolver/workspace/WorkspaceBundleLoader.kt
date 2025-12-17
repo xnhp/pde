@@ -99,8 +99,8 @@ object WorkspaceBundleLoader {
   }
 
   private fun computeResourceRules(props: java.util.Properties?): Pair<List<String>, List<String>> {
-    if (props == null) return emptyList<String>() to emptyList()
-    val includes = props.getProperty("bin.includes")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    if (props == null) return listOf(".") to emptyList()
+    val includes = props.getProperty("bin.includes")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: listOf(".")
     val excludes = props.getProperty("bin.excludes")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
     return includes to excludes
   }

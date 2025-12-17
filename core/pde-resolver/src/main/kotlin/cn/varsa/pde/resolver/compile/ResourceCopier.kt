@@ -15,9 +15,9 @@ interface ResourceCopier {
 
 object DefaultResourceCopier : ResourceCopier {
   override fun copy(root: Path, outDir: Path, includes: List<String>, excludes: List<String>) {
-    if (includes.isEmpty()) return
-    val includeMatchers = includes.map { pattern -> root.fileSystem.getPathMatcher("glob:${normalizePattern(pattern)}") }
-    val excludeMatchers = excludes.map { pattern -> root.fileSystem.getPathMatcher("glob:${normalizePattern(pattern)}") }
+    val effIncludes = if (includes.isEmpty()) listOf(".") else includes
+    val includeMatchers = buildMatchers(root, effIncludes)
+    val excludeMatchers = buildMatchers(root, excludes)
     Files.walk(root).use { stream ->
       stream.filter { Files.isRegularFile(it) && !it.toString().endsWith(".java") }.forEach { file ->
         val rel = runCatching { file.relativeTo(root) }.getOrNull() ?: return@forEach
@@ -31,5 +31,16 @@ object DefaultResourceCopier : ResourceCopier {
   }
 
   private fun normalizePattern(pattern: String): String =
-    if (pattern.endsWith("/")) "$pattern**" else pattern
+    when {
+      pattern == "." || pattern == "./" -> "**"
+      pattern.endsWith("/") -> "$pattern**"
+      else -> pattern
+    }
+
+  private fun buildMatchers(root: Path, patterns: List<String>): List<java.nio.file.PathMatcher> =
+    patterns.flatMap { pattern ->
+      val normalized = normalizePattern(pattern)
+      val alts = if (normalized.startsWith("**/")) listOf(normalized.removePrefix("**/")) else emptyList()
+      listOf(normalized) + alts
+    }.map { pat -> root.fileSystem.getPathMatcher("glob:$pat") }
 }
