@@ -38,6 +38,7 @@ import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
 import kotlinx.cli.multiple
+import kotlinx.cli.optional
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.io.File
@@ -68,11 +69,15 @@ fun launchMain(args: Array<String>) {
     exitProcess(exit)
   }
   val parser = ArgParser("pde-launch")
-  val configFile by parser.option(
+  val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
     description = "YAML launch configuration"
   )
+  val configPos by parser.argument(
+    ArgType.String,
+    description = "YAML launch configuration (positional)"
+  ).optional()
   val dryRun by parser.option(ArgType.Boolean, fullName = "dry-run", description = "Parse configuration only").default(false)
   val targetRoots by parser.option(ArgType.String, fullName = "target-root", shortName = "t", description = "Target root (repeatable)").multiple()
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
@@ -84,6 +89,8 @@ fun launchMain(args: Array<String>) {
   val outputDirOpt by parser.option(ArgType.String, fullName = "output", shortName = "o", description = "Output directory for config.ini/bundles.info/dev.properties")
 
   parser.parse(args)
+
+  val configFile = configFileOpt ?: configPos
 
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
 
@@ -517,7 +524,8 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
 
 private fun testMain(args: Array<String>): Int {
   val parser = ArgParser("pde-launch test")
-  val configFile by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
   val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
   val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
@@ -529,6 +537,8 @@ private fun testMain(args: Array<String>): Int {
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
   val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
   parser.parse(args)
+
+  val configFile = configFileOpt ?: configPos
 
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
   if (discoveredConfig == null) {
