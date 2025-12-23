@@ -20,8 +20,9 @@ import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
-import cn.varsa.pde.resolver.compile.CompileService
 import cn.varsa.pde.resolver.compile.CompileExecutor
+import cn.varsa.pde.resolver.compile.CompileService
+import cn.varsa.pde.resolver.compile.rewritePlanWithCompiledOutputs
 import cn.varsa.pde.resolver.product.ProductConfigurationParser
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
@@ -688,6 +689,7 @@ private fun compileMain(args: Array<String>) {
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
   val execute by parser.option(ArgType.Boolean, fullName = "execute", description = "Run ECJ compilation (default: dry-run specs)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results (when --execute) to JSON file")
+  val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
   parser.parse(args)
 
   if (targetRoots.isEmpty()) {
@@ -747,6 +749,19 @@ private fun compileMain(args: Array<String>) {
   resultsJson?.let { path ->
     jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
     logger.info("Wrote results to $path")
+  }
+  if (bundlesInfoOut != null) {
+    val allOk = results.all { it.success }
+    if (!allOk) {
+      logger.severe("Skipping bundles.info write because some bundles failed to compile.")
+    } else {
+      val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
+      val outPath = Paths.get(bundlesInfoOut)
+      outPath.parent?.let { Files.createDirectories(it) }
+      val text = BundlesInfoRenderer.toText(rewrittenPlan)
+      Files.writeString(outPath, text)
+      logger.info("Wrote bundles.info with compiled workspace outputs to $outPath")
+    }
   }
   results.forEach { r ->
     val status = if (r.success) "OK" else "FAIL"
