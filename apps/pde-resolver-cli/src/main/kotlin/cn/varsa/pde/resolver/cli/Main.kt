@@ -20,8 +20,10 @@ import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.compile.BundleCompileResult
 import cn.varsa.pde.resolver.compile.CompileExecutor
 import cn.varsa.pde.resolver.compile.CompileService
+import cn.varsa.pde.resolver.compile.CompileSpec
 import cn.varsa.pde.resolver.compile.rewritePlanWithCompiledOutputs
 import cn.varsa.pde.resolver.product.ProductConfigurationParser
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
@@ -54,6 +56,8 @@ import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
+import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
+import cn.varsa.pde.resolver.launch.LaunchContext
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
@@ -690,6 +694,7 @@ private fun compileMain(args: Array<String>) {
   val execute by parser.option(ArgType.Boolean, fullName = "execute", description = "Run ECJ compilation (default: dry-run specs)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results (when --execute) to JSON file")
   val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
+  val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
   parser.parse(args)
 
   if (targetRoots.isEmpty()) {
@@ -750,8 +755,8 @@ private fun compileMain(args: Array<String>) {
     jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
     logger.info("Wrote results to $path")
   }
+  val allOk = results.all { it.success }
   if (bundlesInfoOut != null) {
-    val allOk = results.all { it.success }
     if (!allOk) {
       logger.severe("Skipping bundles.info write because some bundles failed to compile.")
     } else {
@@ -770,6 +775,41 @@ private fun compileMain(args: Array<String>) {
       logger.severe(r.output)
     }
   }
+  if (runtimeOut != null) {
+    if (!allOk) {
+      logger.severe("Skipping runtime layout write because some bundles failed to compile.")
+      return
+    }
+    val outDir = Paths.get(runtimeOut)
+    val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
+    val devProps = buildDevProperties(specs, results)
+    val context = LaunchContext(
+      startupLevels = planResult.context.startupLevels,
+      devProperties = devProps
+    )
+    val defaults = RuntimeLayoutWriter.Defaults(
+      installArea = targetPaths.firstOrNull() ?: outDir,
+      instanceArea = outDir.resolve("workspace")
+    )
+    RuntimeLayoutWriter.write(
+      layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
+      plan = rewrittenPlan,
+      context = context,
+      options = options,
+      defaults = defaults
+    )
+    logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
+  }
+}
+
+private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCompileResult>): Map<String, List<String>> {
+  val success = results.filter { it.success }.map { it.bsn }.toSet()
+  return specs
+    .filter { it.isWorkspace && success.contains(it.bsn) }
+    .associate { spec ->
+      val out = spec.outputDirectory ?: Paths.get(spec.bundlePath).resolve("bin").toString()
+      spec.bsn to listOf(out)
+    }
 }
 
 fun main(args: Array<String>) {
