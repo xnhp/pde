@@ -10,6 +10,7 @@ repositories {
 dependencies {
   implementation(kotlin("stdlib"))
   implementation(project(":pde-resolver"))
+  implementation(project(":pde-remote-runner"))
   implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
   implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.1")
   implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.1")

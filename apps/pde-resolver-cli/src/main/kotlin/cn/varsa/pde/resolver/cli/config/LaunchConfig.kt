@@ -58,3 +58,19 @@ object LaunchConfigLoader {
     return LaunchConfigContext(file = normalized, baseDir = base, config = config)
   }
 }
+
+internal val DEFAULT_STARTUP_LEVELS = mapOf(
+  "org.eclipse.osgi" to 1,
+  "org.eclipse.equinox.simpleconfigurator" to 1,
+  "org.eclipse.equinox.ds" to 1,
+  "org.eclipse.m2e.logback.configuration" to 4,
+  "org.apache.felix.gogo.runtime" to 4,
+  "org.eclipse.equinox.event" to 2,
+  "org.eclipse.core.runtime" to 4,
+  "org.apache.felix.scr" to 2,
+  "org.apache.felix.gogo.command" to 4,
+  "org.apache.felix.gogo.shell" to 4,
+  "org.eclipse.equinox.p2.reconciler.dropins" to 4,
+  "org.eclipse.equinox.console" to 4,
+  "org.eclipse.equinox.common" to 2
+)
