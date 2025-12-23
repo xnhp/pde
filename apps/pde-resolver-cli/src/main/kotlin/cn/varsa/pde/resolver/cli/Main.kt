@@ -49,6 +49,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Instant
 import java.util.Properties
+import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.system.exitProcess
 
@@ -62,6 +63,12 @@ data class PreparedLaunch(
   val planResult: LaunchPlanner.PlanResult,
   val layout: LaunchLayout
 )
+
+private fun logCommand(command: List<String>) {
+  if (logger.isLoggable(Level.INFO)) {
+    logger.log(Level.INFO, "Executing: {0}", command.joinToString(" "))
+  }
+}
 
 fun launchMain(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "test") {
@@ -184,7 +191,7 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
       logger.info("    $scope -> ${probs.size} issues")
     }
   }
-  logger.info("Executing: ${prepared.command.joinToString(" ")}")
+  logCommand(prepared.command)
   val process = ProcessBuilder(prepared.command)
     .directory(prepared.layout.workDir.toFile())
     .inheritIO()
@@ -612,7 +619,7 @@ private fun testMain(args: Array<String>): Int {
       return 2
     }
 
-  logger.info("Executing: ${prepared.command.joinToString(" ")}")
+  logCommand(prepared.command)
   val process = ProcessBuilder(prepared.command)
     .directory(prepared.layout.workDir.toFile())
     .inheritIO()
