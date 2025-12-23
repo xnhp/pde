@@ -106,6 +106,8 @@ intellijPlatform {
 changelog {
   groups.empty()
   repositoryUrl = providers.gradleProperty("pluginRepositoryUrl")
+  // Allow four-part versions like 1.6.9.1 in headers (full markdown line with heading prefix).
+  headerParserRegex.set("""^##\s+\[(\d+\.\d+\.\d+(?:\.\d+)?)\]\s*-\s*(\d{4}-\d{2}-\d{2})$""".toRegex())
 }
 
 // Configure Gradle Kover Plugin - read more: https://github.com/Kotlin/kotlinx-kover#configuration

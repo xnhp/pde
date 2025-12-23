@@ -32,6 +32,7 @@ class RemoteRunnerApp {
     val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Forward log in form label=path").multiple()
     val includePatterns by parser.option(ArgType.String, fullName = "include", description = "Regex filter to include tests").multiple()
     val excludePatterns by parser.option(ArgType.String, fullName = "exclude", description = "Regex filter to exclude tests").multiple()
+    val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
     parser.parse(args)
 
     val reports = runCatching { reportValues.map(::parseReportTarget) }
@@ -90,7 +91,8 @@ class RemoteRunnerApp {
     startForwarders(forwardSpecs)
 
     val listeners = mutableListOf<RemoteTestListener>()
-    listeners += LoggingRemoteTestListener(System.out, includes, excludes)
+    val useColor = !noColor && System.console() != null
+    listeners += LoggingRemoteTestListener(System.out, includes, excludes, color = useColor)
     val recorder = RecordingRemoteTestListener()
     listeners += recorder
     if (reports.any { it is ReportTarget.TeamCity }) {
