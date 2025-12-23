@@ -52,6 +52,7 @@ import java.util.Properties
 import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.system.exitProcess
+import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
@@ -696,7 +697,11 @@ private fun compileMain(args: Array<String>) {
 
   val targetPaths = targetRoots.map { Paths.get(it) }
   val targetIndex = TargetPlatformCache.buildWithCache(targetPaths)
-  val workspaceDescriptors = workspaceRoots.map { loadWorkspaceDescriptor(it) }
+  val workspaceDescriptors = workspaceRoots.mapNotNull { root ->
+    runCatching { WorkspaceBundleLoader.load(Paths.get(root)) }
+      .onFailure { logger.severe("Failed to load workspace bundle at $root: ${it.message}") }
+      .getOrNull()
+  }
 
   val env = LaunchEnvironment(
     targetIndex = targetIndex,
