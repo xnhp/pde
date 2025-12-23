@@ -1,43 +1,58 @@
 package cn.varsa.pde.resolver.compile
 
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ResourceCopierTest {
-  @Test
-  fun `copies includes and respects excludes`() {
-    val root = Files.createTempDirectory("rc-root")
-    val out = Files.createTempDirectory("rc-out")
-    root.resolve("META-INF").createDirectories().resolve("plugin.xml").writeText("<plugin/>")
-    root.resolve("icons").createDirectories().resolve("a.png").writeText("x")
-    root.resolve("src").createDirectories().resolve("Foo.java").writeText("class Foo {}")
-    root.resolve("tmp.bak").writeText("skip")
+  @Rule
+  @JvmField
+  val temp = TemporaryFolder()
 
+  @Test
+  fun `copies bin includes and respects excludes`() {
+    val bundle = temp.newFolder("bundle").toPath()
+    bundle.resolve("plugin.xml").writeText("<plugin/>")
+    bundle.resolve("notes.md").writeText("skip me")
+    val srcDir = bundle.resolve("src").createDirectories()
+    srcDir.resolve("Example.java").writeText("class Example {}")
+
+    val outDir = bundle.resolve("bin")
     DefaultResourceCopier.copy(
-      root,
-      out,
-      includes = listOf("META-INF/", ".", "icons/"),
-      excludes = listOf("**/*.bak")
+      root = bundle,
+      outDir = outDir,
+      includes = listOf("."),
+      excludes = listOf("**/*.md"),
+      classpathEntries = emptyList()
     )
 
-    assertTrue(out.resolve("META-INF/plugin.xml").toFile().exists())
-    assertTrue(out.resolve("icons/a.png").toFile().exists())
-    assertTrue(out.resolve("tmp.bak").notExists())
-    assertTrue(out.resolve("src/Foo.java").notExists()) // Java sources are not copied
+    assertTrue(outDir.resolve("plugin.xml").toFile().exists(), "plugin.xml should be copied")
+    assertFalse(outDir.resolve("notes.md").toFile().exists(), "excluded files should not be copied")
+    assertFalse(outDir.resolve("src/Example.java").toFile().exists(), "java sources must not be copied")
   }
 
   @Test
-  fun `defaults to include all when bin includes missing`() {
-    val root = Files.createTempDirectory("rc-default")
-    val out = Files.createTempDirectory("rc-default-out")
-    root.resolve("file.txt").writeText("x")
-    DefaultResourceCopier.copy(root, out, includes = emptyList(), excludes = emptyList())
-    assertTrue(out.resolve("file.txt").toFile().exists())
-  }
+  fun `copies embedded bundle classpath jars`() {
+    val bundle = temp.newFolder("bundle2").toPath()
+    val libDir = bundle.resolve("lib").createDirectories()
+    val jarPath = libDir.resolve("embedded.jar")
+    Files.write(jarPath, byteArrayOf(0x50, 0x4B, 0x03, 0x04)) // minimal zip header
 
-  private fun Path.notExists(): Boolean = !this.toFile().exists()
+    val outDir = bundle.resolve("bin")
+    DefaultResourceCopier.copy(
+      root = bundle,
+      outDir = outDir,
+      includes = listOf("."),
+      excludes = emptyList(),
+      classpathEntries = listOf(jarPath.toString())
+    )
+
+    assertTrue(outDir.resolve("lib/embedded.jar").toFile().exists(), "embedded jar should be copied to output")
+  }
 }

@@ -28,7 +28,13 @@ object CompileExecutor {
 
     val result = compiler.compile(spec.copy(outputDirectory = outDir.toString()))
     if (result.success) {
-      resourceCopier.copy(bundleRoot, outDir, spec.resourceIncludes, spec.resourceExcludes)
+      resourceCopier.copy(
+        bundleRoot,
+        outDir,
+        spec.resourceIncludes,
+        spec.resourceExcludes,
+        spec.classpath
+      )
     }
     return result
   }

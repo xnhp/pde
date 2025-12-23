@@ -10,23 +10,52 @@ import kotlin.io.path.relativeTo
  * Does not yet handle linked jars or source bundles; adequate for workspace dry-runs.
  */
 interface ResourceCopier {
-  fun copy(root: Path, outDir: Path, includes: List<String>, excludes: List<String>)
+  fun copy(
+    root: Path,
+    outDir: Path,
+    includes: List<String>,
+    excludes: List<String>,
+    classpathEntries: List<String> = emptyList()
+  )
 }
 
 object DefaultResourceCopier : ResourceCopier {
-  override fun copy(root: Path, outDir: Path, includes: List<String>, excludes: List<String>) {
+  override fun copy(
+    root: Path,
+    outDir: Path,
+    includes: List<String>,
+    excludes: List<String>,
+    classpathEntries: List<String>
+  ) {
     val effIncludes = if (includes.isEmpty()) listOf(".") else includes
     val includeMatchers = buildMatchers(root, effIncludes)
     val excludeMatchers = buildMatchers(root, excludes)
+    val normalizedOut = outDir.toAbsolutePath().normalize()
+
     Files.walk(root).use { stream ->
-      stream.filter { Files.isRegularFile(it) && !it.toString().endsWith(".java") }.forEach { file ->
-        val rel = runCatching { file.relativeTo(root) }.getOrNull() ?: return@forEach
-        if (includeMatchers.none { it.matches(rel) }) return@forEach
-        if (excludeMatchers.any { it.matches(rel) }) return@forEach
-        val target = outDir.resolve(rel)
-        target.parent?.createDirectories()
-        Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-      }
+      stream
+        .filter { Files.isRegularFile(it) && !it.toString().endsWith(".java") }
+        .filter { file -> !file.toAbsolutePath().normalize().startsWith(normalizedOut) }
+        .forEach { file ->
+          val rel = runCatching { file.relativeTo(root) }.getOrNull() ?: return@forEach
+          if (includeMatchers.none { it.matches(rel) }) return@forEach
+          if (excludeMatchers.any { it.matches(rel) }) return@forEach
+          val target = outDir.resolve(rel)
+          target.parent?.createDirectories()
+          Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+
+    // Copy embedded Bundle-ClassPath entries that live inside the bundle (e.g., lib/foo.jar)
+    classpathEntries.forEach { entry ->
+      val path = Path.of(entry).toAbsolutePath().normalize()
+      if (!path.startsWith(root.toAbsolutePath().normalize())) return@forEach
+      if (!Files.exists(path) || Files.isDirectory(path)) return@forEach
+      val rel = runCatching { path.relativeTo(root) }.getOrNull() ?: return@forEach
+      val target = outDir.resolve(rel)
+      if (Files.exists(target)) return@forEach
+      target.parent?.createDirectories()
+      Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     }
   }
 
