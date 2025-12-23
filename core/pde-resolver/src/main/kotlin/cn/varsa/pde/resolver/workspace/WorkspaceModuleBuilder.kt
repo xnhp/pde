@@ -5,7 +5,6 @@ import cn.varsa.pde.resolver.launch.WorkspaceInputs
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.inputStream
 
 data class WorkspaceModuleDefinition(
   val moduleDir: Path,
@@ -27,24 +26,22 @@ object WorkspaceModuleBuilder {
       if (!Files.isDirectory(moduleDir)) {
         throw WorkspaceModuleException("Workspace module path is not a directory: $moduleDir")
       }
-      val manifest = definition.manifestOverride ?: loadManifest(moduleDir)
-        ?: throw WorkspaceModuleException("Missing META-INF/MANIFEST.MF in workspace module: $moduleDir")
+      val descriptor = runCatching { WorkspaceBundleLoader.load(moduleDir) }
+        .getOrElse { cause ->
+          throw WorkspaceModuleException("Failed to load workspace module at $moduleDir: ${cause.message}")
+        }
+      val manifest = definition.manifestOverride ?: descriptor.manifest
       val bsn = manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
+
       val classRoots = (definition.classRoots.takeIf { it.isNotEmpty() } ?: defaultClassRoots)
       val classPathEntries = classRoots.map { moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
-      descriptors += WorkspaceBundleDescriptor(
-        path = moduleDir,
+
+      descriptors += descriptor.copy(
         manifest = manifest,
-        classPathEntries = classPathEntries
+        classPathEntries = classPathEntries.ifEmpty { descriptor.classPathEntries }
       )
       devProps[bsn] = classRoots
     }
     return WorkspaceInputs(descriptors, devProps)
-  }
-
-  private fun loadManifest(moduleDir: Path): BundleManifest? {
-    val manifestFile = moduleDir.resolve("META-INF/MANIFEST.MF")
-    if (!Files.exists(manifestFile)) return null
-    return manifestFile.inputStream().use { BundleManifest.parse(java.util.jar.Manifest(it)) }
   }
 }
