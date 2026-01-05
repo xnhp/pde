@@ -201,8 +201,8 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
         }
       }
     }
-    error(
-      "Launch plan has unresolved bundles/dependencies; refusing to start.\n$details".trim()
+    logger.warning(
+      ("Launch plan has unresolved bundles/dependencies; continuing anyway.\n$details").trim()
     )
   }
   logCommand(prepared.command)
