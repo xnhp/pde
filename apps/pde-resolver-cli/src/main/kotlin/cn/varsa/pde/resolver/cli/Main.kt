@@ -193,9 +193,17 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
   logger.info("  workspace bundles: ${planResult.plan.bundles.count { it.isWorkspace }}")
   logger.info("  problems: ${planResult.problemsByScope.values.sumOf { it.size }}")
   if (planResult.problemsByScope.isNotEmpty()) {
-    planResult.problemsByScope.forEach { (scope, probs) ->
-      logger.info("    $scope -> ${probs.size} issues")
+    val details = buildString {
+      planResult.problemsByScope.forEach { (scope, probs) ->
+        appendLine("$scope:")
+        probs.forEach { p ->
+          appendLine("  - [${p.type}] ${p.symbol}${p.range?.let { " $it" } ?: ""}: ${p.message}")
+        }
+      }
     }
+    error(
+      "Launch plan has unresolved bundles/dependencies; refusing to start.\n$details".trim()
+    )
   }
   logCommand(prepared.command)
   val process = ProcessBuilder(prepared.command)
