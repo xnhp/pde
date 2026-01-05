@@ -34,21 +34,37 @@ object WorkspaceModuleBuilder {
       val bsn = manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
 
       val classRoots = (definition.classRoots.takeIf { it.isNotEmpty() } ?: defaultClassRoots)
-      val classPathEntries = classRoots.map { moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
+      val devClassPaths = classRoots.map { moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
 
-      if (moduleDir.toFile().isDirectory && classPathEntries.isEmpty()) {
-        val requested = classRoots.joinToString(", ") { moduleDir.resolve(it).toString() }
-        throw WorkspaceModuleException(
-          "No compiled classes found for workspace bundle $bsn. Checked: $requested"
-        )
+      val effectiveClassPath = when {
+        devClassPaths.isNotEmpty() -> {
+          if (moduleDir.toFile().isDirectory && !containsClasses(devClassPaths)) {
+            val requested = classRoots.joinToString(", ") { moduleDir.resolve(it).toString() }
+            throw WorkspaceModuleException(
+              "No compiled classes found for workspace bundle $bsn. Checked: $requested"
+            )
+          }
+          devClassPaths
+        }
+        else -> descriptor.classPathEntries
       }
 
       descriptors += descriptor.copy(
         manifest = manifest,
-        classPathEntries = classPathEntries.ifEmpty { descriptor.classPathEntries }
+        classPathEntries = effectiveClassPath
       )
-      devProps[bsn] = classRoots
+      if (devClassPaths.isNotEmpty()) {
+        devProps[bsn] = classRoots
+      }
     }
     return WorkspaceInputs(descriptors, devProps)
   }
+
+  private fun containsClasses(classPaths: List<Path>): Boolean =
+    classPaths.any { path ->
+      Files.isDirectory(path) &&
+        Files.walk(path).use { stream ->
+          stream.anyMatch { Files.isRegularFile(it) && it.toString().endsWith(".class") }
+        }
+    }
 }
