@@ -13,7 +13,7 @@ data class WorkspaceModuleDefinition(
 )
 
 object WorkspaceModuleBuilder {
-  private val defaultClassRoots = listOf("build/classes/java/main", "out/production")
+  private val defaultClassRoots = listOf("out/production")
 
   fun build(definitions: List<WorkspaceModuleDefinition>): WorkspaceInputs {
     val descriptors = mutableListOf<WorkspaceBundleDescriptor>()
@@ -35,6 +35,13 @@ object WorkspaceModuleBuilder {
 
       val classRoots = (definition.classRoots.takeIf { it.isNotEmpty() } ?: defaultClassRoots)
       val classPathEntries = classRoots.map { moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
+
+      if (moduleDir.toFile().isDirectory && classPathEntries.isEmpty()) {
+        val requested = classRoots.joinToString(", ") { moduleDir.resolve(it).toString() }
+        throw WorkspaceModuleException(
+          "No compiled classes found for workspace bundle $bsn. Checked: $requested"
+        )
+      }
 
       descriptors += descriptor.copy(
         manifest = manifest,

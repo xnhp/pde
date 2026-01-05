@@ -36,6 +36,8 @@ class WorkspaceModuleBuilderTest {
         "Bundle-SymbolicName: test.module\n" +
         "Bundle-Version: 1.0.0\n\n"
     )
+    // Provide a class output directory that matches the default root
+    File(moduleDir.toFile(), "out/production").mkdirs()
 
     val inputs: WorkspaceInputs = WorkspaceModuleBuilder.build(
       listOf(WorkspaceModuleDefinition(moduleDir))
@@ -43,5 +45,20 @@ class WorkspaceModuleBuilderTest {
 
     assertEquals(1, inputs.descriptors.size)
     assertEquals("test.module", inputs.descriptors.first().manifest.bundleSymbolicName?.key)
+  }
+
+  @Test(expected = WorkspaceModuleException::class)
+  fun failsWhenNoClassOutputsFound() {
+    val moduleDir = temp.newFolder("module-no-classes").toPath()
+    val metaInf = File(moduleDir.toFile(), "META-INF")
+    metaInf.mkdirs()
+    File(metaInf, "MANIFEST.MF").writeText(
+      "Bundle-ManifestVersion: 2\n" +
+        "Bundle-SymbolicName: test.module\n" +
+        "Bundle-Version: 1.0.0\n\n"
+    )
+
+    // No class output directories created under moduleDir; should fail fast
+    WorkspaceModuleBuilder.build(listOf(WorkspaceModuleDefinition(moduleDir)))
   }
 }

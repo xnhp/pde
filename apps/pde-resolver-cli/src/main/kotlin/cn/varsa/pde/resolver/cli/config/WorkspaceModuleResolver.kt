@@ -5,7 +5,7 @@ import cn.varsa.pde.resolver.workspace.WorkspaceModuleBuilder
 import cn.varsa.pde.resolver.workspace.WorkspaceModuleDefinition
 
 object WorkspaceModuleResolver {
-  private val defaultClassRoots = listOf("build/classes/java/main", "out/production")
+  private val defaultClassRoots = listOf("out/production")
 
   fun resolve(context: LaunchConfigContext): WorkspaceInputs {
     val definitions = context.config.workspaceModules.map { module ->
