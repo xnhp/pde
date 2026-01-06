@@ -80,14 +80,14 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
           }
           rawLine.startsWith(MessageIds.TEST_FAILED) -> {
             val descriptor = parseDescriptor(rawLine, displayNames)
-            val case = active[descriptor.id]
-            case?.status = RemoteTestStatus.FAILED
+            val case = active.getOrPut(descriptor.id) { ActiveTest(descriptor) }
+            case.status = RemoteTestStatus.FAILED
             currentTestId = descriptor.id
           }
           rawLine.startsWith(MessageIds.TEST_ERROR) -> {
             val descriptor = parseDescriptor(rawLine, displayNames)
-            val case = active[descriptor.id]
-            case?.status = RemoteTestStatus.ERROR
+            val case = active.getOrPut(descriptor.id) { ActiveTest(descriptor) }
+            case.status = RemoteTestStatus.ERROR
             currentTestId = descriptor.id
           }
           rawLine.startsWith(MessageIds.EXPECTED_START) ->
@@ -134,6 +134,21 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
     } catch (_: SocketException) {
       summary.stopped = true
     }
+    // Flush any in-flight tests that never emitted TEST_END (e.g., class-level @BeforeClass failures).
+    if (active.isNotEmpty()) {
+      active.values.forEach { case ->
+        val result = case.toResult()
+        summary.finishedTests++
+        when (result.status) {
+          RemoteTestStatus.FAILED -> summary.failures++
+          RemoteTestStatus.ERROR -> summary.errors++
+          else -> Unit
+        }
+        listener.testFinished(result)
+      }
+      active.clear()
+    }
+
     if (!runCompleted && !summary.stopped) {
       summary.stopped = true
       summary.endedAt = Instant.now()
