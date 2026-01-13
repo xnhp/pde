@@ -47,13 +47,13 @@ fun BundleManifest.isBundleRequired(
       .any { range -> version.any { it in range } }
   } == true
 
-fun BundleManifest.requiredBundleAndVersion(): Map<String, VersionRange> =
-  requireBundle?.mandatoryClauses()
+fun BundleManifest.requiredBundleAndVersion(includeOptional: Boolean = false): Map<String, VersionRange> =
+  requireBundle?.clauses(includeOptional)
     ?.mapValues { (_, attrs) -> attrs.attribute[BUNDLE_VERSION_ATTRIBUTE].parseVersionRange() }
     ?: emptyMap()
 
-fun BundleManifest.reexportRequiredBundleAndVersion(): Map<String, VersionRange> =
-  requireBundle?.mandatoryClauses()?.filter { it.value.directive["visibility"] == "reexport" }
+fun BundleManifest.reexportRequiredBundleAndVersion(includeOptional: Boolean = false): Map<String, VersionRange> =
+  requireBundle?.clauses(includeOptional)?.filter { it.value.directive["visibility"] == "reexport" }
     ?.mapValues { (_, attrs) -> attrs.attribute[BUNDLE_VERSION_ATTRIBUTE].parseVersionRange() } ?: emptyMap()
 
 fun BundleManifest.importedPackageAndVersion(): Map<String, VersionRange> =
@@ -66,3 +66,6 @@ fun BundleManifest.exportedPackageAndVersion(): Map<String, Version> =
 
 private fun Map<String, Attrs>.mandatoryClauses(): Map<String, Attrs> =
   filterNot { (_, attrs) -> attrs.directive[RESOLUTION_DIRECTIVE] == RESOLUTION_OPTIONAL }
+
+private fun Map<String, Attrs>.clauses(includeOptional: Boolean): Map<String, Attrs> =
+  if (includeOptional) this else mandatoryClauses()

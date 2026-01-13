@@ -122,7 +122,7 @@ object Resolver {
         path = rb.location,
         manifest = rb.manifest,
         origin = BundleOrigin.TARGET,
-        classPathEntries = computeTargetClassPathEntries(rb),
+        classPathEntries = computeTargetClassPathEntries(rb, target),
         sourceEntries = emptyList(),
         fragmentHost = rb.manifest.fragmentHost?.key,
         isHost = isHost
@@ -176,10 +176,11 @@ object Resolver {
         if (cand != null) {
           selected.putIfAbsent(bsn, cand)
           val requiresAll = if (cand.origin == BundleOrigin.WORKSPACE) {
-            cand.manifest.requiredBundleAndVersion() + cand.manifest.reexportRequiredBundleAndVersion()
+            cand.manifest.requiredBundleAndVersion(includeOptional = true) +
+              cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
           } else {
             val nav = target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
-            nav + cand.manifest.reexportRequiredBundleAndVersion()
+            nav + cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
           }
           requiresAll.forEach { (childBsn, childRange) -> addRequireWithClosure(childBsn, childRange) }
         } else {
@@ -188,8 +189,8 @@ object Resolver {
       }
     }
 
-    val requires = LinkedHashMap(entry.manifest.requiredBundleAndVersion())
-    fragmentHostCandidate?.manifest?.requiredBundleAndVersion()?.forEach { (bsn, range) ->
+    val requires = LinkedHashMap(entry.manifest.requiredBundleAndVersion(includeOptional = true))
+    fragmentHostCandidate?.manifest?.requiredBundleAndVersion(includeOptional = true)?.forEach { (bsn, range) ->
       requires.putIfAbsent(bsn, range)
     }
     requires.forEach { (bsn, range) -> addRequireWithClosure(bsn, range) }
@@ -246,7 +247,7 @@ object Resolver {
             rb.location,
             rb.manifest,
             BundleOrigin.TARGET,
-            computeTargetClassPathEntries(rb)
+            computeTargetClassPathEntries(rb, target)
           )
         }
         if (providers.isNotEmpty()) map[pkg] = providers
@@ -361,7 +362,7 @@ object Resolver {
     )
   }
 
-  private fun computeTargetClassPathEntries(rb: TargetResolvedBundle): List<Path> {
+  private fun computeTargetClassPathEntries(rb: TargetResolvedBundle, target: TargetPlatformIndex): List<Path> {
     val manifest = rb.manifest
     val base = rb.location.toAbsolutePath().normalize()
     val entries = mutableListOf(base)
@@ -374,6 +375,32 @@ object Resolver {
         }
         // For jar bundles we currently expose only the jar itself.
       }
+
+    // Attach host fragments (e.g., platform-specific SWT) to the classpath.
+    val hostBsn = manifest.bundleSymbolicName?.key
+    val hostVersion = manifest.bundleVersion
+    if (hostBsn != null) {
+      target.bundlesByBsn().values.forEach { nav ->
+        nav.values.forEach { frag ->
+          val hostPair = frag.manifest.fragmentHostAndVersionRange() ?: return@forEach
+          val (fragmentHostBsn, fragmentHostRange) = hostPair
+          if (fragmentHostBsn == hostBsn && fragmentHostRange.includes(hostVersion)) {
+            val fragBase = frag.location.toAbsolutePath().normalize()
+            entries.add(fragBase)
+            frag.manifest.bundleClassPath?.keys
+              ?.filter { it != "." }
+              ?.forEach { entry ->
+                if (frag.isDirectory) {
+                  val resolved = fragBase.resolve(entry).normalize()
+                  if (Files.exists(resolved)) entries.add(resolved)
+                }
+                // For jar fragments the jar itself already covers Bundle-ClassPath contents.
+              }
+          }
+        }
+      }
+    }
+
     return entries.distinct()
   }
 }
