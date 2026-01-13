@@ -43,4 +43,21 @@ class ConfigDiscoveryTest {
 
     assertNotNull(config) // reached without exceptions
   }
+
+  @Test
+  fun normalizeInsertsConfigBeforeYaml() {
+    val normalized = normalizeArgsWithImplicitConfig(arrayOf("foo.yaml", "--dry-run"), launchOptionsRequiringValue)
+
+    assertEquals(listOf("--config", "foo.yaml", "--dry-run"), normalized.toList())
+  }
+
+  @Test
+  fun normalizeSkipsOptionValuesWhenSearchingForYaml() {
+    val normalized = normalizeArgsWithImplicitConfig(
+      arrayOf("--output", "/tmp/out", "foo.yml"),
+      launchOptionsRequiringValue
+    )
+
+    assertEquals(listOf("--output", "/tmp/out", "--config", "foo.yml"), normalized.toList())
+  }
 }

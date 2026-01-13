@@ -63,6 +63,86 @@ internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.ru
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-resolver-cli")
+private fun configureLogging(level: Level) {
+  logger.level = level
+  val root = Logger.getLogger("")
+  root.level = level
+  root.handlers?.forEach { handler -> handler.level = level }
+}
+private fun parseLogLevel(value: String?): Level = when (value?.lowercase()) {
+  "error", "severe" -> Level.SEVERE
+  "warn", "warning" -> Level.WARNING
+  "info" -> Level.INFO
+  "debug", "fine" -> Level.FINE
+  "trace", "finest" -> Level.FINEST
+  else -> Level.WARNING
+}
+private fun resolveLogLevel(logLevel: String?, verbose: Boolean, debug: Boolean): Level = when {
+  logLevel != null -> parseLogLevel(logLevel)
+  debug -> Level.FINE
+  verbose -> Level.INFO
+  else -> Level.WARNING
+}
+internal val launchOptionsRequiringValue = setOf(
+  "--config",
+  "--target-root",
+  "-t",
+  "--workspace",
+  "-w",
+  "--dev-prop",
+  "--product",
+  "--application",
+  "--splash",
+  "--framework",
+  "--output"
+)
+internal val testOptionsRequiringValue = setOf(
+  "--config",
+  "--listen-host",
+  "--listen-port",
+  "--port-range",
+  "--timeout",
+  "--report",
+  "--forward-log",
+  "--include",
+  "--exclude"
+)
+
+private fun looksLikeYamlFile(arg: String): Boolean {
+  val lower = arg.lowercase()
+  return lower.endsWith(".yaml") || lower.endsWith(".yml")
+}
+
+internal fun normalizeArgsWithImplicitConfig(
+  rawArgs: Array<String>,
+  optionsRequiringValue: Set<String>
+): Array<String> {
+  if (rawArgs.any { it == "--config" || it.startsWith("--config=") }) return rawArgs
+
+  var skipNext = false
+  rawArgs.forEachIndexed { index, arg ->
+    if (skipNext) {
+      skipNext = false
+      return@forEachIndexed
+    }
+
+    if (arg.startsWith("-")) {
+      val optionName = arg.substringBefore('=')
+      if (optionsRequiringValue.contains(optionName) && !arg.contains('=')) {
+        skipNext = true
+      }
+      return@forEachIndexed
+    }
+
+    if (looksLikeYamlFile(arg)) {
+      val normalized = rawArgs.toMutableList()
+      normalized.add(index, "--config")
+      return normalized.toTypedArray()
+    }
+  }
+
+  return rawArgs
+}
 
 data class PreparedLaunch(
   val command: List<String>,
@@ -81,12 +161,30 @@ fun launchMain(args: Array<String>) {
     val exit = testMain(args.drop(1).toTypedArray())
     exitProcess(exit)
   }
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
+
   val parser = ArgParser("pde-launch")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
     description = "YAML launch configuration"
   )
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Logging level (error|warn|info|debug|trace)"
+  )
+  val verbose by parser.option(
+    ArgType.Boolean,
+    fullName = "verbose",
+    shortName = "v",
+    description = "Enable INFO logging"
+  ).default(false)
+  val debug by parser.option(
+    ArgType.Boolean,
+    fullName = "debug",
+    description = "Enable DEBUG logging"
+  ).default(false)
   val configPos by parser.argument(
     ArgType.String,
     description = "YAML launch configuration (positional)"
@@ -101,7 +199,8 @@ fun launchMain(args: Array<String>) {
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val outputDirOpt by parser.option(ArgType.String, fullName = "output", shortName = "o", description = "Output directory for config.ini/bundles.info/dev.properties")
 
-  parser.parse(args)
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
 
   val configFile = configFileOpt ?: configPos
 
@@ -544,9 +643,27 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
 }
 
 private fun testMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, testOptionsRequiringValue)
+
   val parser = ArgParser("pde-launch test")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Logging level (error|warn|info|debug|trace)"
+  )
+  val verbose by parser.option(
+    ArgType.Boolean,
+    fullName = "verbose",
+    shortName = "v",
+    description = "Enable INFO logging"
+  ).default(false)
+  val debug by parser.option(
+    ArgType.Boolean,
+    fullName = "debug",
+    description = "Enable DEBUG logging"
+  ).default(false)
   val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
   val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
   val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
@@ -557,7 +674,8 @@ private fun testMain(args: Array<String>): Int {
   val excludePatterns by parser.option(ArgType.String, fullName = "exclude", description = "Regex filter to exclude tests").multiple()
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
   val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
-  parser.parse(args)
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
 
   val configFile = configFileOpt ?: configPos
 
@@ -622,7 +740,7 @@ private fun testMain(args: Array<String>): Int {
     ),
     issuedAt = Instant.now().toString()
   )
-  println(jsonMapper.writeValueAsString(announcement))
+  logger.info(jsonMapper.writeValueAsString(announcement))
   logger.info("Listening on ${announcement.host}:${announcement.port}")
   logger.info("Waiting up to ${timeoutSeconds}s for RemoteTestRunner connection...")
 
