@@ -22,6 +22,9 @@ object CompileExecutor {
     compiler: CompilerPort,
     resourceCopier: ResourceCopier
   ): BundleCompileResult {
+    if (!spec.isWorkspace) {
+      return BundleCompileResult(spec.bsn, success = true, output = "Target-platform bundle; compile skipped.")
+    }
     val bundleRoot = Path.of(spec.bundlePath)
     val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("bin")
     outDir.createDirectories()
