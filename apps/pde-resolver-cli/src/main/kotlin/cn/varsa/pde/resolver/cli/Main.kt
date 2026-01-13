@@ -819,6 +819,7 @@ private fun compileMain(args: Array<String>) {
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
   val execute by parser.option(ArgType.Boolean, fullName = "execute", description = "Run ECJ compilation (default: dry-run specs)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results (when --execute) to JSON file")
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., out/production)")
   val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
   val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
   parser.parse(args)
@@ -854,7 +855,14 @@ private fun compileMain(args: Array<String>) {
   )
 
   val planResult = LaunchPlanner.build(env, options)
-  val specs = CompileService.buildSpecs(planResult, workspaceDescriptors).specs
+  val specs = CompileService.buildSpecs(planResult, workspaceDescriptors)
+    .specs
+    .map { spec ->
+      if (spec.isWorkspace && outputRoot != null) {
+        val overrideDir = Paths.get(spec.bundlePath).resolve(outputRoot).normalize()
+        spec.copy(outputDirectory = overrideDir.toString())
+      } else spec
+    }
 
   if (json) {
     println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(specs))
