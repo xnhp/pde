@@ -44,7 +44,7 @@ object WorkspaceModuleBuilder {
               "No compiled classes found for workspace bundle $bsn. Checked: $requested"
             )
           }
-          devClassPaths
+          (devClassPaths + descriptor.classPathEntries).distinct()
         }
         else -> descriptor.classPathEntries
       }
