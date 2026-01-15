@@ -9,7 +9,7 @@ import java.nio.file.Path
  */
 fun rewritePlanWithCompiledOutputs(plan: LauncherPlan, specs: List<CompileSpec>): LauncherPlan {
   val outputsByBsn = specs.associate { spec ->
-    val out = spec.outputDirectory ?: Path.of(spec.bundlePath).resolve("bin").toString()
+    val out = spec.outputDirectory ?: Path.of(spec.bundlePath).resolve("out/production").toString()
     spec.bsn to Path.of(out).toAbsolutePath().normalize()
   }
   val rewrittenBundles: List<BundleStartSpec> = plan.bundles.map { b ->

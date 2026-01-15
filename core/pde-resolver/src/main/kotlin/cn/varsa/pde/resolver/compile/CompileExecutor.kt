@@ -26,7 +26,7 @@ object CompileExecutor {
       return BundleCompileResult(spec.bsn, success = true, output = "Target-platform bundle; compile skipped.")
     }
     val bundleRoot = Path.of(spec.bundlePath)
-    val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("bin")
+    val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("out/production")
     outDir.createDirectories()
 
     val result = compiler.compile(spec.copy(outputDirectory = outDir.toString()))

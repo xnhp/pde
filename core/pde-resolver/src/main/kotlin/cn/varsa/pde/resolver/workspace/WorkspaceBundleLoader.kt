@@ -115,6 +115,6 @@ object WorkspaceBundleLoader {
   private fun computeOutputDir(base: Path, props: java.util.Properties?): Path? {
     val outProp = props?.getProperty("output..") ?: props?.getProperty("output")
     return outProp?.takeIf { it.isNotBlank() }?.let { base.resolve(it).normalize() }
-      ?: base.resolve("bin").takeIf { it.toFile().exists() }
+      ?: base.resolve("out/production")
   }
 }

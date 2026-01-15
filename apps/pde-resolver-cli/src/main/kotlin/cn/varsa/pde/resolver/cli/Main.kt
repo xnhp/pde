@@ -912,7 +912,7 @@ internal fun compileMain(args: Array<String>) {
           logger.info("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
           logger.info("    resources include: ${spec.resourceIncludes.joinToString()}")
           logger.info("    resources exclude: ${spec.resourceExcludes.joinToString()}")
-          logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
+          logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<out/production>"}")
         }
       }
       return
@@ -1029,7 +1029,7 @@ internal fun compileMain(args: Array<String>) {
         logger.info("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
         logger.info("    resources include: ${spec.resourceIncludes.joinToString()}")
         logger.info("    resources exclude: ${spec.resourceExcludes.joinToString()}")
-        logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
+        logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<out/production>"}")
       }
     }
     return
@@ -1096,7 +1096,7 @@ private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCom
   return specs
     .filter { it.isWorkspace && success.contains(it.bsn) }
     .associate { spec ->
-      val out = spec.outputDirectory ?: Paths.get(spec.bundlePath).resolve("bin").toString()
+      val out = spec.outputDirectory ?: Paths.get(spec.bundlePath).resolve("out/production").toString()
       spec.bsn to listOf(out)
     }
 }

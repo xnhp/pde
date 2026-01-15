@@ -15,7 +15,7 @@ class EcjCompiler(
 
   override fun compile(spec: CompileSpec): BundleCompileResult {
     val bundleRoot = Path.of(spec.bundlePath)
-    val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("bin")
+    val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("out/production")
 
     val sources = spec.sourceRoots
       .map { Path.of(it) }
