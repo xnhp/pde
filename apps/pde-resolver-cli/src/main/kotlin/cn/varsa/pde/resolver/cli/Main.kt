@@ -823,7 +823,7 @@ private fun testMain(args: Array<String>): Int {
   return exitCode
 }
 
-private fun compileMain(args: Array<String>) {
+internal fun compileMain(args: Array<String>) {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
   val parser = ArgParser("pde-compile")
   val configFileOpt by parser.option(
@@ -938,8 +938,13 @@ private fun compileMain(args: Array<String>) {
     }
     results.forEach { r ->
       if (!r.success) {
-        logger.info("${r.bsn}: FAIL")
-        logger.severe(r.output)
+        val errorsOnly = extractErrorBlocks(r.output)
+        if (errorsOnly != null) {
+          logger.info("${r.bsn}: FAIL")
+          logger.severe(errorsOnly)
+        } else {
+          logger.info("${r.bsn}: FAIL (warnings only)")
+        }
       }
     }
     if (runtimeOut != null) {
@@ -1050,8 +1055,13 @@ private fun compileMain(args: Array<String>) {
   }
   results.forEach { r ->
     if (!r.success) {
-      logger.info("${r.bsn}: FAIL")
-      logger.severe(r.output)
+      val errorsOnly = extractErrorBlocks(r.output)
+      if (errorsOnly != null) {
+        logger.info("${r.bsn}: FAIL")
+        logger.severe(errorsOnly)
+      } else {
+        logger.info("${r.bsn}: FAIL (warnings only)")
+      }
     }
   }
   if (runtimeOut != null) {
@@ -1091,6 +1101,32 @@ private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCom
     }
 }
 
+private fun extractErrorBlocks(output: String): String? {
+  if (!output.contains("ERROR in")) return null
+  val lines = output.lineSequence().toList()
+  val blocks = mutableListOf<String>()
+  var i = 0
+  val entryRegex = Regex("""^\d+\.\s+(ERROR|WARNING|INFO)\s+in\b""")
+  while (i < lines.size) {
+    val line = lines[i]
+    if (!line.contains("ERROR in")) {
+      i++
+      continue
+    }
+    val sb = StringBuilder()
+    while (i < lines.size) {
+      val current = lines[i]
+      sb.append(current).append('\n')
+      i++
+      if (current.startsWith("----------") && i < lines.size && entryRegex.containsMatchIn(lines[i])) {
+        break
+      }
+    }
+    blocks += sb.toString().trimEnd()
+  }
+  return blocks.joinToString("\n")
+}
+
 fun main(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "launch") {
     launchMain(args.drop(1).toTypedArray())
@@ -1099,10 +1135,6 @@ fun main(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
     exitProcess(exit)
-  }
-  if (args.isNotEmpty() && args[0] == "compile") {
-    compileMain(args.drop(1).toTypedArray())
-    return
   }
 
   val parser = ArgParser("pde-resolver")

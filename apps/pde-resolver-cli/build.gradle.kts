@@ -1,3 +1,5 @@
+import org.gradle.jvm.application.tasks.CreateStartScripts
+
 plugins {
   alias(libs.plugins.kotlin)
   application
@@ -21,3 +23,28 @@ application {
   mainClass = "cn.varsa.pde.resolver.cli.MainKt"
 }
 // toolchain/version configured in the root build
+
+tasks.named<CreateStartScripts>("startScripts") {
+  outputDir = layout.buildDirectory.dir("scripts/main").get().asFile
+}
+
+val compileStartScripts = tasks.register<CreateStartScripts>("compileStartScripts") {
+  mainClass.set("cn.varsa.pde.resolver.cli.CompileMainKt")
+  applicationName = "pde-compile"
+  classpath = tasks.named<CreateStartScripts>("startScripts").get().classpath
+  outputDir = layout.buildDirectory.dir("scripts/compile").get().asFile
+}
+
+distributions {
+  main {
+    contents {
+      from(compileStartScripts) {
+        into("bin")
+      }
+    }
+  }
+}
+
+tasks.named("installDist") {
+  dependsOn(compileStartScripts)
+}
