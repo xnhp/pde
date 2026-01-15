@@ -107,6 +107,18 @@ internal val testOptionsRequiringValue = setOf(
   "--include",
   "--exclude"
 )
+internal val compileOptionsRequiringValue = setOf(
+  "--config",
+  "--target-root",
+  "-t",
+  "--workspace",
+  "-w",
+  "--framework",
+  "--results-json",
+  "--output-root",
+  "--bundles-info-out",
+  "--runtime-out"
+)
 
 private fun looksLikeYamlFile(arg: String): Boolean {
   val lower = arg.lowercase()
@@ -812,7 +824,13 @@ private fun testMain(args: Array<String>): Int {
 }
 
 private fun compileMain(args: Array<String>) {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
   val parser = ArgParser("pde-compile")
+  val configFileOpt by parser.option(
+    ArgType.String,
+    fullName = "config",
+    description = "YAML launch configuration"
+  )
   val targetRoots by parser.option(ArgType.String, fullName = "target-root", shortName = "t", description = "Target root/profile (repeatable)").multiple()
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
@@ -822,7 +840,162 @@ private fun compileMain(args: Array<String>) {
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., out/production)")
   val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
   val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
-  parser.parse(args)
+  val configPos by parser.argument(
+    ArgType.String,
+    description = "YAML launch configuration (positional)"
+  ).optional()
+  parser.parse(normalizedArgs)
+
+  val configFile = configFileOpt ?: configPos
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+
+  if (discoveredConfig != null) {
+    if (configFile == null) {
+      logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
+    }
+    val configContext = LaunchConfigLoader.load(discoveredConfig)
+    val profilePath = configContext.config.profilePath?.let { configContext.baseDir.resolve(it).normalize() }
+    if (profilePath == null) {
+      logger.severe("profilePath missing in YAML config; cannot derive target platform for compile.")
+      return
+    }
+    if (!Files.exists(profilePath)) {
+      logger.severe("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
+      return
+    }
+
+    val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
+    val workspaceInputs = WorkspaceModuleResolver.resolve(configContext)
+    val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
+    val workspaceEntries = if (hasWorkspaceModules) {
+      workspaceInputs.descriptors
+    } else {
+      listOfNotNull(syntheticEntry(configContext, targetIndex))
+    }
+    val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(configContext)
+    val productStartupLevels = loadProductStartupLevels(configContext)
+    val requestedStartupLevels = if (configContext.config.startupLevels.isNotEmpty()) {
+      configContext.config.startupLevels
+    } else {
+      DEFAULT_STARTUP_LEVELS
+    }
+    val combinedStartup = DEFAULT_STARTUP_LEVELS +
+      targetDefinitionStartupLevels +
+      productStartupLevels +
+      requestedStartupLevels
+    val resolverWhitelist = resolveWhitelist(configContext)
+    val supplementalBundles = targetIndex.bundlesByBsn().flatMap { (bsn, nav) ->
+      nav.entries
+        .map { it.key to it.value }
+        .filter { (_, bundle) -> bundle.manifest.eclipseSourceBundle == null }
+        .map { (version, bundle) ->
+          LaunchEnvironment.SupplementalBundle(bsn, version, bundle.location, isWorkspace = false)
+        }
+    }
+    val env = LaunchEnvironment(
+      targetIndex = targetIndex,
+      workspaceEntries = workspaceEntries,
+      devProperties = workspaceInputs.devProperties,
+      libraryBundles = supplementalBundles,
+      resolverOptions = ResolveOptions(
+        whitelistPrefixes = resolverWhitelist,
+        preferWorkspace = hasWorkspaceModules,
+        includeHostsForFragments = true
+      ),
+      requiredStartupBundles = combinedStartup.keys,
+      startupLevels = combinedStartup,
+      autoStartBundles = combinedStartup.keys.associateWith { true }
+    )
+    val productId = configContext.config.product?.takeUnless { it.isBlank() }
+    val options = LauncherOptions(
+      product = productId,
+      application = configContext.config.application,
+      splashBSN = configContext.config.splash,
+      frameworkBSN = framework,
+      autoStartDefault = false
+    )
+    val planResult = LaunchPlanner.build(env, options)
+    val specs = CompileService.buildSpecs(planResult, workspaceInputs.descriptors)
+      .specs
+      .map { spec ->
+        if (spec.isWorkspace && outputRoot != null) {
+          val overrideDir = Paths.get(spec.bundlePath).resolve(outputRoot).normalize()
+          spec.copy(outputDirectory = overrideDir.toString())
+        } else spec
+      }
+
+    if (json) {
+      println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(specs))
+      return
+    }
+
+    if (!execute) {
+      logger.info("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
+      specs.forEachIndexed { idx, spec ->
+        logger.info("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
+        logger.info("    classpath: ${spec.classpath.joinToString(File.pathSeparator)}")
+        if (spec.isWorkspace) {
+          logger.info("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
+          logger.info("    resources include: ${spec.resourceIncludes.joinToString()}")
+          logger.info("    resources exclude: ${spec.resourceExcludes.joinToString()}")
+          logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
+        }
+      }
+      return
+    }
+
+    val results = CompileExecutor.compile(specs)
+    resultsJson?.let { path ->
+      jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
+      logger.info("Wrote results to $path")
+    }
+    val allOk = results.all { it.success }
+    if (bundlesInfoOut != null) {
+      if (!allOk) {
+        logger.severe("Skipping bundles.info write because some bundles failed to compile.")
+      } else {
+        val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
+        val outPath = Paths.get(bundlesInfoOut)
+        outPath.parent?.let { Files.createDirectories(it) }
+        val text = BundlesInfoRenderer.toText(rewrittenPlan)
+        Files.writeString(outPath, text)
+        logger.info("Wrote bundles.info with compiled workspace outputs to $outPath")
+      }
+    }
+    results.forEach { r ->
+      val status = if (r.success) "OK" else "FAIL"
+      logger.info("${r.bsn}: $status")
+      if (!r.success) {
+        logger.severe(r.output)
+      }
+    }
+    if (runtimeOut != null) {
+      if (!allOk) {
+        logger.severe("Skipping runtime layout write because some bundles failed to compile.")
+      } else {
+        val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
+        val outDir = Paths.get(runtimeOut)
+        val devProps = buildDevProperties(specs, results)
+        val context = LaunchContext(
+          startupLevels = planResult.context.startupLevels,
+          devProperties = devProps
+        )
+        val defaults = RuntimeLayoutWriter.Defaults(
+          installArea = profilePath,
+          instanceArea = outDir.resolve("workspace")
+        )
+        RuntimeLayoutWriter.write(
+          layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
+          plan = rewrittenPlan,
+          context = context,
+          options = options,
+          defaults = defaults
+        )
+        logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
+      }
+    }
+    return
+  }
 
   if (targetRoots.isEmpty()) {
     logger.severe("No --target-root specified")
