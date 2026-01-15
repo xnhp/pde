@@ -35,6 +35,10 @@ val compileStartScripts = tasks.register<CreateStartScripts>("compileStartScript
   outputDir = layout.buildDirectory.dir("scripts/compile").get().asFile
 }
 
+val cleanLegacyCompileDist = tasks.register<Delete>("cleanLegacyCompileDist") {
+  delete(layout.buildDirectory.dir("install/pde-compile"))
+}
+
 distributions {
   main {
     contents {
@@ -47,4 +51,5 @@ distributions {
 
 tasks.named("installDist") {
   dependsOn(compileStartScripts)
+  dependsOn(cleanLegacyCompileDist)
 }
