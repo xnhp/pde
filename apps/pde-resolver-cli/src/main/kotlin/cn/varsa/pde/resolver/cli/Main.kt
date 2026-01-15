@@ -937,9 +937,8 @@ private fun compileMain(args: Array<String>) {
       }
     }
     results.forEach { r ->
-      val status = if (r.success) "OK" else "FAIL"
-      logger.info("${r.bsn}: $status")
       if (!r.success) {
+        logger.info("${r.bsn}: FAIL")
         logger.severe(r.output)
       }
     }
@@ -1050,9 +1049,8 @@ private fun compileMain(args: Array<String>) {
     }
   }
   results.forEach { r ->
-    val status = if (r.success) "OK" else "FAIL"
-    logger.info("${r.bsn}: $status")
     if (!r.success) {
+      logger.info("${r.bsn}: FAIL")
       logger.severe(r.output)
     }
   }
