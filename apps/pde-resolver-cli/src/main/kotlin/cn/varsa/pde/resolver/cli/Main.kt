@@ -872,45 +872,19 @@ private fun compileMain(args: Array<String>) {
     } else {
       listOfNotNull(syntheticEntry(configContext, targetIndex))
     }
-    val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(configContext)
-    val productStartupLevels = loadProductStartupLevels(configContext)
-    val requestedStartupLevels = if (configContext.config.startupLevels.isNotEmpty()) {
-      configContext.config.startupLevels
-    } else {
-      DEFAULT_STARTUP_LEVELS
-    }
-    val combinedStartup = DEFAULT_STARTUP_LEVELS +
-      targetDefinitionStartupLevels +
-      productStartupLevels +
-      requestedStartupLevels
-    val resolverWhitelist = resolveWhitelist(configContext)
-    val supplementalBundles = targetIndex.bundlesByBsn().flatMap { (bsn, nav) ->
-      nav.entries
-        .map { it.key to it.value }
-        .filter { (_, bundle) -> bundle.manifest.eclipseSourceBundle == null }
-        .map { (version, bundle) ->
-          LaunchEnvironment.SupplementalBundle(bsn, version, bundle.location, isWorkspace = false)
-        }
-    }
     val env = LaunchEnvironment(
       targetIndex = targetIndex,
       workspaceEntries = workspaceEntries,
-      devProperties = workspaceInputs.devProperties,
-      libraryBundles = supplementalBundles,
       resolverOptions = ResolveOptions(
-        whitelistPrefixes = resolverWhitelist,
+        whitelistPrefixes = emptySet(),
         preferWorkspace = hasWorkspaceModules,
         includeHostsForFragments = true
       ),
-      requiredStartupBundles = combinedStartup.keys,
-      startupLevels = combinedStartup,
-      autoStartBundles = combinedStartup.keys.associateWith { true }
+      autoStartBundles = emptyMap(),
+      startupLevels = emptyMap(),
+      devProperties = emptyMap()
     )
-    val productId = configContext.config.product?.takeUnless { it.isBlank() }
     val options = LauncherOptions(
-      product = productId,
-      application = configContext.config.application,
-      splashBSN = configContext.config.splash,
       frameworkBSN = framework,
       autoStartDefault = false
     )
