@@ -836,6 +836,7 @@ internal fun compileMain(args: Array<String>) {
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
   val execute by parser.option(ArgType.Boolean, fullName = "execute", description = "Run ECJ compilation (default: dry-run specs)").default(false)
+  val debugInfo by parser.option(ArgType.Boolean, fullName = "debug", description = "Emit debug info (lines/vars/source)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results (when --execute) to JSON file")
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., out/production)")
   val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
@@ -865,7 +866,7 @@ internal fun compileMain(args: Array<String>) {
     }
 
     val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
-    val workspaceInputs = WorkspaceModuleResolver.resolve(configContext)
+    val workspaceInputs = WorkspaceModuleResolver.resolve(configContext, allowMissingClasses = true)
     val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
     val workspaceEntries = if (hasWorkspaceModules) {
       workspaceInputs.descriptors
@@ -892,10 +893,18 @@ internal fun compileMain(args: Array<String>) {
     val specs = CompileService.buildSpecs(planResult, workspaceInputs.descriptors)
       .specs
       .map { spec ->
+        val withDebug = if (debugInfo && spec.isWorkspace) {
+          val prefs = spec.compilerPrefs.toMutableMap().apply {
+            putIfAbsent("org.eclipse.jdt.core.compiler.debug.localVariable", "generate")
+            putIfAbsent("org.eclipse.jdt.core.compiler.debug.lineNumber", "generate")
+            putIfAbsent("org.eclipse.jdt.core.compiler.debug.sourceFile", "generate")
+          }
+          spec.copy(compilerPrefs = prefs)
+        } else spec
         if (spec.isWorkspace && outputRoot != null) {
           val overrideDir = Paths.get(spec.bundlePath).resolve(outputRoot).normalize()
-          spec.copy(outputDirectory = overrideDir.toString())
-        } else spec
+          withDebug.copy(outputDirectory = overrideDir.toString())
+        } else withDebug
       }
 
     if (json) {

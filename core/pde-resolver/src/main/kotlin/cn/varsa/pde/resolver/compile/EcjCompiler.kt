@@ -48,6 +48,7 @@ class EcjCompiler(
     args += listOf("-source", sourceLevel, "-target", targetLevel)
     args += listOf("-encoding", "UTF-8")
     args += listOf("-proc:none") // processors are unsupported for now
+    debugFlag(spec)?.let { args += it }
 
     args += sources.map { it.toString() }
 
@@ -68,6 +69,20 @@ class EcjCompiler(
       ?: spec.compilerPrefs["org.eclipse.jdt.core.compiler.compliance"]
       ?: spec.executionEnvironment?.let(::levelFromExecutionEnvironment)
       ?: fallback
+
+  private fun debugFlag(spec: CompileSpec): String? {
+    val line = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.lineNumber"] == "generate"
+    val vars = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.localVariable"] == "generate"
+    val source = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.sourceFile"] == "generate"
+    if (!line && !vars && !source) return null
+    if (line && vars && source) return "-g"
+    val parts = buildList {
+      if (line) add("lines")
+      if (vars) add("vars")
+      if (source) add("source")
+    }
+    return "-g:" + parts.joinToString(",")
+  }
 
   private fun levelFromExecutionEnvironment(ee: String): String? =
     ee.substringAfterLast('-', missingDelimiterValue = ee)
