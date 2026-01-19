@@ -56,6 +56,7 @@ import java.util.logging.Level
 import java.util.logging.Logger
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
+import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
 import cn.varsa.pde.resolver.launch.LaunchContext
 
@@ -835,10 +836,14 @@ internal fun compileMain(args: Array<String>) {
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
-  val execute by parser.option(ArgType.Boolean, fullName = "execute", description = "Run ECJ compilation (default: dry-run specs)").default(false)
+  val execute by parser.option(
+    ArgType.Boolean,
+    fullName = "execute",
+    description = "Run ECJ compilation (default when using a launch config)"
+  ).default(false)
   val debugInfo by parser.option(ArgType.Boolean, fullName = "debug", description = "Emit debug info (lines/vars/source)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results (when --execute) to JSON file")
-  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., out/production)")
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
   val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
   val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
   val configPos by parser.argument(
@@ -849,6 +854,7 @@ internal fun compileMain(args: Array<String>) {
 
   val configFile = configFileOpt ?: configPos
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  val runCompile = execute || discoveredConfig != null
 
   if (discoveredConfig != null) {
     if (configFile == null) {
@@ -912,7 +918,7 @@ internal fun compileMain(args: Array<String>) {
       return
     }
 
-    if (!execute) {
+    if (!runCompile) {
       logger.info("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
       specs.forEachIndexed { idx, spec ->
         logger.info("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
@@ -921,7 +927,7 @@ internal fun compileMain(args: Array<String>) {
           logger.info("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
           logger.info("    resources include: ${spec.resourceIncludes.joinToString()}")
           logger.info("    resources exclude: ${spec.resourceExcludes.joinToString()}")
-          logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<out/production>"}")
+          logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
         }
       }
       return
@@ -1029,16 +1035,16 @@ internal fun compileMain(args: Array<String>) {
     return
   }
 
-  if (!execute) {
-    logger.info("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
-    specs.forEachIndexed { idx, spec ->
-      logger.info("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
+    if (!runCompile) {
+      logger.info("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
+      specs.forEachIndexed { idx, spec ->
+        logger.info("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
       logger.info("    classpath: ${spec.classpath.joinToString(File.pathSeparator)}")
       if (spec.isWorkspace) {
         logger.info("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
         logger.info("    resources include: ${spec.resourceIncludes.joinToString()}")
         logger.info("    resources exclude: ${spec.resourceExcludes.joinToString()}")
-        logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<out/production>"}")
+        logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
       }
     }
     return
@@ -1105,7 +1111,8 @@ private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCom
   return specs
     .filter { it.isWorkspace && success.contains(it.bsn) }
     .associate { spec ->
-      val out = spec.outputDirectory ?: Paths.get(spec.bundlePath).resolve("out/production").toString()
+      val out = spec.outputDirectory
+        ?: Paths.get(spec.bundlePath).resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR).toString()
       spec.bsn to listOf(out)
     }
 }
