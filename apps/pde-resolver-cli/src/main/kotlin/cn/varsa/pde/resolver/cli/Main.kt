@@ -202,6 +202,10 @@ fun launchMain(args: Array<String>) {
     ArgType.String,
     description = "YAML launch configuration (positional)"
   ).optional()
+  val launchPos by parser.argument(
+    ArgType.String,
+    description = "Launch name (optional)"
+  ).optional()
   val dryRun by parser.option(ArgType.Boolean, fullName = "dry-run", description = "Parse configuration only").default(false)
   val targetRoots by parser.option(ArgType.String, fullName = "target-root", shortName = "t", description = "Target root (repeatable)").multiple()
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
@@ -215,7 +219,13 @@ fun launchMain(args: Array<String>) {
   parser.parse(normalizedArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
 
-  val configFile = configFileOpt ?: configPos
+  val configPosValue = configPos
+  val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
+  val launchName = when {
+    configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
+    launchPos != null -> launchPos
+    else -> null
+  }
 
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
 
@@ -224,22 +234,24 @@ fun launchMain(args: Array<String>) {
       logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig)
-    val targetPath = configContext.config.targetFile
-      ?.let { configContext.baseDir.resolve(it).normalize() }
-    val targetArgs = if (configContext.config.inheritTargetArgs && targetPath != null) {
+    val selected = selectLaunchConfig(configContext, launchName)
+    if (selected == null) return
+    val targetPath = selected.config.targetFile
+      ?.let { selected.baseDir.resolve(it).normalize() }
+    val targetArgs = if (selected.config.inheritTargetArgs && targetPath != null) {
       runCatching { TargetFileParser.parse(targetPath) }
         .onFailure { logger.warning("Failed to parse target file args: ${it.message}") }
         .getOrNull()
     } else null
-    if (configContext.config.inheritTargetArgs && targetPath == null) {
+    if (selected.config.inheritTargetArgs && targetPath == null) {
       logger.warning("inheritTargetArgs=true but targetFile is not set; skipping target argument import.")
     }
-    describeConfig(configContext, targetPath, targetArgs)
+    describeConfig(selected, targetPath, targetArgs)
     if (dryRun) {
       logger.info("Dry run: validation only. Exiting.")
       return
     }
-    executeLaunch(configContext, targetArgs)
+    executeLaunch(selected, targetArgs)
     return
   }
 
@@ -295,6 +307,36 @@ private fun describeConfig(config: LaunchConfigContext, targetFile: Path?, targe
     }
     logger.info("  test debug: $message")
   }
+}
+
+private fun selectLaunchConfig(
+  context: LaunchConfigContext,
+  launchName: String?
+): LaunchConfigContext? {
+  if (context.config.launches.isEmpty()) {
+    logger.severe("No launches defined in ${context.file}. Add a 'launches' entry or pass a legacy launch.yaml.")
+    return null
+  }
+  val selected = if (launchName == null) {
+    context.config.launches.first()
+  } else {
+    context.config.launches.firstOrNull { it.name == launchName }
+  }
+  if (selected == null) {
+    val available = context.config.launches.joinToString { it.name }
+    logger.severe("Launch '$launchName' not found in ${context.file}. Available launches: $available")
+    return null
+  }
+  val patched = context.config.copy(
+    additionalVmArgs = selected.vmArgs,
+    programArgs = selected.programArgs
+  )
+  if (launchName == null) {
+    logger.info("Using default launch '${selected.name}'.")
+  } else {
+    logger.info("Using launch '${selected.name}'.")
+  }
+  return context.copy(config = patched)
 }
 
 private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?) {
@@ -618,6 +660,8 @@ private fun parseDevProperties(entries: List<String>): Map<String, List<String>>
 
 internal fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()): Path? {
   val candidates = listOf(
+    "config.yaml",
+    "config.yml",
     "launch.yaml",
     "launch.yml",
     "pde-launch.yaml",
@@ -661,6 +705,7 @@ private fun testMain(args: Array<String>): Int {
   val parser = ArgParser("pde-launch test")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  val launchPos by parser.argument(ArgType.String, description = "Launch name (optional)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -690,7 +735,13 @@ private fun testMain(args: Array<String>): Int {
   parser.parse(normalizedArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
 
-  val configFile = configFileOpt ?: configPos
+  val configPosValue = configPos
+  val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
+  val launchName = when {
+    configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
+    launchPos != null -> launchPos
+    else -> null
+  }
 
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
   if (discoveredConfig == null) {
@@ -701,7 +752,10 @@ private fun testMain(args: Array<String>): Int {
     logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
   }
 
-  val configContext = applyTestDefaults(LaunchConfigLoader.load(discoveredConfig))
+  val loaded = LaunchConfigLoader.load(discoveredConfig)
+  val selected = selectLaunchConfig(loaded, launchName)
+  if (selected == null) return 2
+  val configContext = applyTestDefaults(selected)
   val targetPath = configContext.config.targetFile
     ?.let { configContext.baseDir.resolve(it).normalize() }
   val targetArgs = if (configContext.config.inheritTargetArgs && targetPath != null) {
@@ -852,7 +906,7 @@ internal fun compileMain(args: Array<String>) {
   ).optional()
   parser.parse(normalizedArgs)
 
-  val configFile = configFileOpt ?: configPos
+  val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
   val runCompile = execute || discoveredConfig != null
 

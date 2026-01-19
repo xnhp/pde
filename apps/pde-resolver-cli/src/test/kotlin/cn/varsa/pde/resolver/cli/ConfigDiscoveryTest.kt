@@ -15,12 +15,12 @@ class ConfigDiscoveryTest {
   fun prefersFirstCandidateInOrder() {
     val root: Path = tmp.root.toPath()
     // create two candidates; the first in the ordered list should win
-    root.resolve("launch.yml").toFile().writeText("application: app")
-    root.resolve("pde-launch.yaml").toFile().writeText("application: other")
+    root.resolve("config.yaml").toFile().writeText("application: app")
+    root.resolve("launch.yml").toFile().writeText("application: other")
 
     val discovered = discoverConfigFile(root)
 
-    assertEquals(root.resolve("launch.yml"), discovered)
+    assertEquals(root.resolve("config.yaml"), discovered)
   }
 
   @Test
