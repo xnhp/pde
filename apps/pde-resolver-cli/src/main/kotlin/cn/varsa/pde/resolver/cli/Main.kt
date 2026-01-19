@@ -169,6 +169,54 @@ private fun logCommand(command: List<String>) {
   }
 }
 
+private fun issuePullMain(args: Array<String>): Int {
+  val parser = ArgParser("pde-issue pull")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(args)
+
+  val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory")
+    return 2
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
+  }
+
+  val configContext = LaunchConfigLoader.load(discoveredConfig)
+  val repos = configContext.config.bundlesPerRepo.map { it.repo }.distinct()
+  if (repos.isEmpty()) {
+    logger.severe("No bundlesPerRepo entries found in ${configContext.file}; nothing to pull.")
+    return 2
+  }
+
+  val baseDir = Paths.get("").toAbsolutePath()
+  var failures = 0
+  repos.forEach { repo ->
+    val repoPath = Paths.get(repo)
+    val resolved = if (repoPath.isAbsolute) repoPath else baseDir.resolve(repo).normalize()
+    if (!Files.exists(resolved)) {
+      logger.warning("Skipping missing repo path: $resolved")
+      failures++
+      return@forEach
+    }
+    val command = listOf("git", "-C", resolved.toString(), "pull")
+    logCommand(command)
+    val exit = ProcessBuilder(command)
+      .inheritIO()
+      .start()
+      .waitFor()
+    if (exit != 0) {
+      logger.severe("git pull failed for $resolved (exit $exit)")
+      failures++
+    }
+  }
+
+  return if (failures == 0) 0 else 1
+}
+
 fun launchMain(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
@@ -1198,6 +1246,10 @@ private fun extractErrorBlocks(output: String): String? {
 }
 
 fun main(args: Array<String>) {
+  if (args.size >= 2 && args[0] == "issue" && args[1] == "pull") {
+    val exit = issuePullMain(args.drop(2).toTypedArray())
+    exitProcess(exit)
+  }
   if (args.isNotEmpty() && args[0] == "launch") {
     launchMain(args.drop(1).toTypedArray())
     return
