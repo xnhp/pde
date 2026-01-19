@@ -29,6 +29,7 @@ data class LaunchConfig(
   val targetModules: List<String> = emptyList(),
   val workspaceModules: List<WorkspaceModule> = emptyList(),
   val bundlesPerRepo: List<RepoBundles> = emptyList(),
+  val nonPdeBundles: List<String> = emptyList(),
   val launches: List<LaunchEntry> = emptyList(),
   @JsonAlias("vmArgs")
   val additionalVmArgs: List<String> = emptyList(),
@@ -85,11 +86,13 @@ object LaunchConfigLoader {
     if (config.workspaceModules.isNotEmpty()) return config
     if (config.bundlesPerRepo.isEmpty()) return config
 
+    val skipBundles = config.nonPdeBundles.toSet()
     val seen = linkedSetOf<String>()
     val modules = config.bundlesPerRepo.flatMap { repoEntry ->
       val repoPath = Paths.get(repoEntry.repo)
       val repoBase = if (repoPath.isAbsolute) repoPath else workingDir.resolve(repoEntry.repo)
       repoEntry.bundles.mapNotNull { bundle ->
+        if (skipBundles.contains(bundle)) return@mapNotNull null
         val modulePath = repoBase.resolve(bundle).normalize().toString()
         if (seen.add(modulePath)) WorkspaceModule(path = modulePath) else null
       }
