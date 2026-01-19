@@ -30,7 +30,6 @@ class CompileMainDryRunTest {
     try {
       main(
         arrayOf(
-          "compile",
           "--target-root", tpDir.toString(),
           "--workspace", workspace.toString(),
           "--json"

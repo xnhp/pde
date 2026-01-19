@@ -4,6 +4,7 @@ import org.eclipse.jdt.internal.compiler.batch.Main
 import java.io.ByteArrayOutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
+import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import java.nio.file.Path
 import java.util.jar.JarFile
 import kotlin.io.path.exists
@@ -15,7 +16,8 @@ class EcjCompiler(
 
   override fun compile(spec: CompileSpec): BundleCompileResult {
     val bundleRoot = Path.of(spec.bundlePath)
-    val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("out/production")
+    val outDir = spec.outputDirectory?.let { Path.of(it) }
+      ?: bundleRoot.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
 
     val sources = spec.sourceRoots
       .map { Path.of(it) }

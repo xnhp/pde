@@ -2,6 +2,7 @@ package cn.varsa.pde.resolver.compile
 
 import cn.varsa.pde.resolver.launch.BundleStartSpec
 import cn.varsa.pde.resolver.launch.LauncherPlan
+import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import java.nio.file.Path
 
 /**
@@ -9,7 +10,8 @@ import java.nio.file.Path
  */
 fun rewritePlanWithCompiledOutputs(plan: LauncherPlan, specs: List<CompileSpec>): LauncherPlan {
   val outputsByBsn = specs.associate { spec ->
-    val out = spec.outputDirectory ?: Path.of(spec.bundlePath).resolve("out/production").toString()
+    val out = spec.outputDirectory
+      ?: Path.of(spec.bundlePath).resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR).toString()
     spec.bsn to Path.of(out).toAbsolutePath().normalize()
   }
   val rewrittenBundles: List<BundleStartSpec> = plan.bundles.map { b ->

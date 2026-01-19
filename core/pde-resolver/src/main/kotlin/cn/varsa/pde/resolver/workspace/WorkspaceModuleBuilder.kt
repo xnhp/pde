@@ -13,9 +13,7 @@ data class WorkspaceModuleDefinition(
 )
 
 object WorkspaceModuleBuilder {
-  private val defaultClassRoots = listOf("out/production")
-
-  fun build(definitions: List<WorkspaceModuleDefinition>): WorkspaceInputs {
+  fun build(definitions: List<WorkspaceModuleDefinition>, allowMissingClasses: Boolean = false): WorkspaceInputs {
     val descriptors = mutableListOf<WorkspaceBundleDescriptor>()
     val devProps = linkedMapOf<String, List<String>>()
     definitions.forEach { definition ->
@@ -33,12 +31,16 @@ object WorkspaceModuleBuilder {
       val manifest = definition.manifestOverride ?: descriptor.manifest
       val bsn = manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
 
-      val classRoots = (definition.classRoots.takeIf { it.isNotEmpty() } ?: defaultClassRoots)
-      val devClassPaths = classRoots.map { moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
+      val classRoots = (definition.classRoots.takeIf { it.isNotEmpty() } ?: WorkspaceDefaults.DEFAULT_CLASS_ROOTS)
+      val devClassPaths = if (allowMissingClasses) {
+        classRoots.map { moduleDir.resolve(it).normalize() }
+      } else {
+        classRoots.map { moduleDir.resolve(it).normalize() }.filter { Files.exists(it) }
+      }
 
       val effectiveClassPath = when {
         devClassPaths.isNotEmpty() -> {
-          if (moduleDir.toFile().isDirectory && !containsClasses(devClassPaths)) {
+          if (!allowMissingClasses && moduleDir.toFile().isDirectory && !containsClasses(devClassPaths)) {
             val requested = classRoots.joinToString(", ") { moduleDir.resolve(it).toString() }
             throw WorkspaceModuleException(
               "No compiled classes found for workspace bundle $bsn. Checked: $requested"

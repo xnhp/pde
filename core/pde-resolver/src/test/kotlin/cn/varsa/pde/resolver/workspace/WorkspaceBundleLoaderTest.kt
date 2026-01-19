@@ -30,7 +30,7 @@ class WorkspaceBundleLoaderTest {
     assertEquals(listOf("**/*.bak"), desc.resourceExcludes)
     assertEquals("11", desc.compilerPrefs["org.eclipse.jdt.core.compiler.source"])
     assertEquals("11", desc.compilerPrefs["org.eclipse.jdt.core.compiler.compliance"])
-    assertTrue(desc.outputDirectory?.endsWith("bin/test-output") == true)
+    assertTrue(desc.outputDirectory?.endsWith("bin") == true)
   }
 
   @Test

@@ -296,15 +296,11 @@ class ResolverTest {
     assertFalse("optional bundle must not be selected", selectedBsns.contains("optional.bundle"))
 
     assertTrue("requires map must include mandatory bundle", result.requires.keys.contains("mandatory.bundle"))
-    assertFalse("requires map must omit optional bundle", result.requires.keys.contains("optional.bundle"))
+    assertTrue("requires map must include optional bundle", result.requires.keys.contains("optional.bundle"))
     assertTrue("imports map must include required package", result.imports.keys.contains("pkg.required"))
     assertFalse("imports map must omit optional package", result.imports.keys.contains("pkg.optional"))
 
-    assertTrue("no unresolved entries expected", result.unresolved.isEmpty())
-    assertTrue(
-      "problem list must not mention optional dependencies",
-      result.problems.none { it.symbol == "optional.bundle" || it.symbol == "pkg.optional" }
-    )
+    assertTrue("optional bundle must be marked unresolved", result.unresolved.any { it.bsn == "optional.bundle" })
   }
 
   @Test

@@ -37,7 +37,7 @@ class WorkspaceModuleBuilderTest {
         "Bundle-Version: 1.0.0\n\n"
     )
     // Provide a class output directory that matches the default root and a dummy class file
-    val outDir = File(moduleDir.toFile(), "out/production")
+    val outDir = File(moduleDir.toFile(), "bin")
     outDir.mkdirs()
     File(outDir, "Dummy.class").writeText("")
 
@@ -59,7 +59,7 @@ class WorkspaceModuleBuilderTest {
         "Bundle-SymbolicName: test.module\n" +
         "Bundle-Version: 1.0.0\n\n"
     )
-    val outDir = File(moduleDir.toFile(), "out/production")
+    val outDir = File(moduleDir.toFile(), "bin")
     outDir.mkdirs()
 
     // Output directory exists but contains no .class files; should fail fast

@@ -70,9 +70,8 @@ workspaceModules:
 
 - `path` must point to a built bundle (directory or exploded JAR containing
   `META-INF/MANIFEST.MF`). Paths can be relative to `launch.yaml`.
-- `classes` is optional; if omitted we default to `build/classes/java/main` and
-  `out/production`. These directories must already contain compiled `.class` files—the CLI
-  does not build sources.
+- `classes` is optional; if omitted we default to `bin`. This directory must
+  already contain compiled `.class` files—the CLI does not build sources.
 
 - `--root, -r <path>`
   - Root path to scan. Repeatable.

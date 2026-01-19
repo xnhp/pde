@@ -31,7 +31,6 @@ class CompileResultsJsonTest {
     try {
       main(
         arrayOf(
-          "compile",
           "--execute",
           "--target-root", tpDir.toString(),
           "--workspace", workspace.toString(),

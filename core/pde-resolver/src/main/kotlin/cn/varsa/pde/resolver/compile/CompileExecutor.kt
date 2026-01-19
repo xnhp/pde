@@ -1,5 +1,6 @@
 package cn.varsa.pde.resolver.compile
 
+import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -26,7 +27,8 @@ object CompileExecutor {
       return BundleCompileResult(spec.bsn, success = true, output = "Target-platform bundle; compile skipped.")
     }
     val bundleRoot = Path.of(spec.bundlePath)
-    val outDir = spec.outputDirectory?.let { Path.of(it) } ?: bundleRoot.resolve("out/production")
+    val outDir = spec.outputDirectory?.let { Path.of(it) }
+      ?: bundleRoot.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
     outDir.createDirectories()
 
     val result = compiler.compile(spec.copy(outputDirectory = outDir.toString()))
