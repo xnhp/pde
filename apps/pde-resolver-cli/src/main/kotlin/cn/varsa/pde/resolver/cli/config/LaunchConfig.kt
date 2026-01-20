@@ -29,6 +29,7 @@ data class LaunchConfig(
   val targetModules: List<String> = emptyList(),
   val workspaceModules: List<WorkspaceModule> = emptyList(),
   val bundlesPerRepo: List<RepoBundles> = emptyList(),
+  val extraWorkspaceModules: List<String> = emptyList(),
   val nonPdeBundles: List<String> = emptyList(),
   val launches: List<LaunchEntry> = emptyList(),
   @JsonAlias("vmArgs")
@@ -83,12 +84,23 @@ object LaunchConfigLoader {
   }
 
   private fun resolveWorkspaceModules(config: LaunchConfig, workingDir: Path): LaunchConfig {
-    if (config.workspaceModules.isNotEmpty()) return config
-    if (config.bundlesPerRepo.isEmpty()) return config
+    val baseModules = when {
+      config.workspaceModules.isNotEmpty() -> config.workspaceModules
+      config.bundlesPerRepo.isNotEmpty() -> buildWorkspaceModulesFromBundles(config, workingDir)
+      else -> emptyList()
+    }
 
+    val extras = buildExtraWorkspaceModules(config, workingDir)
+    val merged = (baseModules + extras)
+      .distinctBy { Paths.get(it.path).normalize().toString() }
+
+    return if (merged == config.workspaceModules) config else config.copy(workspaceModules = merged)
+  }
+
+  private fun buildWorkspaceModulesFromBundles(config: LaunchConfig, workingDir: Path): List<WorkspaceModule> {
     val skipBundles = config.nonPdeBundles.toSet()
     val seen = linkedSetOf<String>()
-    val modules = config.bundlesPerRepo.flatMap { repoEntry ->
+    return config.bundlesPerRepo.flatMap { repoEntry ->
       val repoPath = Paths.get(repoEntry.repo)
       val repoBase = if (repoPath.isAbsolute) repoPath else workingDir.resolve(repoEntry.repo)
       repoEntry.bundles.mapNotNull { bundle ->
@@ -97,8 +109,15 @@ object LaunchConfigLoader {
         if (seen.add(modulePath)) WorkspaceModule(path = modulePath) else null
       }
     }
+  }
 
-    return config.copy(workspaceModules = modules)
+  private fun buildExtraWorkspaceModules(config: LaunchConfig, workingDir: Path): List<WorkspaceModule> {
+    if (config.extraWorkspaceModules.isEmpty()) return emptyList()
+    return config.extraWorkspaceModules.map { raw ->
+      val path = Paths.get(raw)
+      val resolved = if (path.isAbsolute) path else workingDir.resolve(raw)
+      WorkspaceModule(path = resolved.normalize().toString())
+    }
   }
 }
 
