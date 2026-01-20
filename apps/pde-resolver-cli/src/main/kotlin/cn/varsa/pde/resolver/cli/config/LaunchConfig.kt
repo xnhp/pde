@@ -2,7 +2,12 @@ package cn.varsa.pde.resolver.cli.config
 
 import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.core.JsonToken
+import com.fasterxml.jackson.databind.DeserializationContext
 import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.JsonDeserializer
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -29,7 +34,8 @@ data class LaunchConfig(
   val targetModules: List<String> = emptyList(),
   val workspaceModules: List<WorkspaceModule> = emptyList(),
   val bundlesPerRepo: List<RepoBundles> = emptyList(),
-  val extraWorkspaceModules: List<String> = emptyList(),
+  @JsonDeserialize(contentUsing = WorkspaceModuleDeserializer::class)
+  val extraWorkspaceModules: List<WorkspaceModule> = emptyList(),
   val nonPdeBundles: List<String> = emptyList(),
   val launches: List<LaunchEntry> = emptyList(),
   @JsonAlias("vmArgs")
@@ -113,10 +119,20 @@ object LaunchConfigLoader {
 
   private fun buildExtraWorkspaceModules(config: LaunchConfig, workingDir: Path): List<WorkspaceModule> {
     if (config.extraWorkspaceModules.isEmpty()) return emptyList()
-    return config.extraWorkspaceModules.map { raw ->
-      val path = Paths.get(raw)
-      val resolved = if (path.isAbsolute) path else workingDir.resolve(raw)
-      WorkspaceModule(path = resolved.normalize().toString())
+    return config.extraWorkspaceModules.map { module ->
+      val path = Paths.get(module.path)
+      val resolved = if (path.isAbsolute) path else workingDir.resolve(module.path)
+      module.copy(path = resolved.normalize().toString())
+    }
+  }
+}
+
+private class WorkspaceModuleDeserializer : JsonDeserializer<WorkspaceModule>() {
+  override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): WorkspaceModule {
+    return when (parser.currentToken) {
+      JsonToken.VALUE_STRING -> WorkspaceModule(path = parser.valueAsString)
+      JsonToken.START_OBJECT -> parser.codec.readValue(parser, WorkspaceModule::class.java)
+      else -> throw ctxt.reportInputMismatch(WorkspaceModule::class.java, "Expected string or object for workspace module")
     }
   }
 }

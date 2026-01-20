@@ -22,6 +22,7 @@ class LaunchConfigLoaderTest {
             - bundle-one
       extraWorkspaceModules:
         - extra-module
+        - path: extra-module-2
       """.trimIndent()
     )
 
@@ -31,7 +32,8 @@ class LaunchConfigLoaderTest {
     assertEquals(
       listOf(
         root.resolve("repo-a").resolve("bundle-one").normalize().toString(),
-        root.resolve("extra-module").normalize().toString()
+        root.resolve("extra-module").normalize().toString(),
+        root.resolve("extra-module-2").normalize().toString()
       ),
       paths
     )
