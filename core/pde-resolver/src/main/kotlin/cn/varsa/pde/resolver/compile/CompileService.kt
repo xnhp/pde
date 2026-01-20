@@ -18,7 +18,51 @@ object CompileService {
       .flatMap { it.classPathEntries }
       .map { it.toAbsolutePath().normalize().toString() }
     val specs = plan.selectedBundles.map { rb -> toSpec(rb, byPath, allClassPathEntries) }
-    return Output(specs)
+    val ordered = orderWorkspaceSpecs(specs, plan.workspaceDependencies)
+    return Output(ordered)
+  }
+
+  private fun orderWorkspaceSpecs(
+    specs: List<CompileSpec>,
+    workspaceDependencies: Map<String, Set<String>>
+  ): List<CompileSpec> {
+    val workspaceSpecs = specs.filter { it.isWorkspace }
+    if (workspaceSpecs.size <= 1) return specs
+
+    val byBsn = workspaceSpecs.associateBy { it.bsn }
+    val depsByBsn = workspaceSpecs.associate { spec ->
+      val deps = workspaceDependencies[spec.bsn].orEmpty().filter { byBsn.containsKey(it) }.toMutableSet()
+      spec.bsn to deps
+    }.toMutableMap()
+    val inDegree = depsByBsn.mapValues { it.value.size }.toMutableMap()
+
+    val queue = ArrayDeque<String>()
+    workspaceSpecs.map { it.bsn }.forEach { bsn ->
+      if (inDegree[bsn] == 0) queue.add(bsn)
+    }
+
+    val orderedBsns = mutableListOf<String>()
+    while (queue.isNotEmpty()) {
+      val bsn = queue.removeFirst()
+      orderedBsns += bsn
+      depsByBsn.forEach { (node, deps) ->
+        if (deps.remove(bsn)) {
+          val next = (inDegree[node] ?: 0) - 1
+          inDegree[node] = next
+          if (next == 0) queue.add(node)
+        }
+      }
+    }
+
+    if (orderedBsns.size < workspaceSpecs.size) {
+      // Cycle(s) detected; append remaining in original order for stability.
+      val remaining = workspaceSpecs.map { it.bsn }.filter { it !in orderedBsns }
+      orderedBsns += remaining
+    }
+
+    val orderedWorkspace = orderedBsns.mapNotNull { byBsn[it] }
+    val nonWorkspace = specs.filterNot { it.isWorkspace }
+    return orderedWorkspace + nonWorkspace
   }
 
   private fun toSpec(

@@ -40,7 +40,8 @@ class CompileServiceTest {
     val plan = LaunchPlanner.PlanResult(
       plan = LauncherPlan(emptyList(), null, emptyMap()),
       context = LaunchContext(emptyMap(), emptyMap()),
-      selectedBundles = selected
+      selectedBundles = selected,
+      workspaceDependencies = emptyMap()
     )
 
     val output = CompileService.buildSpecs(plan, listOf(wsDesc))
@@ -74,7 +75,8 @@ class CompileServiceTest {
     val plan = LaunchPlanner.PlanResult(
       plan = LauncherPlan(emptyList(), null, emptyMap()),
       context = LaunchContext(emptyMap(), emptyMap()),
-      selectedBundles = selected
+      selectedBundles = selected,
+      workspaceDependencies = emptyMap()
     )
     val spec = CompileService.buildSpecs(plan, emptyList()).specs.single()
 
@@ -126,11 +128,44 @@ class CompileServiceTest {
     val plan = LaunchPlanner.PlanResult(
       plan = LauncherPlan(emptyList(), null, emptyMap()),
       context = LaunchContext(emptyMap(), emptyMap()),
-      selectedBundles = selected
+      selectedBundles = selected,
+      workspaceDependencies = emptyMap()
     )
 
     val spec = CompileService.buildSpecs(plan, listOf(wsDesc)).specs.first { it.bsn == "org.example.a" }
 
     assertTrue(spec.classpath.any { it == tpPath.toString() }, "classpath should include target bundle dependency")
+  }
+
+  @Test
+  fun `workspace specs are ordered by dependencies`() {
+    val aPath = Paths.get("/workspace/a")
+    val bPath = Paths.get("/workspace/b")
+    val aDesc = WorkspaceBundleDescriptor(path = aPath, manifest = dummyManifest("org.example.a", "1.0.0"))
+    val bDesc = WorkspaceBundleDescriptor(path = bPath, manifest = dummyManifest("org.example.b", "1.0.0"))
+    val selected = listOf(
+      ResolvedBundle(
+        bsn = "org.example.b",
+        version = Version.parseVersion("1.0.0"),
+        path = bPath,
+        origin = cn.varsa.pde.resolver.algo.BundleOrigin.WORKSPACE
+      ),
+      ResolvedBundle(
+        bsn = "org.example.a",
+        version = Version.parseVersion("1.0.0"),
+        path = aPath,
+        origin = cn.varsa.pde.resolver.algo.BundleOrigin.WORKSPACE
+      )
+    )
+    val plan = LaunchPlanner.PlanResult(
+      plan = LauncherPlan(emptyList(), null, emptyMap()),
+      context = LaunchContext(emptyMap(), emptyMap()),
+      selectedBundles = selected,
+      workspaceDependencies = mapOf("org.example.a" to setOf("org.example.b"))
+    )
+
+    val specs = CompileService.buildSpecs(plan, listOf(aDesc, bDesc)).specs
+
+    assertEquals(listOf("org.example.b", "org.example.a"), specs.filter { it.isWorkspace }.map { it.bsn })
   }
 }

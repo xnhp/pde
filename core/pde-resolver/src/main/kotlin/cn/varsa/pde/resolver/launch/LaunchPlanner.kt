@@ -12,7 +12,8 @@ object LaunchPlanner {
     val plan: LauncherPlan,
     val context: LaunchContext,
     val problemsByScope: Map<String, List<ResolveProblem>> = emptyMap(),
-    val selectedBundles: List<ResolvedBundle> = emptyList()
+    val selectedBundles: List<ResolvedBundle> = emptyList(),
+    val workspaceDependencies: Map<String, Set<String>> = emptyMap()
   )
 
   fun build(
@@ -53,6 +54,7 @@ object LaunchPlanner {
         )
       }
 
+    val workspaceDependencies = mutableMapOf<String, Set<String>>()
     environment.workspaceEntries.forEach { entry ->
       val cached = session?.get(entry)
       val result = cached ?: Resolver.resolve(
@@ -63,6 +65,9 @@ object LaunchPlanner {
       ).also { session?.put(entry, it) }
       recordProblems(scopeName(entry), result.toProblemList())
       selector.add(result)
+      entry.manifest.bundleSymbolicName?.key?.let { bsn ->
+        workspaceDependencies[bsn] = result.moduleDependencies
+      }
     }
 
     environment.libraryBundles.forEach { bundle ->
@@ -120,7 +125,8 @@ object LaunchPlanner {
       plan = plan,
       context = context,
       problemsByScope = problems.mapValues { it.value.toList() },
-      selectedBundles = selector.entries()
+      selectedBundles = selector.entries(),
+      workspaceDependencies = workspaceDependencies
     )
   }
 }
