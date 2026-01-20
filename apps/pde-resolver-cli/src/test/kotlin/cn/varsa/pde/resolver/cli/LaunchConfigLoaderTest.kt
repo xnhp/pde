@@ -38,4 +38,30 @@ class LaunchConfigLoaderTest {
       paths
     )
   }
+
+  @Test
+  fun launchEntryOverridesProductAndApplication() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("config.yaml").toFile()
+    configFile.writeText(
+      """
+      product: base.product
+      application: base.app
+      launches:
+        - name: run
+          product: launch.product
+          application: launch.app
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val launch = loaded.config.launches.single()
+    val patched = loaded.config.copy(
+      product = launch.product ?: loaded.config.product,
+      application = launch.application ?: loaded.config.application
+    )
+
+    assertEquals("launch.product", patched.product)
+    assertEquals("launch.app", patched.application)
+  }
 }

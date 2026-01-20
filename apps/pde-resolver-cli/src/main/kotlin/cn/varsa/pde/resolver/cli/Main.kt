@@ -328,6 +328,8 @@ private fun selectLaunchConfig(
     return null
   }
   val patched = context.config.copy(
+    product = selected.product ?: context.config.product,
+    application = selected.application ?: context.config.application,
     additionalVmArgs = selected.vmArgs,
     programArgs = selected.programArgs
   )
