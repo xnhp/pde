@@ -42,7 +42,6 @@ data class LaunchConfig(
   @JsonAlias("vmArgs")
   val additionalVmArgs: List<String> = emptyList(),
   val programArgs: List<String> = emptyList(),
-  val debugTests: Boolean = false,
   val profilePath: String? = null,
   val startupLevels: Map<String, Int> = emptyMap(),
   val whitelist: List<String> = listOf(
@@ -81,6 +80,7 @@ data class TestEntry(
   val testPluginName: String? = null,
   @JsonAlias("classname")
   val className: String? = null,
+  val debug: Boolean = false,
   val programArgs: List<String> = emptyList(),
   val vmArgs: List<String> = emptyList()
 )
@@ -88,7 +88,8 @@ data class TestEntry(
 data class LaunchConfigContext(
   val file: Path,
   val baseDir: Path,
-  val config: LaunchConfig
+  val config: LaunchConfig,
+  val testDebug: Boolean = false
 )
 
 object LaunchConfigLoader {

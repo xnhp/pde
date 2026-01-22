@@ -298,7 +298,7 @@ private fun describeConfig(config: LaunchConfigContext, targetFile: Path?, targe
   logger.info("  profile path: ${config.config.profilePath ?: "<unspecified>"}")
   logger.info("  target vm args: ${targetArgs?.vmArgs?.size ?: 0}")
   logger.info("  target program args: ${targetArgs?.programArgs?.size ?: 0}")
-  if (config.config.debugTests) {
+  if (config.testDebug) {
     val applicable = config.config.application?.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true) == true
     val message = if (applicable) {
       "enabled (JDWP on port $DEFAULT_TEST_DEBUG_PORT)"
@@ -402,13 +402,14 @@ private fun selectTestConfig(
     additionalVmArgs = vmArgs,
     programArgs = programArgs
   )
+  val withDebug = context.copy(config = patched, testDebug = selected.debug)
   val label = selected.name ?: selected.className ?: selected.testPluginName ?: "<unnamed>"
   if (testName == null) {
     logger.info("Using default test '$label'.")
   } else {
     logger.info("Using test '$label'.")
   }
-  return context.copy(config = patched)
+  return withDebug
 }
 
 private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?) {
@@ -537,7 +538,7 @@ private fun assembleCommand(
   val vmArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.vmArgs ?: emptyList())
     addAll(configVmArgs)
-    addAll(buildTestDebugVmArgs(context.config, this))
+    addAll(buildTestDebugVmArgs(context, this))
   }
   val programArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.programArgs ?: emptyList())
@@ -584,9 +585,9 @@ private fun assembleCommand(
   }
 }
 
-internal fun buildTestDebugVmArgs(config: LaunchConfig, existingVmArgs: List<String>): List<String> {
-  if (!config.debugTests) return emptyList()
-  if (!config.application.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true)) return emptyList()
+internal fun buildTestDebugVmArgs(context: LaunchConfigContext, existingVmArgs: List<String>): List<String> {
+  if (!context.testDebug) return emptyList()
+  if (!context.config.application.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true)) return emptyList()
   if (existingVmArgs.any { it.contains("jdwp", ignoreCase = true) }) return emptyList()
   return listOf("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:$DEFAULT_TEST_DEBUG_PORT")
 }
