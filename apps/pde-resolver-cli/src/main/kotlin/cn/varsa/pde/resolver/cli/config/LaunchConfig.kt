@@ -38,6 +38,7 @@ data class LaunchConfig(
   val extraWorkspaceModules: List<WorkspaceModule> = emptyList(),
   val nonPdeBundles: List<String> = emptyList(),
   val launches: List<LaunchEntry> = emptyList(),
+  val tests: List<TestEntry> = emptyList(),
   @JsonAlias("vmArgs")
   val additionalVmArgs: List<String> = emptyList(),
   val programArgs: List<String> = emptyList(),
@@ -69,6 +70,17 @@ data class LaunchEntry(
   val product: String? = null,
   val application: String? = null,
   val splash: String? = null,
+  val programArgs: List<String> = emptyList(),
+  val vmArgs: List<String> = emptyList()
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TestEntry(
+  val name: String? = null,
+  @JsonAlias("testpluginname")
+  val testPluginName: String? = null,
+  @JsonAlias("classname")
+  val className: String? = null,
   val programArgs: List<String> = emptyList(),
   val vmArgs: List<String> = emptyList()
 )

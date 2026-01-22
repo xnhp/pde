@@ -180,7 +180,7 @@ fun launchMain(args: Array<String>) {
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
-    description = "YAML launch configuration"
+    description = "YAML launch configuration (supports launches/tests)"
   )
   val logLevelOpt by parser.option(
     ArgType.String,
@@ -204,7 +204,7 @@ fun launchMain(args: Array<String>) {
   ).optional()
   val launchPos by parser.argument(
     ArgType.String,
-    description = "Launch name (optional)"
+    description = "Launch name (optional, from launches entry)"
   ).optional()
   val dryRun by parser.option(ArgType.Boolean, fullName = "dry-run", description = "Parse configuration only").default(false)
   val targetRoots by parser.option(ArgType.String, fullName = "target-root", shortName = "t", description = "Target root (repeatable)").multiple()
@@ -341,6 +341,72 @@ private fun selectLaunchConfig(
     logger.info("Using default launch '${selected.name}'.")
   } else {
     logger.info("Using launch '${selected.name}'.")
+  }
+  return context.copy(config = patched)
+}
+
+private fun selectTestConfig(
+  context: LaunchConfigContext,
+  testName: String?
+): LaunchConfigContext? {
+  if (context.config.tests.isEmpty()) {
+    logger.severe("No tests defined in ${context.file}. Add a 'tests' entry or pass a legacy launch.yaml.")
+    return null
+  }
+  val selected = if (testName == null) {
+    context.config.tests.first()
+  } else {
+    val exactMatches = context.config.tests.filter { entry ->
+      entry.name == testName || entry.className == testName || entry.testPluginName == testName
+    }
+    if (exactMatches.size > 1) {
+      val available = exactMatches.joinToString { entry ->
+        entry.name ?: entry.className ?: entry.testPluginName ?: "<unnamed>"
+      }
+      logger.severe("Test '$testName' matches multiple entries: $available. Use a unique name/classname.")
+      return null
+    }
+    if (exactMatches.size == 1) {
+      exactMatches.first()
+    } else {
+      val substringMatches = context.config.tests.filter { entry ->
+        entry.className?.contains(testName) == true
+      }
+      if (substringMatches.size > 1) {
+        val available = substringMatches.joinToString { entry ->
+          entry.className ?: entry.name ?: entry.testPluginName ?: "<unnamed>"
+        }
+        logger.severe("Test '$testName' matches multiple classnames: $available. Use the full classname.")
+        return null
+      }
+      substringMatches.singleOrNull()
+    }
+  }
+  if (selected == null) {
+    val available = context.config.tests.joinToString { entry ->
+      entry.name ?: entry.className ?: entry.testPluginName ?: "<unnamed>"
+    }
+    logger.severe("Test '$testName' not found in ${context.file}. Available tests: $available")
+    return null
+  }
+  val programArgs = context.config.programArgs.toMutableList()
+  programArgs.addAll(selected.programArgs)
+  if (selected.testPluginName != null && "-testpluginname" !in programArgs) {
+    programArgs += listOf("-testpluginname", selected.testPluginName)
+  }
+  if (selected.className != null && "-classname" !in programArgs) {
+    programArgs += listOf("-classname", selected.className)
+  }
+  val vmArgs = context.config.additionalVmArgs + selected.vmArgs
+  val patched = context.config.copy(
+    additionalVmArgs = vmArgs,
+    programArgs = programArgs
+  )
+  val label = selected.name ?: selected.className ?: selected.testPluginName ?: "<unnamed>"
+  if (testName == null) {
+    logger.info("Using default test '$label'.")
+  } else {
+    logger.info("Using test '$label'.")
   }
   return context.copy(config = patched)
 }
@@ -725,7 +791,7 @@ private fun testMain(args: Array<String>): Int {
   val parser = ArgParser("pde-launch test")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
-  val launchPos by parser.argument(ArgType.String, description = "Launch name (optional)").optional()
+  val launchPos by parser.argument(ArgType.String, description = "Test name (optional)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -757,7 +823,7 @@ private fun testMain(args: Array<String>): Int {
 
   val configPosValue = configPos
   val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
-  val launchName = when {
+  val testName = when {
     configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
     launchPos != null -> launchPos
     else -> null
@@ -773,7 +839,7 @@ private fun testMain(args: Array<String>): Int {
   }
 
   val loaded = LaunchConfigLoader.load(discoveredConfig)
-  val selected = selectLaunchConfig(loaded, launchName)
+  val selected = selectTestConfig(loaded, testName)
   if (selected == null) return 2
   val configContext = applyTestDefaults(selected)
   val targetPath = configContext.config.targetFile
