@@ -320,7 +320,17 @@ private fun selectLaunchConfig(
   val selected = if (launchName == null) {
     context.config.launches.first()
   } else {
-    context.config.launches.firstOrNull { it.name == launchName }
+    val index = launchName.toIntOrNull()
+    if (index != null) {
+      if (index in 1..context.config.launches.size) {
+        context.config.launches[index - 1]
+      } else {
+        logger.severe("Launch index $index out of range. Available launches: 1..${context.config.launches.size}")
+        return null
+      }
+    } else {
+      context.config.launches.firstOrNull { it.name == launchName }
+    }
   }
   if (selected == null) {
     val available = context.config.launches.joinToString { it.name }
@@ -356,6 +366,15 @@ private fun selectTestConfig(
   val selected = if (testName == null) {
     context.config.tests.first()
   } else {
+    val index = testName.toIntOrNull()
+    if (index != null) {
+      if (index in 1..context.config.tests.size) {
+        context.config.tests[index - 1]
+      } else {
+        logger.severe("Test index $index out of range. Available tests: 1..${context.config.tests.size}")
+        return null
+      }
+    } else {
     val exactMatches = context.config.tests.filter { entry ->
       entry.name == testName || entry.className == testName || entry.testPluginName == testName
     }
@@ -380,6 +399,7 @@ private fun selectTestConfig(
         return null
       }
       substringMatches.singleOrNull()
+    }
     }
   }
   if (selected == null) {
