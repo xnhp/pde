@@ -330,9 +330,13 @@ private fun selectLaunchConfig(
   val patched = context.config.copy(
     product = selected.product ?: context.config.product,
     application = selected.application ?: context.config.application,
+    splash = selected.splash,
     additionalVmArgs = selected.vmArgs,
     programArgs = selected.programArgs
   )
+  if (!context.config.splash.isNullOrBlank()) {
+    logger.warning("Top-level 'splash' is no longer supported; use launches[].splash instead.")
+  }
   if (launchName == null) {
     logger.info("Using default launch '${selected.name}'.")
   } else {
@@ -435,7 +439,19 @@ private fun prepareLaunch(
   )
   val planResult = LaunchPlanner.build(env, options)
   val fallbackConfig = loadExistingConfig(profilePath)
-  writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig)
+  val extraProperties = buildMap {
+    val splash = context.config.splash?.takeIf { it.isNotBlank() }
+    if (splash != null) {
+      val bundle = targetIndex.get(splash)
+        ?: targetIndex.get(splash.substringBeforeLast('.', missingDelimiterValue = splash))
+      if (bundle != null) {
+        put("osgi.splashPath", bundle.location.toUri().toString())
+      } else {
+        logger.warning("Splash bundle '$splash' not found in target platform; osgi.splashPath will be omitted.")
+      }
+    }
+  }
+  writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig, extraProperties)
   val launcherJar = resolveLauncherJar(targetIndex)
   val command = assembleCommand(context, layout, targetArgs, planResult, launcherJar, extraProgramArgs)
   return PreparedLaunch(command, planResult, layout)
@@ -575,12 +591,14 @@ private fun writeLaunchArtifacts(
   planResult: LaunchPlanner.PlanResult,
   options: LauncherOptions,
   installArea: Path,
-  fallbackConfig: Properties
+  fallbackConfig: Properties,
+  extraProperties: Map<String, String>
 ) {
   val defaults = RuntimeLayoutWriter.Defaults(
     installArea = installArea,
     instanceArea = layout.dataDir,
-    fallbackConfig = fallbackConfig
+    fallbackConfig = fallbackConfig,
+    extraProperties = extraProperties
   )
   RuntimeLayoutWriter.write(layout.asRuntimeLayout(), planResult.plan, planResult.context, options, defaults)
 }

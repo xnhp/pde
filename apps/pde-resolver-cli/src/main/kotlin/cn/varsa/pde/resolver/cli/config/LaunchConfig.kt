@@ -68,6 +68,7 @@ data class LaunchEntry(
   val name: String,
   val product: String? = null,
   val application: String? = null,
+  val splash: String? = null,
   val programArgs: List<String> = emptyList(),
   val vmArgs: List<String> = emptyList()
 )
