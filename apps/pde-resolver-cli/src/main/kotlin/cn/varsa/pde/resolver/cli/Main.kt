@@ -809,6 +809,11 @@ private fun testMain(args: Array<String>): Int {
     fullName = "debug",
     description = "Enable DEBUG logging"
   ).default(false)
+  val debugJvm by parser.option(
+    ArgType.Boolean,
+    fullName = "debugJVM",
+    description = "Enable JDWP for test JVM (equivalent to tests[].debug=true)"
+  ).default(false)
   val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
   val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
   val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
@@ -842,7 +847,9 @@ private fun testMain(args: Array<String>): Int {
   val loaded = LaunchConfigLoader.load(discoveredConfig)
   val selected = selectTestConfig(loaded, testName)
   if (selected == null) return 2
-  val configContext = applyTestDefaults(selected)
+  val configContext = applyTestDefaults(selected).let { ctx ->
+    if (debugJvm) ctx.copy(testDebug = true) else ctx
+  }
   val targetPath = configContext.config.targetFile
     ?.let { configContext.baseDir.resolve(it).normalize() }
   val targetArgs = if (configContext.config.inheritTargetArgs && targetPath != null) {
