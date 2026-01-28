@@ -1056,6 +1056,11 @@ internal fun compileMain(args: Array<String>) {
     fullName = "execute",
     description = "Run ECJ compilation (default when using a launch config)"
   ).default(false)
+  val fullRebuild by parser.option(
+    ArgType.Boolean,
+    fullName = "full-rebuild",
+    description = "Force full rebuild of all workspace bundles (skip incremental cache)"
+  ).default(false)
   val debugInfo by parser.option(ArgType.Boolean, fullName = "debug", description = "Emit debug info (lines/vars/source)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results (when --execute) to JSON file")
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
@@ -1148,7 +1153,11 @@ internal fun compileMain(args: Array<String>) {
       return
     }
 
-    val results = CompileExecutor.compile(specs)
+    val results = CompileExecutor.compile(
+      specs,
+      workspaceDependencies = planResult.workspaceDependencies,
+      forceFullRebuild = fullRebuild
+    )
     resultsJson?.let { path ->
       jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
       logger.info("Wrote results to $path")
@@ -1158,6 +1167,8 @@ internal fun compileMain(args: Array<String>) {
       val spec = specsByBsn[result.bsn]
       if (spec?.isWorkspace == true && result.success && !result.skipped) {
         logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
+      } else if (spec?.isWorkspace == true && result.success && result.skipped) {
+        logger.info("skipped ${result.bsn}: ${result.output}")
       }
     }
     val allOk = results.all { it.success }
@@ -1272,7 +1283,11 @@ internal fun compileMain(args: Array<String>) {
     return
   }
 
-    val results = CompileExecutor.compile(specs)
+    val results = CompileExecutor.compile(
+      specs,
+      workspaceDependencies = planResult.workspaceDependencies,
+      forceFullRebuild = fullRebuild
+    )
     resultsJson?.let { path ->
       jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
       logger.info("Wrote results to $path")
@@ -1282,6 +1297,8 @@ internal fun compileMain(args: Array<String>) {
       val spec = specsByBsn[result.bsn]
       if (spec?.isWorkspace == true && result.success && !result.skipped) {
         logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
+      } else if (spec?.isWorkspace == true && result.success && result.skipped) {
+        logger.info("skipped ${result.bsn}: ${result.output}")
       }
     }
     val allOk = results.all { it.success }
