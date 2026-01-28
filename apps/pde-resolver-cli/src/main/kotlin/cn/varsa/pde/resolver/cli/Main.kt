@@ -53,7 +53,9 @@ import java.nio.file.Paths
 import java.time.Instant
 import java.util.Locale
 import java.util.Properties
+import java.util.logging.Formatter
 import java.util.logging.Level
+import java.util.logging.LogRecord
 import java.util.logging.Logger
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
@@ -65,11 +67,29 @@ internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.ru
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-resolver-cli")
+private val messageOnlyFormatter = object : Formatter() {
+  override fun format(record: LogRecord): String {
+    val message = formatMessage(record)
+    val builder = StringBuilder()
+    builder.append(record.level.name).append(": ").append(message).append('\n')
+    record.thrown?.let { thrown ->
+      val writer = java.io.StringWriter()
+      val printer = java.io.PrintWriter(writer)
+      thrown.printStackTrace(printer)
+      printer.flush()
+      builder.append(writer.toString())
+    }
+    return builder.toString()
+  }
+}
 private fun configureLogging(level: Level) {
   logger.level = level
   val root = Logger.getLogger("")
   root.level = level
-  root.handlers?.forEach { handler -> handler.level = level }
+  root.handlers?.forEach { handler ->
+    handler.level = level
+    handler.formatter = messageOnlyFormatter
+  }
 }
 private fun parseLogLevel(value: String?): Level = when (value?.lowercase()) {
   "error", "severe" -> Level.SEVERE
