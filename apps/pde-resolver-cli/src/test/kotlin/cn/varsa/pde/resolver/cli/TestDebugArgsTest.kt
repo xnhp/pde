@@ -9,16 +9,17 @@ import kotlin.test.assertTrue
 
 class TestDebugArgsTest {
   @Test
-  fun `adds jdwp agent when test debugging is enabled for PDE JUnit app`() {
+  fun `adds jdwp agent when debug is enabled for PDE JUnit app`() {
     val config = LaunchConfig(application = PDE_JUNIT_PLUGIN_TEST_APPLICATION)
     val context = LaunchConfigContext(
       file = Paths.get("config.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
-      testDebug = true
+      jvmDebug = true,
+      jvmDebugRequiresPdeTestApp = true
     )
 
-    val args = buildTestDebugVmArgs(context, emptyList())
+    val args = buildDebugVmArgs(context, emptyList())
 
     assertContains(args.first(), "jdwp")
     assertContains(args.first(), DEFAULT_TEST_DEBUG_PORT.toString())
@@ -32,14 +33,31 @@ class TestDebugArgsTest {
       file = Paths.get("config.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
-      testDebug = true
+      jvmDebug = true,
+      jvmDebugRequiresPdeTestApp = true
     )
 
-    val nonTestArgs = buildTestDebugVmArgs(context, emptyList())
+    val nonTestArgs = buildDebugVmArgs(context, emptyList())
     assertTrue(nonTestArgs.isEmpty())
 
     val testContext = context.copy(config = config.copy(application = PDE_JUNIT_PLUGIN_TEST_APPLICATION))
-    val argsWithExisting = buildTestDebugVmArgs(testContext, listOf("-agentlib:jdwp=transport=dt_socket"))
+    val argsWithExisting = buildDebugVmArgs(testContext, listOf("-agentlib:jdwp=transport=dt_socket"))
     assertTrue(argsWithExisting.isEmpty())
+  }
+
+  @Test
+  fun `adds jdwp agent for non test app when not restricted`() {
+    val config = LaunchConfig(application = "org.example.app")
+    val context = LaunchConfigContext(
+      file = Paths.get("config.yaml"),
+      baseDir = Paths.get("").toAbsolutePath(),
+      config = config,
+      jvmDebug = true,
+      jvmDebugRequiresPdeTestApp = false
+    )
+
+    val args = buildDebugVmArgs(context, emptyList())
+
+    assertContains(args.first(), "jdwp")
   }
 }

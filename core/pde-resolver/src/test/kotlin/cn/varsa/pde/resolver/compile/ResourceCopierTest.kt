@@ -4,7 +4,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.assertFalse
@@ -29,7 +28,8 @@ class ResourceCopierTest {
       outDir = outDir,
       includes = listOf("."),
       excludes = listOf("**/*.md"),
-      classpathEntries = emptyList()
+      classpathEntries = emptyList(),
+      sourceRoots = emptyList()
     )
 
     assertTrue(outDir.resolve("plugin.xml").toFile().exists(), "plugin.xml should be copied")
@@ -50,9 +50,34 @@ class ResourceCopierTest {
       outDir = outDir,
       includes = listOf("."),
       excludes = emptyList(),
-      classpathEntries = listOf(jarPath.toString())
+      classpathEntries = listOf(jarPath.toString()),
+      sourceRoots = emptyList()
     )
 
     assertTrue(outDir.resolve("lib/embedded.jar").toFile().exists(), "embedded jar should be copied to output")
+  }
+
+  @Test
+  fun `copies non-java resources from source roots`() {
+    val bundle = temp.newFolder("bundle3").toPath()
+    val srcDir = bundle.resolve("src/eclipse").createDirectories()
+    srcDir.resolve("log4j/log4j-0.xml").apply {
+      parent.createDirectories()
+      writeText("<log4j/>")
+    }
+    srcDir.resolve("Example.java").writeText("class Example {}")
+
+    val outDir = bundle.resolve("bin")
+    DefaultResourceCopier.copy(
+      root = bundle,
+      outDir = outDir,
+      includes = listOf("."),
+      excludes = emptyList(),
+      classpathEntries = emptyList(),
+      sourceRoots = listOf(srcDir.toString())
+    )
+
+    assertTrue(outDir.resolve("log4j/log4j-0.xml").toFile().exists(), "resource from source root should be copied")
+    assertFalse(outDir.resolve("Example.java").toFile().exists(), "java sources must not be copied")
   }
 }

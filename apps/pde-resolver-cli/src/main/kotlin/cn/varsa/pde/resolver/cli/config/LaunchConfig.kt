@@ -27,6 +27,7 @@ data class LaunchConfig(
   val inheritTargetArgs: Boolean = true,
   val whitelistFile: String? = null,
   val splash: String? = null,
+  val env: Map<String, String> = emptyMap(),
   val dataDir: String? = null,
   val configDir: String? = null,
   val workDir: String? = null,
@@ -60,7 +61,14 @@ data class WorkspaceModule(
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class RepoBundles(
   val repo: String,
-  val bundles: List<String> = emptyList()
+  @JsonDeserialize(contentUsing = BundleRefDeserializer::class)
+  val bundles: List<BundleRef> = emptyList()
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class BundleRef(
+  val name: String,
+  val classes: List<String>? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -69,6 +77,8 @@ data class LaunchEntry(
   val product: String? = null,
   val application: String? = null,
   val splash: String? = null,
+  val debug: Boolean = false,
+  val env: Map<String, String> = emptyMap(),
   val programArgs: List<String> = emptyList(),
   val vmArgs: List<String> = emptyList()
 )
@@ -81,6 +91,7 @@ data class TestEntry(
   @JsonAlias("classname")
   val className: String? = null,
   val debug: Boolean = false,
+  val env: Map<String, String> = emptyMap(),
   val programArgs: List<String> = emptyList(),
   val vmArgs: List<String> = emptyList()
 )
@@ -89,7 +100,8 @@ data class LaunchConfigContext(
   val file: Path,
   val baseDir: Path,
   val config: LaunchConfig,
-  val testDebug: Boolean = false
+  val jvmDebug: Boolean = false,
+  val jvmDebugRequiresPdeTestApp: Boolean = false
 )
 
 object LaunchConfigLoader {
@@ -126,9 +138,13 @@ object LaunchConfigLoader {
       val repoPath = Paths.get(repoEntry.repo)
       val repoBase = if (repoPath.isAbsolute) repoPath else workingDir.resolve(repoEntry.repo)
       repoEntry.bundles.mapNotNull { bundle ->
-        if (skipBundles.contains(bundle)) return@mapNotNull null
-        val modulePath = repoBase.resolve(bundle).normalize().toString()
-        if (seen.add(modulePath)) WorkspaceModule(path = modulePath) else null
+        if (skipBundles.contains(bundle.name)) return@mapNotNull null
+        val modulePath = repoBase.resolve(bundle.name).normalize().toString()
+        if (seen.add(modulePath)) {
+          WorkspaceModule(path = modulePath, classes = bundle.classes)
+        } else {
+          null
+        }
       }
     }
   }
@@ -149,6 +165,16 @@ private class WorkspaceModuleDeserializer : JsonDeserializer<WorkspaceModule>() 
       JsonToken.VALUE_STRING -> WorkspaceModule(path = parser.valueAsString)
       JsonToken.START_OBJECT -> parser.codec.readValue(parser, WorkspaceModule::class.java)
       else -> throw ctxt.reportInputMismatch(WorkspaceModule::class.java, "Expected string or object for workspace module")
+    }
+  }
+}
+
+private class BundleRefDeserializer : JsonDeserializer<BundleRef>() {
+  override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): BundleRef {
+    return when (parser.currentToken) {
+      JsonToken.VALUE_STRING -> BundleRef(name = parser.valueAsString)
+      JsonToken.START_OBJECT -> parser.codec.readValue(parser, BundleRef::class.java)
+      else -> throw ctxt.reportInputMismatch(BundleRef::class.java, "Expected string or object for bundle entry")
     }
   }
 }

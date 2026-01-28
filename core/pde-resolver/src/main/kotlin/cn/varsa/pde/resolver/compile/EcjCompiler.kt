@@ -25,7 +25,13 @@ class EcjCompiler(
       .flatMap { root -> Files.walk(root).filter { p -> p.toString().endsWith(".java") }.toList() }
 
     if (sources.isEmpty()) {
-      return BundleCompileResult(spec.bsn, success = true, output = "No sources; skipped")
+      return BundleCompileResult(
+        spec.bsn,
+        success = true,
+        output = "No sources; skipped",
+        durationMillis = 0,
+        skipped = true
+      )
     }
 
     val processorReasons = detectAnnotationProcessors(bundleRoot, spec.classpath)
@@ -34,7 +40,13 @@ class EcjCompiler(
         append("Annotation processors detected; javac fallback not implemented.\n")
         processorReasons.forEach { append("- ").append(it).append('\n') }
       }
-      return BundleCompileResult(spec.bsn, success = false, output = msg.trimEnd())
+      return BundleCompileResult(
+        spec.bsn,
+        success = false,
+        output = msg.trimEnd(),
+        durationMillis = 0,
+        skipped = false
+      )
     }
 
     val args = mutableListOf<String>()
@@ -59,7 +71,13 @@ class EcjCompiler(
     val compiler = Main(writer, writer, false, null, null)
     val success = compiler.compile(args.toTypedArray())
 
-    return BundleCompileResult(spec.bsn, success = success, output = baos.toString())
+    return BundleCompileResult(
+      spec.bsn,
+      success = success,
+      output = baos.toString(),
+      durationMillis = 0,
+      skipped = false
+    )
   }
 
   private fun compilerSourceLevel(spec: CompileSpec): String? =

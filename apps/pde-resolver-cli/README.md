@@ -50,11 +50,12 @@ shared resolver library and its on‑disk cache.
 
 ### Remote debugging PDE tests
 
-- Set `debugTests: true` in `launch.yaml` to start the PDE JUnit application with a JDWP
+- Set `tests[].debug: true` in `launch.yaml` to start the PDE JUnit application with a JDWP
   agent listening on port `5005` (server=y, suspend=y). This only applies when
   `application` is `org.eclipse.pde.junit.runtime.coretestapplication` so normal launches
   stay unaffected. Attach IntelliJ’s Remote JVM Debug configuration to port `5005` to
   debug the test run.
+- Set `launches[].debug: true` to enable JDWP for non-test launches using the same port.
 
 ### Workspace modules
 

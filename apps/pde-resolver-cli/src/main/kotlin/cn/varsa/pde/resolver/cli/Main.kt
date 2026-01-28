@@ -51,6 +51,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Instant
+import java.util.Locale
 import java.util.Properties
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -298,14 +299,15 @@ private fun describeConfig(config: LaunchConfigContext, targetFile: Path?, targe
   logger.info("  profile path: ${config.config.profilePath ?: "<unspecified>"}")
   logger.info("  target vm args: ${targetArgs?.vmArgs?.size ?: 0}")
   logger.info("  target program args: ${targetArgs?.programArgs?.size ?: 0}")
-  if (config.testDebug) {
-    val applicable = config.config.application?.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true) == true
-    val message = if (applicable) {
+  if (config.jvmDebug) {
+    val requiresTestApp = config.jvmDebugRequiresPdeTestApp
+    val isTestApp = config.config.application?.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true) == true
+    val message = if (!requiresTestApp || isTestApp) {
       "enabled (JDWP on port $DEFAULT_TEST_DEBUG_PORT)"
     } else {
       "requested but only applies when application=$PDE_JUNIT_PLUGIN_TEST_APPLICATION"
     }
-    logger.info("  test debug: $message")
+    logger.info("  jvm debug: $message")
   }
 }
 
@@ -341,6 +343,7 @@ private fun selectLaunchConfig(
     product = selected.product ?: context.config.product,
     application = selected.application ?: context.config.application,
     splash = selected.splash,
+    env = mergeEnv(context.config.env, selected.env),
     additionalVmArgs = selected.vmArgs,
     programArgs = selected.programArgs
   )
@@ -352,7 +355,11 @@ private fun selectLaunchConfig(
   } else {
     logger.info("Using launch '${selected.name}'.")
   }
-  return context.copy(config = patched)
+  return context.copy(
+    config = patched,
+    jvmDebug = selected.debug,
+    jvmDebugRequiresPdeTestApp = false
+  )
 }
 
 private fun selectTestConfig(
@@ -420,9 +427,14 @@ private fun selectTestConfig(
   val vmArgs = context.config.additionalVmArgs + selected.vmArgs
   val patched = context.config.copy(
     additionalVmArgs = vmArgs,
-    programArgs = programArgs
+    programArgs = programArgs,
+    env = mergeEnv(context.config.env, selected.env)
   )
-  val withDebug = context.copy(config = patched, testDebug = selected.debug)
+  val withDebug = context.copy(
+    config = patched,
+    jvmDebug = selected.debug,
+    jvmDebugRequiresPdeTestApp = true
+  )
   val label = selected.name ?: selected.className ?: selected.testPluginName ?: "<unnamed>"
   if (testName == null) {
     logger.info("Using default test '$label'.")
@@ -453,12 +465,25 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
     )
   }
   logCommand(prepared.command)
-  val process = ProcessBuilder(prepared.command)
+  val processBuilder = ProcessBuilder(prepared.command)
+  if (context.config.env.isNotEmpty()) {
+    val env = processBuilder.environment()
+    context.config.env.forEach { (key, value) ->
+      env[key] = value
+    }
+  }
+  val process = processBuilder
     .directory(prepared.layout.workDir.toFile())
     .inheritIO()
     .start()
   val exit = process.waitFor()
   if (exit != 0) error("Launcher exited with code $exit")
+}
+
+internal fun mergeEnv(base: Map<String, String>, overrides: Map<String, String>): Map<String, String> {
+  if (overrides.isEmpty()) return base
+  if (base.isEmpty()) return overrides
+  return base + overrides
 }
 
 private fun prepareLaunch(
@@ -558,7 +583,7 @@ private fun assembleCommand(
   val vmArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.vmArgs ?: emptyList())
     addAll(configVmArgs)
-    addAll(buildTestDebugVmArgs(context, this))
+    addAll(buildDebugVmArgs(context, this))
   }
   val programArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.programArgs ?: emptyList())
@@ -605,9 +630,11 @@ private fun assembleCommand(
   }
 }
 
-internal fun buildTestDebugVmArgs(context: LaunchConfigContext, existingVmArgs: List<String>): List<String> {
-  if (!context.testDebug) return emptyList()
-  if (!context.config.application.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true)) return emptyList()
+internal fun buildDebugVmArgs(context: LaunchConfigContext, existingVmArgs: List<String>): List<String> {
+  if (!context.jvmDebug) return emptyList()
+  if (context.jvmDebugRequiresPdeTestApp &&
+    !context.config.application.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true)
+  ) return emptyList()
   if (existingVmArgs.any { it.contains("jdwp", ignoreCase = true) }) return emptyList()
   return listOf("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:$DEFAULT_TEST_DEBUG_PORT")
 }
@@ -868,7 +895,7 @@ private fun testMain(args: Array<String>): Int {
   val selected = selectTestConfig(loaded, testName)
   if (selected == null) return 2
   val configContext = applyTestDefaults(selected).let { ctx ->
-    if (debugJvm) ctx.copy(testDebug = true) else ctx
+    if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
   }
   val targetPath = configContext.config.targetFile
     ?.let { configContext.baseDir.resolve(it).normalize() }
@@ -1106,6 +1133,13 @@ internal fun compileMain(args: Array<String>) {
       jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
       logger.info("Wrote results to $path")
     }
+    val specsByBsn = specs.associateBy { it.bsn }
+    results.forEach { result ->
+      val spec = specsByBsn[result.bsn]
+      if (spec?.isWorkspace == true && result.success && !result.skipped) {
+        logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
+      }
+    }
     val allOk = results.all { it.success }
     if (bundlesInfoOut != null) {
       if (!allOk) {
@@ -1218,12 +1252,19 @@ internal fun compileMain(args: Array<String>) {
     return
   }
 
-  val results = CompileExecutor.compile(specs)
-  resultsJson?.let { path ->
-    jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
-    logger.info("Wrote results to $path")
-  }
-  val allOk = results.all { it.success }
+    val results = CompileExecutor.compile(specs)
+    resultsJson?.let { path ->
+      jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
+      logger.info("Wrote results to $path")
+    }
+    val specsByBsn = specs.associateBy { it.bsn }
+    results.forEach { result ->
+      val spec = specsByBsn[result.bsn]
+      if (spec?.isWorkspace == true && result.success && !result.skipped) {
+        logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
+      }
+    }
+    val allOk = results.all { it.success }
   if (bundlesInfoOut != null) {
     if (!allOk) {
       logger.severe("Skipping bundles.info write because some bundles failed to compile.")
@@ -1283,6 +1324,11 @@ private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCom
         ?: Paths.get(spec.bundlePath).resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR).toString()
       spec.bsn to listOf(out)
     }
+}
+
+private fun formatDuration(durationMillis: Long): String {
+  val seconds = durationMillis / 1000.0
+  return String.format(Locale.US, "%.2fs", seconds)
 }
 
 private fun extractErrorBlocks(output: String): String? {

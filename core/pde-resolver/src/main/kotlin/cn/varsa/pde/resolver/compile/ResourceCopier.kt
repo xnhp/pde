@@ -15,7 +15,8 @@ interface ResourceCopier {
     outDir: Path,
     includes: List<String>,
     excludes: List<String>,
-    classpathEntries: List<String> = emptyList()
+    classpathEntries: List<String> = emptyList(),
+    sourceRoots: List<String> = emptyList()
   )
 }
 
@@ -25,7 +26,8 @@ object DefaultResourceCopier : ResourceCopier {
     outDir: Path,
     includes: List<String>,
     excludes: List<String>,
-    classpathEntries: List<String>
+    classpathEntries: List<String>,
+    sourceRoots: List<String>
   ) {
     val effIncludes = if (includes.isEmpty()) listOf(".") else includes
     val includeMatchers = buildMatchers(root, effIncludes)
@@ -45,6 +47,24 @@ object DefaultResourceCopier : ResourceCopier {
           Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         }
     }
+
+    // Copy non-Java resources from source roots into the output directory.
+    sourceRoots.map { Path.of(it) }
+      .filter { Files.exists(it) && Files.isDirectory(it) }
+      .forEach { srcRoot ->
+        Files.walk(srcRoot).use { stream ->
+          stream
+            .filter { Files.isRegularFile(it) && !it.toString().endsWith(".java") }
+            .forEach { file ->
+              val relToSrc = runCatching { file.relativeTo(srcRoot) }.getOrNull() ?: return@forEach
+              val relToRoot = runCatching { file.relativeTo(root) }.getOrNull()
+              if (relToRoot != null && excludeMatchers.any { it.matches(relToRoot) }) return@forEach
+              val target = outDir.resolve(relToSrc)
+              target.parent?.createDirectories()
+              Files.copy(file, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+      }
 
     // Copy embedded Bundle-ClassPath entries that live inside the bundle (e.g., lib/foo.jar)
     classpathEntries.forEach { entry ->
