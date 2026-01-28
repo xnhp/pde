@@ -1071,6 +1071,7 @@ internal fun compileMain(args: Array<String>) {
     description = "YAML launch configuration (positional)"
   ).optional()
   parser.parse(normalizedArgs)
+  configureLogging(Level.INFO)
 
   val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()

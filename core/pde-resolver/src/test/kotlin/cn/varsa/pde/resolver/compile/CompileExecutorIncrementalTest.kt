@@ -102,13 +102,41 @@ class CompileExecutorIncrementalTest {
     assertEquals(2, copier.invocations.size, "force rebuild should recopy resources")
   }
 
-  private fun compileSpec(bundle: Path, src: Path, bsn: String = "org.example.test"): CompileSpec =
+  @Test
+  fun `output dir changes do not invalidate cache`() {
+    val bundle = temp.newFolder("bundle-output").toPath()
+    val src = bundle.resolve("src").createDirectories()
+    src.resolve("Example.java").writeText("class Example {}")
+    val outDir = bundle.resolve("bin")
+
+    val spec = compileSpec(bundle, src, classpath = listOf(outDir.toString()))
+    val cache = BundleCompileCache(temp.newFile("compile-cache5.properties").toPath())
+    val compiler = RecordingCompiler()
+    val copier = RecordingCopier()
+
+    CompileExecutor.compile(listOf(spec), compiler, copier, cache)
+    outDir.resolve("Example.class").writeText("noop")
+    compiler.invocations.clear()
+    copier.invocations.clear()
+
+    CompileExecutor.compile(listOf(spec), compiler, copier, cache)
+
+    assertEquals(0, compiler.invocations.size, "output dir churn should not force recompile")
+    assertEquals(0, copier.invocations.size, "output dir churn should not force recopy")
+  }
+
+  private fun compileSpec(
+    bundle: Path,
+    src: Path,
+    bsn: String = "org.example.test",
+    classpath: List<String> = emptyList()
+  ): CompileSpec =
     CompileSpec(
       bsn = bsn,
       version = "1.0.0",
       origin = "workspace",
       bundlePath = bundle.toString(),
-      classpath = emptyList(),
+      classpath = classpath,
       sourceRoots = listOf(src.toString()),
       resourceIncludes = listOf("."),
       resourceExcludes = emptyList(),
