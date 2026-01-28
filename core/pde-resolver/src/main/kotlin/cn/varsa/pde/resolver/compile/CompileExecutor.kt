@@ -136,6 +136,16 @@ object CompileExecutor {
     workspaceDependencies: Map<String, Set<String>>,
     forceFullRebuild: Boolean
   ): List<BundlePlan> {
+    val ignoredClasspathEntries = specs
+      .filter { it.isWorkspace }
+      .map { spec ->
+        val bundleRoot = Path.of(spec.bundlePath)
+        spec.outputDirectory?.let { Path.of(it) }
+          ?: bundleRoot.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
+      }
+      .map { it.toAbsolutePath().normalize() }
+      .toSet()
+
     val initialPlans = specs.map { spec ->
       if (!spec.isWorkspace) {
         BundlePlan(spec, Path.of("."), null, BundleCompileAction.TARGET_SKIP, "Target bundle")
@@ -144,10 +154,10 @@ object CompileExecutor {
         val outDir = spec.outputDirectory?.let { Path.of(it) }
           ?: bundleRoot.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
         if (forceFullRebuild) {
-          val fingerprint = BundleCompileHasher.fingerprint(spec, outDir)
+          val fingerprint = BundleCompileHasher.fingerprint(spec, outDir, ignoredClasspathEntries)
           BundlePlan(spec, outDir, fingerprint, BundleCompileAction.FULL, "Forced full rebuild")
         } else {
-          val fingerprint = BundleCompileHasher.fingerprint(spec, outDir)
+          val fingerprint = BundleCompileHasher.fingerprint(spec, outDir, ignoredClasspathEntries)
           val cached = cache.get(spec.bsn)
           val decision = decideAction(spec, outDir, fingerprint, cached)
           BundlePlan(spec, outDir, fingerprint, decision.first, decision.second)

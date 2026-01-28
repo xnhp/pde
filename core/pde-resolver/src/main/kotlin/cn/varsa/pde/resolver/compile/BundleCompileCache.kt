@@ -111,12 +111,16 @@ class BundleCompileCache(private val cacheFile: Path) {
 }
 
 object BundleCompileHasher {
-  fun fingerprint(spec: CompileSpec, outputDir: Path): BundleCompileFingerprint {
+  fun fingerprint(
+    spec: CompileSpec,
+    outputDir: Path,
+    ignoredClasspathEntries: Set<Path> = emptySet()
+  ): BundleCompileFingerprint {
     val bundleRoot = Path.of(spec.bundlePath)
     val sourcesHash = hashSources(spec, bundleRoot)
     val resourcesHash = hashResources(spec, bundleRoot, outputDir)
     val metadataHash = hashMetadata(spec, bundleRoot)
-    val classpathHash = hashClasspath(spec.classpath)
+    val classpathHash = hashClasspath(spec.classpath, ignoredClasspathEntries)
     return BundleCompileFingerprint(
       sourcesHash = sourcesHash,
       resourcesHash = resourcesHash,
@@ -221,15 +225,18 @@ object BundleCompileHasher {
     return md.digest().toHex()
   }
 
-  private fun hashClasspath(classpath: List<String>): String {
+  private fun hashClasspath(classpath: List<String>, ignored: Set<Path>): String {
     val md = MessageDigest.getInstance("SHA-256")
     classpath.forEach { entry ->
       updateString(md, entry)
       val path = runCatching { Path.of(entry) }.getOrNull() ?: return@forEach
+      val normalized = path.toAbsolutePath().normalize()
+      if (ignored.contains(normalized)) return@forEach
       val stat = runCatching {
-        val size = if (path.isRegularFile()) Files.size(path) else 0L
-        val mtime = Files.getLastModifiedTime(path).toMillis()
-        "$size:$mtime:${path.isDirectory()}"
+        val size = if (normalized.isRegularFile()) Files.size(normalized) else 0L
+        val mtime = if (normalized.isRegularFile()) Files.getLastModifiedTime(normalized).toMillis() else 0L
+        val kind = if (normalized.isDirectory()) "dir" else "file"
+        "$size:$mtime:$kind"
       }.getOrNull() ?: "missing"
       updateString(md, stat)
     }
