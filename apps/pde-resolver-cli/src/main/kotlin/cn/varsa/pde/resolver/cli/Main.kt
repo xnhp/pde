@@ -219,6 +219,11 @@ fun launchMain(args: Array<String>) {
     fullName = "debug",
     description = "Enable DEBUG logging"
   ).default(false)
+  val osgiDebug by parser.option(
+    ArgType.Boolean,
+    fullName = "osgiDebug",
+    description = "Enable OSGi debug output (-debug)"
+  ).default(false)
   val configPos by parser.argument(
     ArgType.String,
     description = "YAML launch configuration (positional)"
@@ -257,6 +262,7 @@ fun launchMain(args: Array<String>) {
     val configContext = LaunchConfigLoader.load(discoveredConfig)
     val selected = selectLaunchConfig(configContext, launchName)
     if (selected == null) return
+    val osgiContext = applyOsgiDebug(selected, osgiDebug)
     val targetPath = selected.config.targetFile
       ?.let { selected.baseDir.resolve(it).normalize() }
     val targetArgs = if (selected.config.inheritTargetArgs && targetPath != null) {
@@ -267,12 +273,12 @@ fun launchMain(args: Array<String>) {
     if (selected.config.inheritTargetArgs && targetPath == null) {
       logger.warning("inheritTargetArgs=true but targetFile is not set; skipping target argument import.")
     }
-    describeConfig(selected, targetPath, targetArgs)
+    describeConfig(osgiContext, targetPath, targetArgs)
     if (dryRun) {
       logger.info("Dry run: validation only. Exiting.")
       return
     }
-    executeLaunch(selected, targetArgs)
+    executeLaunch(osgiContext, targetArgs, showDebugLogs = debug)
     return
   }
 
@@ -464,9 +470,30 @@ private fun selectTestConfig(
   return withDebug
 }
 
-private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?) {
+private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?, showDebugLogs: Boolean) {
   val prepared = prepareLaunch(context, targetArgs)
-  val planResult = prepared.planResult
+  logPlanSummary(prepared.planResult)
+  if (showDebugLogs) {
+    val logPath = prepared.layout.dataDir.resolve(".metadata").resolve(".log").toAbsolutePath().normalize()
+    logger.info("OSGi log path: $logPath")
+  }
+  logCommand(prepared.command)
+  val processBuilder = ProcessBuilder(prepared.command)
+  if (context.config.env.isNotEmpty()) {
+    val env = processBuilder.environment()
+    context.config.env.forEach { (key, value) ->
+      env[key] = value
+    }
+  }
+  val process = processBuilder
+    .directory(prepared.layout.workDir.toFile())
+    .inheritIO()
+    .start()
+  val exit = process.waitFor()
+  if (exit != 0) error("Launcher exited with code $exit")
+}
+
+private fun logPlanSummary(planResult: LaunchPlanner.PlanResult) {
   logger.info("Launch plan built:")
   logger.info("  bundles: ${planResult.plan.bundles.size}")
   logger.info("  workspace bundles: ${planResult.plan.bundles.count { it.isWorkspace }}")
@@ -484,20 +511,15 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
       ("Launch plan has unresolved bundles/dependencies; continuing anyway.\n$details").trim()
     )
   }
-  logCommand(prepared.command)
-  val processBuilder = ProcessBuilder(prepared.command)
-  if (context.config.env.isNotEmpty()) {
-    val env = processBuilder.environment()
-    context.config.env.forEach { (key, value) ->
-      env[key] = value
-    }
+}
+
+private fun applyOsgiDebug(context: LaunchConfigContext, osgiDebug: Boolean): LaunchConfigContext {
+  if (!osgiDebug) return context
+  val programArgs = context.config.programArgs.toMutableList()
+  if (!programArgs.contains("-debug")) {
+    programArgs += "-debug"
   }
-  val process = processBuilder
-    .directory(prepared.layout.workDir.toFile())
-    .inheritIO()
-    .start()
-  val exit = process.waitFor()
-  if (exit != 0) error("Launcher exited with code $exit")
+  return context.copy(config = context.config.copy(programArgs = programArgs))
 }
 
 internal fun mergeEnv(base: Map<String, String>, overrides: Map<String, String>): Map<String, String> {
@@ -876,6 +898,11 @@ private fun testMain(args: Array<String>): Int {
     fullName = "debug",
     description = "Enable DEBUG logging"
   ).default(false)
+  val osgiDebug by parser.option(
+    ArgType.Boolean,
+    fullName = "osgiDebug",
+    description = "Enable OSGi debug output (-debug)"
+  ).default(false)
   val debugJvm by parser.option(
     ArgType.Boolean,
     fullName = "debugJVM",
@@ -916,7 +943,7 @@ private fun testMain(args: Array<String>): Int {
   if (selected == null) return 2
   val configContext = applyTestDefaults(selected).let { ctx ->
     if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
-  }
+  }.let { applyOsgiDebug(it, osgiDebug) }
   val targetPath = configContext.config.targetFile
     ?.let { configContext.baseDir.resolve(it).normalize() }
   val targetArgs = if (configContext.config.inheritTargetArgs && targetPath != null) {
@@ -979,6 +1006,11 @@ private fun testMain(args: Array<String>): Int {
       return 2
     }
 
+  logPlanSummary(prepared.planResult)
+  if (debug) {
+    val logPath = prepared.layout.dataDir.resolve(".metadata").resolve(".log").toAbsolutePath().normalize()
+    logger.info("OSGi log path: $logPath")
+  }
   logCommand(prepared.command)
   val process = ProcessBuilder(prepared.command)
     .directory(prepared.layout.workDir.toFile())
