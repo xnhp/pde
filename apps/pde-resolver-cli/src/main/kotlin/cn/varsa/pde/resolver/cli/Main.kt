@@ -1402,7 +1402,15 @@ private fun formatDuration(durationMillis: Long): String {
 }
 
 private fun extractErrorBlocks(output: String): String? {
-  if (!output.contains("ERROR in")) return null
+  val trimmed = output.trim()
+  if (trimmed.isEmpty()) return null
+  if (!trimmed.contains("ERROR in")) {
+    val knownFailures = listOf(
+      "Classpath contains class files requiring a newer Java version",
+      "Annotation processors detected; javac fallback not implemented"
+    )
+    return if (knownFailures.any { trimmed.contains(it) }) trimmed else null
+  }
   val lines = output.lineSequence().toList()
   val blocks = mutableListOf<String>()
   var i = 0
