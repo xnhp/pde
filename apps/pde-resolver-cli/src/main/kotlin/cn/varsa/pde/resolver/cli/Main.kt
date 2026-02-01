@@ -35,6 +35,7 @@ import cn.varsa.pde.resolver.cli.config.LaunchLayoutResolver
 import cn.varsa.pde.resolver.cli.config.TargetDefinitionStartupParser
 import cn.varsa.pde.resolver.cli.config.TargetFileParser
 import cn.varsa.pde.resolver.cli.config.TargetLaunchArgs
+import cn.varsa.pde.resolver.cli.config.TestEntry
 import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
 import cn.varsa.pde.resolver.cli.config.WhitelistFileLoader
 import kotlinx.cli.ArgParser
@@ -442,6 +443,18 @@ private fun selectTestConfig(
     logger.severe("Test '$testName' not found in ${context.file}. Available tests: $available")
     return null
   }
+  return applyTestEntry(context, selected, testName, logSelection = true)
+}
+
+private fun testLabel(entry: TestEntry): String =
+  entry.name ?: entry.className ?: entry.testPluginName ?: "<unnamed>"
+
+private fun applyTestEntry(
+  context: LaunchConfigContext,
+  selected: TestEntry,
+  testName: String?,
+  logSelection: Boolean
+): LaunchConfigContext {
   val programArgs = context.config.programArgs.toMutableList()
   programArgs.addAll(selected.programArgs)
   if (selected.testPluginName != null && "-testpluginname" !in programArgs) {
@@ -461,11 +474,13 @@ private fun selectTestConfig(
     jvmDebug = selected.debug,
     jvmDebugRequiresPdeTestApp = true
   )
-  val label = selected.name ?: selected.className ?: selected.testPluginName ?: "<unnamed>"
-  if (testName == null) {
-    logger.info("Using default test '$label'.")
-  } else {
-    logger.info("Using test '$label'.")
+  if (logSelection) {
+    val label = testLabel(selected)
+    if (testName == null) {
+      logger.info("Using default test '$label'.")
+    } else {
+      logger.info("Using test '$label'.")
+    }
   }
   return withDebug
 }
@@ -866,116 +881,35 @@ private fun applyTestDefaults(context: LaunchConfigContext): LaunchConfigContext
   return context.copy(config = patchedConfig)
 }
 
-private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts: LauncherOptions) {
-  val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(dir)
-  val defaults = RuntimeLayoutWriter.Defaults(
-    installArea = dir,
-    instanceArea = dir
-  )
-  RuntimeLayoutWriter.write(layout, plan, ctx, opts, defaults)
-}
-
-private fun testMain(args: Array<String>): Int {
-  val normalizedArgs = normalizeArgsWithImplicitConfig(args, testOptionsRequiringValue)
-
-  val parser = ArgParser("pde-launch test")
-  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
-  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
-  val launchPos by parser.argument(ArgType.String, description = "Test name (optional)").optional()
-  val logLevelOpt by parser.option(
-    ArgType.String,
-    fullName = "log-level",
-    description = "Logging level (error|warn|info|debug|trace)"
-  )
-  val verbose by parser.option(
-    ArgType.Boolean,
-    fullName = "verbose",
-    shortName = "v",
-    description = "Enable INFO logging"
-  ).default(false)
-  val debug by parser.option(
-    ArgType.Boolean,
-    fullName = "debug",
-    description = "Enable DEBUG logging"
-  ).default(false)
-  val osgiDebug by parser.option(
-    ArgType.Boolean,
-    fullName = "osgiDebug",
-    description = "Enable OSGi debug output (-debug)"
-  ).default(false)
-  val debugJvm by parser.option(
-    ArgType.Boolean,
-    fullName = "debugJVM",
-    description = "Enable JDWP for test JVM (equivalent to tests[].debug=true)"
-  ).default(false)
-  val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
-  val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
-  val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
-  val timeoutSeconds by parser.option(ArgType.Int, fullName = "timeout", description = "Seconds to wait for PDE connection").default(180)
-  val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
-  val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Forward log in form label=path").multiple()
-  val includePatterns by parser.option(ArgType.String, fullName = "include", description = "Regex filter to include tests").multiple()
-  val excludePatterns by parser.option(ArgType.String, fullName = "exclude", description = "Regex filter to exclude tests").multiple()
-  val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
-  val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
-  parser.parse(normalizedArgs)
-  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
-
-  val configPosValue = configPos
-  val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
-  val testName = when {
-    configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
-    launchPos != null -> launchPos
-    else -> null
-  }
-
-  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
-  if (discoveredConfig == null) {
-    logger.severe("Missing --config and no launch config discovered in current directory")
-    return 2
-  }
-  if (configFile == null) {
-    logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
-  }
-
-  val loaded = LaunchConfigLoader.load(discoveredConfig)
-  val selected = selectTestConfig(loaded, testName)
-  if (selected == null) return 2
-  val configContext = applyTestDefaults(selected).let { ctx ->
-    if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
-  }.let { applyOsgiDebug(it, osgiDebug) }
-  val targetPath = configContext.config.targetFile
-    ?.let { configContext.baseDir.resolve(it).normalize() }
-  val targetArgs = if (configContext.config.inheritTargetArgs && targetPath != null) {
+private fun resolveTargetArgs(context: LaunchConfigContext): TargetLaunchArgs? {
+  val targetPath = context.config.targetFile
+    ?.let { context.baseDir.resolve(it).normalize() }
+  val targetArgs = if (context.config.inheritTargetArgs && targetPath != null) {
     runCatching { TargetFileParser.parse(targetPath) }
       .onFailure { logger.warning("Failed to parse target file args: ${it.message}") }
       .getOrNull()
   } else null
-  if (configContext.config.inheritTargetArgs && targetPath == null) {
+  if (context.config.inheritTargetArgs && targetPath == null) {
     logger.warning("inheritTargetArgs=true but targetFile is not set; skipping target argument import.")
   }
+  return targetArgs
+}
 
-  val reports = runCatching { reportValues.map(::parseReportTarget) }
-    .getOrElse { error ->
-      logger.severe("Invalid --report value: ${error.message}")
-      return 2
-    }
-  val forwardSpecs = runCatching { forwardValues.map(::parseForwardSpec) }
-    .getOrElse { error ->
-      logger.severe("Invalid --forward-log value: ${error.message}")
-      return 2
-    }
-  val includes = runCatching { includePatterns.map(::Regex) }
-    .getOrElse { error ->
-      logger.severe("Invalid --include regex: ${error.message}")
-      return 2
-    }
-  val excludes = runCatching { excludePatterns.map(::Regex) }
-    .getOrElse { error ->
-      logger.severe("Invalid --exclude regex: ${error.message}")
-      return 2
-    }
-
+private fun runTestLaunch(
+  configContext: LaunchConfigContext,
+  targetArgs: TargetLaunchArgs?,
+  listenHost: String,
+  listenPort: Int?,
+  portRangeSpec: String?,
+  timeoutSeconds: Int,
+  reports: List<ReportTarget>,
+  forwardSpecs: List<cn.varsa.pde.remoterunner.ForwardLogSpec>,
+  includes: List<Regex>,
+  excludes: List<Regex>,
+  quiet: Boolean,
+  noColor: Boolean,
+  debug: Boolean
+): Int {
   val allocator = PortAllocator(listenHost, listenPort, parsePortRange(portRangeSpec))
   val server = try {
     allocator.bind()
@@ -1069,6 +1003,174 @@ private fun testMain(args: Array<String>): Int {
     logger.severe("Remote tests reported failures=${summary.failures} errors=${summary.errors} stopped=${summary.stopped}; processExit=$processExit")
   }
   return exitCode
+}
+
+private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts: LauncherOptions) {
+  val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(dir)
+  val defaults = RuntimeLayoutWriter.Defaults(
+    installArea = dir,
+    instanceArea = dir
+  )
+  RuntimeLayoutWriter.write(layout, plan, ctx, opts, defaults)
+}
+
+private fun testMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, testOptionsRequiringValue)
+
+  val parser = ArgParser("pde-launch test")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  val launchPos by parser.argument(ArgType.String, description = "Test name (optional)").optional()
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Logging level (error|warn|info|debug|trace)"
+  )
+  val verbose by parser.option(
+    ArgType.Boolean,
+    fullName = "verbose",
+    shortName = "v",
+    description = "Enable INFO logging"
+  ).default(false)
+  val debug by parser.option(
+    ArgType.Boolean,
+    fullName = "debug",
+    description = "Enable DEBUG logging"
+  ).default(false)
+  val osgiDebug by parser.option(
+    ArgType.Boolean,
+    fullName = "osgiDebug",
+    description = "Enable OSGi debug output (-debug)"
+  ).default(false)
+  val debugJvm by parser.option(
+    ArgType.Boolean,
+    fullName = "debugJVM",
+    description = "Enable JDWP for test JVM (equivalent to tests[].debug=true)"
+  ).default(false)
+  val runAll by parser.option(
+    ArgType.Boolean,
+    fullName = "all",
+    description = "Run all tests defined in the config in sequence"
+  ).default(false)
+  val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
+  val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
+  val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
+  val timeoutSeconds by parser.option(ArgType.Int, fullName = "timeout", description = "Seconds to wait for PDE connection").default(180)
+  val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
+  val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Forward log in form label=path").multiple()
+  val includePatterns by parser.option(ArgType.String, fullName = "include", description = "Regex filter to include tests").multiple()
+  val excludePatterns by parser.option(ArgType.String, fullName = "exclude", description = "Regex filter to exclude tests").multiple()
+  val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
+  val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
+
+  val configPosValue = configPos
+  val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
+  val testName = when {
+    configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
+    launchPos != null -> launchPos
+    else -> null
+  }
+
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory")
+    return 2
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
+  }
+
+  val loaded = LaunchConfigLoader.load(discoveredConfig)
+  if (runAll && testName != null) {
+    logger.warning("Ignoring test name '$testName' because --all was specified.")
+  }
+
+  val reports = runCatching { reportValues.map(::parseReportTarget) }
+    .getOrElse { error ->
+      logger.severe("Invalid --report value: ${error.message}")
+      return 2
+    }
+  val forwardSpecs = runCatching { forwardValues.map(::parseForwardSpec) }
+    .getOrElse { error ->
+      logger.severe("Invalid --forward-log value: ${error.message}")
+      return 2
+    }
+  val includes = runCatching { includePatterns.map(::Regex) }
+    .getOrElse { error ->
+      logger.severe("Invalid --include regex: ${error.message}")
+      return 2
+    }
+  val excludes = runCatching { excludePatterns.map(::Regex) }
+    .getOrElse { error ->
+      logger.severe("Invalid --exclude regex: ${error.message}")
+      return 2
+    }
+
+  if (runAll) {
+    if (loaded.config.tests.isEmpty()) {
+      logger.severe("No tests defined in ${loaded.file}. Add a 'tests' entry or pass a legacy launch.yaml.")
+      return 2
+    }
+    var failures = 0
+    loaded.config.tests.forEachIndexed { index, entry ->
+      val label = testLabel(entry)
+      logger.info("Running test ${index + 1}/${loaded.config.tests.size}: $label")
+      val configured = applyTestEntry(loaded, entry, testName = null, logSelection = false)
+      val configContext = applyTestDefaults(configured).let { ctx ->
+        if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
+      }.let { applyOsgiDebug(it, osgiDebug) }
+      val targetArgs = resolveTargetArgs(configContext)
+      val exitCode = runTestLaunch(
+        configContext = configContext,
+        targetArgs = targetArgs,
+        listenHost = listenHost,
+        listenPort = listenPort,
+        portRangeSpec = portRangeSpec,
+        timeoutSeconds = timeoutSeconds,
+        reports = reports,
+        forwardSpecs = forwardSpecs,
+        includes = includes,
+        excludes = excludes,
+        quiet = quiet,
+        noColor = noColor,
+        debug = debug
+      )
+      if (exitCode != 0) {
+        failures += 1
+        logger.severe("Test '$label' failed with exit code $exitCode")
+      }
+    }
+    if (failures > 0) {
+      logger.severe("Completed ${loaded.config.tests.size} tests with $failures failures.")
+      return 1
+    }
+    logger.info("Completed ${loaded.config.tests.size} tests successfully.")
+    return 0
+  }
+
+  val selected = selectTestConfig(loaded, testName)
+  if (selected == null) return 2
+  val configContext = applyTestDefaults(selected).let { ctx ->
+    if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
+  }.let { applyOsgiDebug(it, osgiDebug) }
+  val targetArgs = resolveTargetArgs(configContext)
+  return runTestLaunch(
+    configContext = configContext,
+    targetArgs = targetArgs,
+    listenHost = listenHost,
+    listenPort = listenPort,
+    portRangeSpec = portRangeSpec,
+    timeoutSeconds = timeoutSeconds,
+    reports = reports,
+    forwardSpecs = forwardSpecs,
+    includes = includes,
+    excludes = excludes,
+    quiet = quiet,
+    noColor = noColor,
+    debug = debug
+  )
 }
 
 internal fun compileMain(args: Array<String>) {
