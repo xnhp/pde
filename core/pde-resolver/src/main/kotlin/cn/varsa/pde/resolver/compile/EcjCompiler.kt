@@ -59,6 +59,40 @@ class EcjCompiler(
 
     val sourceLevel = compilerSourceLevel(spec) ?: "17"
     val targetLevel = compilerTargetLevel(spec, sourceLevel)
+    val classfileMajor = ClassfileVersionChecker.classMajorForLevel(targetLevel)
+    if (classfileMajor != null) {
+      val mismatches = ClassfileVersionChecker.findMismatches(classpath, classfileMajor)
+      if (mismatches.isNotEmpty()) {
+        val msg = buildString {
+          append("Classpath contains class files requiring a newer Java version than the bundle target.\n")
+          append("Target: Java ").append(targetLevel)
+          spec.executionEnvironment?.let { append(" (BREE ").append(it).append(")") }
+          append("; max classfile version ").append(classfileMajor).append(".\n")
+          mismatches.take(10).forEach { mismatch ->
+            append("- ")
+              .append(mismatch.classpathEntry)
+              .append(": ")
+              .append(mismatch.classFile)
+              .append(" (major ")
+              .append(mismatch.majorVersion)
+              .append(")\n")
+          }
+          if (mismatches.size > 10) {
+            append("... and ").append(mismatches.size - 10).append(" more\n")
+          }
+          append("Use a target platform built for Java ")
+            .append(targetLevel)
+            .append(" or update the bundle BREE/compile prefs to match the target.")
+        }
+        return BundleCompileResult(
+          spec.bsn,
+          success = false,
+          output = msg.trimEnd(),
+          durationMillis = 0,
+          skipped = false
+        )
+      }
+    }
     args += listOf("-source", sourceLevel, "-target", targetLevel)
     args += listOf("-encoding", "UTF-8")
     args += listOf("-proc:none") // processors are unsupported for now
@@ -82,12 +116,12 @@ class EcjCompiler(
 
   private fun compilerSourceLevel(spec: CompileSpec): String? =
     spec.compilerPrefs["org.eclipse.jdt.core.compiler.source"]
-      ?: spec.executionEnvironment?.let(::levelFromExecutionEnvironment)
+      ?: spec.executionEnvironment?.let(CompilerLevels::levelFromExecutionEnvironment)
 
   private fun compilerTargetLevel(spec: CompileSpec, fallback: String): String =
     spec.compilerPrefs["org.eclipse.jdt.core.compiler.codegen.targetPlatform"]
       ?: spec.compilerPrefs["org.eclipse.jdt.core.compiler.compliance"]
-      ?: spec.executionEnvironment?.let(::levelFromExecutionEnvironment)
+      ?: spec.executionEnvironment?.let(CompilerLevels::levelFromExecutionEnvironment)
       ?: fallback
 
   private fun debugFlag(spec: CompileSpec): String? {
@@ -103,17 +137,6 @@ class EcjCompiler(
     }
     return "-g:" + parts.joinToString(",")
   }
-
-  private fun levelFromExecutionEnvironment(ee: String): String? =
-    ee.substringAfterLast('-', missingDelimiterValue = ee)
-      .removePrefix("1.").let { part ->
-        when {
-          part.equals("J2SE", ignoreCase = true) -> null
-          part.matches(Regex("\\d+(\\.\\d+)?")) -> ee.substringAfterLast('-').removePrefix("1.")
-          ee.equals("J2SE-1.5", ignoreCase = true) -> "5"
-          else -> null
-        }
-      }?.let { if (it.contains('.')) it else it }
 
   private fun detectAnnotationProcessors(bundleRoot: Path, classpath: List<String>): List<String> {
     val reasons = mutableListOf<String>()
