@@ -32,6 +32,35 @@ class ClassfileVersionCheckerTest {
     assertEquals(65, ClassfileVersionChecker.classMajorForLevel("21"))
   }
 
+  @Test
+  fun `ignores multi-release entries above target`() {
+    val jar = Files.createTempFile("multirelease", ".jar")
+    JarOutputStream(Files.newOutputStream(jar)).use { out ->
+      out.putNextEntry(JarEntry("META-INF/versions/22/com/example/Foo.class"))
+      out.write(classHeaderBytes(major = 66))
+      out.closeEntry()
+    }
+
+    val maxMajor = ClassfileVersionChecker.classMajorForLevel("21")
+    val mismatches = ClassfileVersionChecker.findMismatches(listOf(jar.toString()), maxMajor!!, 21)
+    assertTrue(mismatches.isEmpty())
+  }
+
+  @Test
+  fun `flags multi-release entries at or below target`() {
+    val jar = Files.createTempFile("multirelease-target", ".jar")
+    JarOutputStream(Files.newOutputStream(jar)).use { out ->
+      out.putNextEntry(JarEntry("META-INF/versions/21/com/example/Foo.class"))
+      out.write(classHeaderBytes(major = 66))
+      out.closeEntry()
+    }
+
+    val maxMajor = ClassfileVersionChecker.classMajorForLevel("21")
+    val mismatches = ClassfileVersionChecker.findMismatches(listOf(jar.toString()), maxMajor!!, 21)
+    assertTrue(mismatches.isNotEmpty())
+    assertEquals(66, mismatches.first().majorVersion)
+  }
+
   private fun classHeaderBytes(major: Int): ByteArray {
     val majorHigh = (major shr 8).toByte()
     val majorLow = (major and 0xFF).toByte()

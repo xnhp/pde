@@ -22,7 +22,17 @@ object ClassfileVersionChecker {
     return if (version >= 5) version + 44 else null
   }
 
-  fun findMismatches(classpath: List<String>, maxMajor: Int, limit: Int = 20): List<ClassfileVersionMismatch> {
+  fun javaVersionForLevel(level: String): Int? {
+    val normalized = level.removePrefix("1.").trim()
+    return normalized.toIntOrNull()
+  }
+
+  fun findMismatches(
+    classpath: List<String>,
+    maxMajor: Int,
+    maxVersion: Int? = null,
+    limit: Int = 20
+  ): List<ClassfileVersionMismatch> {
     val mismatches = mutableListOf<ClassfileVersionMismatch>()
     for (entry in classpath) {
       if (mismatches.size >= limit) break
@@ -30,8 +40,8 @@ object ClassfileVersionChecker {
       val path = Path.of(entry)
       if (!Files.exists(path)) continue
       val mismatch = when {
-        path.isDirectory() -> findMismatchInDirectory(path, maxMajor)
-        entry.lowercase().endsWith(".jar") -> findMismatchInJar(path, maxMajor)
+        path.isDirectory() -> findMismatchInDirectory(path, maxMajor, maxVersion)
+        entry.lowercase().endsWith(".jar") -> findMismatchInJar(path, maxMajor, maxVersion)
         else -> null
       }
       if (mismatch != null) {
@@ -41,13 +51,14 @@ object ClassfileVersionChecker {
     return mismatches
   }
 
-  private fun findMismatchInJar(path: Path, maxMajor: Int): ClassfileVersionMismatch? {
+  private fun findMismatchInJar(path: Path, maxMajor: Int, maxVersion: Int?): ClassfileVersionMismatch? {
     return runCatching {
       JarFile(path.toFile()).use { jar ->
         val entries = jar.entries()
         while (entries.hasMoreElements()) {
           val entry = entries.nextElement()
           if (entry.isDirectory || !entry.name.endsWith(".class")) continue
+          if (shouldSkipVersionedEntry(entry.name, maxVersion)) continue
           jar.getInputStream(entry).use { input ->
             val major = readMajorVersion(input) ?: return@use
             if (major > maxMajor) {
@@ -60,17 +71,18 @@ object ClassfileVersionChecker {
     }.getOrNull()
   }
 
-  private fun findMismatchInDirectory(path: Path, maxMajor: Int): ClassfileVersionMismatch? {
+  private fun findMismatchInDirectory(path: Path, maxMajor: Int, maxVersion: Int?): ClassfileVersionMismatch? {
     return runCatching {
       Files.walk(path).use { stream ->
         val iterator = stream.iterator()
         while (iterator.hasNext()) {
           val file = iterator.next()
           if (Files.isDirectory(file) || !file.name.endsWith(".class")) continue
+          val relative = path.relativize(file).toString()
+          if (shouldSkipVersionedEntry(relative, maxVersion)) continue
           Files.newInputStream(file).use { input ->
             val major = readMajorVersion(input) ?: return@use
             if (major > maxMajor) {
-              val relative = path.relativize(file).toString()
               return ClassfileVersionMismatch(path.toString(), relative, major)
             }
           }
@@ -94,5 +106,14 @@ object ClassfileVersionChecker {
     buffer.short // minor
     val major = buffer.short.toInt() and 0xFFFF
     return major
+  }
+
+  private fun shouldSkipVersionedEntry(entryName: String, maxVersion: Int?): Boolean {
+    if (maxVersion == null) return false
+    val parts = entryName.split('/')
+    if (parts.size < 4) return false
+    if (parts[0] != "META-INF" || parts[1] != "versions") return false
+    val version = parts[2].toIntOrNull() ?: return false
+    return version > maxVersion
   }
 }

@@ -61,7 +61,8 @@ class EcjCompiler(
     val targetLevel = compilerTargetLevel(spec, sourceLevel)
     val classfileMajor = ClassfileVersionChecker.classMajorForLevel(targetLevel)
     if (classfileMajor != null) {
-      val mismatches = ClassfileVersionChecker.findMismatches(classpath, classfileMajor)
+      val targetVersion = ClassfileVersionChecker.javaVersionForLevel(targetLevel)
+      val mismatches = ClassfileVersionChecker.findMismatches(classpath, classfileMajor, targetVersion)
       if (mismatches.isNotEmpty()) {
         val msg = buildString {
           append("Classpath contains class files requiring a newer Java version than the bundle target.\n")
