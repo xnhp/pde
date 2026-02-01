@@ -6,8 +6,11 @@ import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
+import kotlin.io.path.exists
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class CompileExecutorIncrementalTest {
   @Rule
@@ -100,6 +103,27 @@ class CompileExecutorIncrementalTest {
 
     assertEquals(2, compiler.invocations.size, "force rebuild should recompile")
     assertEquals(2, copier.invocations.size, "force rebuild should recopy resources")
+  }
+
+  @Test
+  fun `force rebuild cleans output directory`() {
+    val bundle = temp.newFolder("bundle-clean").toPath()
+    val src = bundle.resolve("src").createDirectories()
+    src.resolve("Example.java").writeText("class Example {}")
+    val outDir = bundle.resolve("bin")
+    val sentinel = outDir.resolve("stale.txt")
+    outDir.createDirectories()
+    sentinel.writeText("stale")
+
+    val spec = compileSpec(bundle, src)
+    val cache = BundleCompileCache(temp.newFile("compile-cache6.properties").toPath())
+    val compiler = RecordingCompiler()
+    val copier = RecordingCopier()
+
+    CompileExecutor.compile(listOf(spec), compiler, copier, cache, forceFullRebuild = true)
+
+    assertFalse(sentinel.exists(), "force rebuild should remove stale output")
+    assertTrue(outDir.exists(), "output directory should be recreated")
   }
 
   @Test

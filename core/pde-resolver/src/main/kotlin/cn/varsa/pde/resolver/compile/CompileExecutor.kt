@@ -1,7 +1,11 @@
 package cn.varsa.pde.resolver.compile
 
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 
@@ -31,7 +35,8 @@ object CompileExecutor {
     val outDir: Path,
     val fingerprint: BundleCompileFingerprint?,
     val action: BundleCompileAction,
-    val reason: String
+    val reason: String,
+    val cleanOutput: Boolean
   )
 
   private fun compileBundles(
@@ -95,6 +100,9 @@ object CompileExecutor {
         }
         BundleCompileAction.FULL -> {
           val startedAt = System.nanoTime()
+          if (plan.cleanOutput) {
+            cleanOutputDirectory(plan.outDir)
+          }
           plan.outDir.createDirectories()
           val result = compiler.compile(plan.spec.copy(outputDirectory = plan.outDir.toString()))
           if (result.success) {
@@ -148,19 +156,19 @@ object CompileExecutor {
 
     val initialPlans = specs.map { spec ->
       if (!spec.isWorkspace) {
-        BundlePlan(spec, Path.of("."), null, BundleCompileAction.TARGET_SKIP, "Target bundle")
+        BundlePlan(spec, Path.of("."), null, BundleCompileAction.TARGET_SKIP, "Target bundle", cleanOutput = false)
       } else {
         val bundleRoot = Path.of(spec.bundlePath)
         val outDir = spec.outputDirectory?.let { Path.of(it) }
           ?: bundleRoot.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
         if (forceFullRebuild) {
           val fingerprint = BundleCompileHasher.fingerprint(spec, outDir, ignoredClasspathEntries)
-          BundlePlan(spec, outDir, fingerprint, BundleCompileAction.FULL, "Forced full rebuild")
+          BundlePlan(spec, outDir, fingerprint, BundleCompileAction.FULL, "Forced full rebuild", cleanOutput = true)
         } else {
           val fingerprint = BundleCompileHasher.fingerprint(spec, outDir, ignoredClasspathEntries)
           val cached = cache.get(spec.bsn)
           val decision = decideAction(spec, outDir, fingerprint, cached)
-          BundlePlan(spec, outDir, fingerprint, decision.first, decision.second)
+          BundlePlan(spec, outDir, fingerprint, decision.first, decision.second, cleanOutput = false)
         }
       }
     }
@@ -191,8 +199,26 @@ object CompileExecutor {
       if (plan.spec.bsn !in dirty) return@map plan
       if (plan.action == BundleCompileAction.FULL) return@map plan
       val reason = forcedReasons[plan.spec.bsn] ?: "dependency changed"
-      plan.copy(action = BundleCompileAction.FULL, reason = reason)
+      plan.copy(action = BundleCompileAction.FULL, reason = reason, cleanOutput = false)
     }
+  }
+
+  private fun cleanOutputDirectory(outDir: Path) {
+    if (!outDir.exists()) return
+    Files.walkFileTree(
+      outDir,
+      object : SimpleFileVisitor<Path>() {
+        override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+          Files.deleteIfExists(file)
+          return FileVisitResult.CONTINUE
+        }
+
+        override fun postVisitDirectory(dir: Path, exc: java.io.IOException?): FileVisitResult {
+          Files.deleteIfExists(dir)
+          return FileVisitResult.CONTINUE
+        }
+      }
+    )
   }
 
   private fun decideAction(
