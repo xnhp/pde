@@ -1020,7 +1020,7 @@ private fun testMain(args: Array<String>): Int {
   val parser = ArgParser("pde-launch test")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
-  val launchPos by parser.argument(ArgType.String, description = "Test name (optional)").optional()
+  val launchPos by parser.argument(ArgType.String, description = "Test name (optional, ignored with --all)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -1050,7 +1050,7 @@ private fun testMain(args: Array<String>): Int {
   val runAll by parser.option(
     ArgType.Boolean,
     fullName = "all",
-    description = "Run all tests defined in the config in sequence"
+    description = "Run all tests defined in the config in sequence (ignores test name)"
   ).default(false)
   val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
   val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
