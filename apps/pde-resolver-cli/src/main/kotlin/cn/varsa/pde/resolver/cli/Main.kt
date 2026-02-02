@@ -218,6 +218,33 @@ private fun warnIfCompileOutOfDate(
   )
 }
 
+private fun buildCompilePlanForWarning(
+  context: LaunchConfigContext,
+  targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex,
+  workspaceInputs: cn.varsa.pde.resolver.launch.WorkspaceInputs
+): LaunchPlanner.PlanResult {
+  val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
+  val workspaceEntries = if (hasWorkspaceModules) {
+    workspaceInputs.descriptors
+  } else {
+    listOfNotNull(syntheticEntry(context, targetIndex))
+  }
+  val env = LaunchEnvironment(
+    targetIndex = targetIndex,
+    workspaceEntries = workspaceEntries,
+    resolverOptions = ResolveOptions(
+      whitelistPrefixes = emptySet(),
+      preferWorkspace = hasWorkspaceModules,
+      includeHostsForFragments = true
+    ),
+    autoStartBundles = emptyMap(),
+    startupLevels = emptyMap(),
+    devProperties = emptyMap()
+  )
+  val options = LauncherOptions(frameworkBSN = "org.eclipse.osgi", autoStartDefault = false)
+  return LaunchPlanner.build(env, options)
+}
+
 fun launchMain(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
@@ -602,6 +629,8 @@ private fun prepareLaunch(
     error("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
   }
   val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
+  val compilePlan = buildCompilePlanForWarning(context, targetIndex, workspaceInputs)
+  warnIfCompileOutOfDate(compilePlan, workspaceInputs.descriptors)
   val layoutResolution = LaunchLayoutResolver.resolve(context)
   val layout = layoutResolution.layout
   LaunchLayoutResolver.cleanIfRequested(layout, context.config.cleanRuntime)
