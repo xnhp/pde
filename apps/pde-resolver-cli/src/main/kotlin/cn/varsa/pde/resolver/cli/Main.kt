@@ -122,6 +122,7 @@ internal val launchOptionsRequiringValue = setOf(
 )
 internal val testOptionsRequiringValue = setOf(
   "--config",
+  "--log",
   "--listen-host",
   "--listen-port",
   "--port-range",
@@ -929,6 +930,7 @@ private fun runTestLaunch(
   excludes: List<Regex>,
   quiet: Boolean,
   noColor: Boolean,
+  logFile: Path?,
   debug: Boolean
 ): Int {
   val allocator = PortAllocator(listenHost, listenPort, parsePortRange(portRangeSpec))
@@ -967,10 +969,18 @@ private fun runTestLaunch(
     logger.info("OSGi log path: $logPath")
   }
   logCommand(prepared.command)
-  val process = ProcessBuilder(prepared.command)
+  val processBuilder = ProcessBuilder(prepared.command)
     .directory(prepared.layout.workDir.toFile())
-    .inheritIO()
-    .start()
+  val outputLog = logFile?.toAbsolutePath()?.normalize()
+  if (outputLog != null) {
+    outputLog.parent?.let { Files.createDirectories(it) }
+    processBuilder.redirectErrorStream(true)
+    processBuilder.redirectOutput(outputLog.toFile())
+  } else {
+    processBuilder.redirectErrorStream(true)
+    processBuilder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+  }
+  val process = processBuilder.start()
 
   val client = try {
     server.accept()
@@ -1047,6 +1057,11 @@ private fun testMain(args: Array<String>): Int {
     fullName = "log-level",
     description = "Logging level (error|warn|info|debug|trace)"
   )
+  val logFileOpt by parser.option(
+    ArgType.String,
+    fullName = "log",
+    description = "Write application stdout/stderr to log file"
+  )
   val verbose by parser.option(
     ArgType.Boolean,
     fullName = "verbose",
@@ -1104,6 +1119,7 @@ private fun testMain(args: Array<String>): Int {
   }
 
   val loaded = LaunchConfigLoader.load(discoveredConfig)
+  val logFile = logFileOpt?.let { Paths.get(it) }
   if (runAll && testName != null) {
     logger.warning("Ignoring test name '$testName' because --all was specified.")
   }
@@ -1156,6 +1172,7 @@ private fun testMain(args: Array<String>): Int {
         excludes = excludes,
         quiet = quiet,
         noColor = noColor,
+        logFile = logFile,
         debug = debug
       )
       if (exitCode != 0) {
@@ -1190,6 +1207,7 @@ private fun testMain(args: Array<String>): Int {
     excludes = excludes,
     quiet = quiet,
     noColor = noColor,
+    logFile = logFile,
     debug = debug
   )
 }
