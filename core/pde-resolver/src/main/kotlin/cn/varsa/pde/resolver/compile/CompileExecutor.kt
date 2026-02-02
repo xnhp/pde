@@ -18,6 +18,30 @@ data class BundleCompileResult(
 )
 
 object CompileExecutor {
+  data class BundleCompilePlan(
+    val bsn: String,
+    val action: BundleCompileAction,
+    val reason: String,
+    val isWorkspace: Boolean
+  )
+
+  fun plan(
+    specs: List<CompileSpec>,
+    cache: BundleCompileCache = BundleCompileCache.default(),
+    workspaceDependencies: Map<String, Set<String>> = emptyMap(),
+    forceFullRebuild: Boolean = false
+  ): List<BundleCompilePlan> {
+    val plans = buildPlans(specs, cache, workspaceDependencies, forceFullRebuild)
+    return plans.map { plan ->
+      BundleCompilePlan(
+        bsn = plan.spec.bsn,
+        action = plan.action,
+        reason = plan.reason,
+        isWorkspace = plan.spec.isWorkspace
+      )
+    }
+  }
+
   fun compile(
     specs: List<CompileSpec>,
     compiler: CompilerPort = EcjCompiler(),
@@ -28,7 +52,7 @@ object CompileExecutor {
   ): List<BundleCompileResult> =
     compileBundles(specs, compiler, resourceCopier, cache, workspaceDependencies, forceFullRebuild)
 
-  private enum class BundleCompileAction { FULL, RESOURCES_ONLY, SKIP, TARGET_SKIP }
+  enum class BundleCompileAction { FULL, RESOURCES_ONLY, SKIP, TARGET_SKIP }
 
   private data class BundlePlan(
     val spec: CompileSpec,

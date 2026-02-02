@@ -193,6 +193,31 @@ private fun logCommand(command: List<String>) {
   }
 }
 
+private var compileWarningShown = false
+
+private fun warnIfCompileOutOfDate(
+  planResult: LaunchPlanner.PlanResult,
+  workspaceDescriptors: List<WorkspaceBundleDescriptor>
+) {
+  if (compileWarningShown) return
+  if (workspaceDescriptors.isEmpty()) return
+  val specs = CompileService.buildSpecs(planResult, workspaceDescriptors).specs
+  val plans = CompileExecutor.plan(specs, workspaceDependencies = planResult.workspaceDependencies)
+  val stale = plans.filter {
+    it.isWorkspace && it.action != CompileExecutor.BundleCompileAction.SKIP
+  }
+  val actionable = stale.filter { it.action != CompileExecutor.BundleCompileAction.TARGET_SKIP }
+  if (actionable.isEmpty()) return
+  compileWarningShown = true
+  val sampleCount = 5
+  val examples = actionable.take(sampleCount).joinToString { "${it.bsn} (${it.reason})" }
+  val more = if (actionable.size > sampleCount) " (+${actionable.size - sampleCount} more)" else ""
+  val exampleText = if (examples.isNotBlank()) " Examples: $examples$more" else ""
+  logger.warning(
+    "Workspace bundles appear out of date (${actionable.size}). Run pde-compile --execute.$exampleText"
+  )
+}
+
 fun launchMain(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
@@ -629,6 +654,7 @@ private fun prepareLaunch(
     autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
+  warnIfCompileOutOfDate(planResult, workspaceInputs.descriptors)
   val fallbackConfig = loadExistingConfig(profilePath)
   val extraProperties = buildMap {
     val splash = context.config.splash?.takeIf { it.isNotBlank() }

@@ -5,6 +5,7 @@ import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
@@ -13,6 +14,22 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class RemoteRunnerAppTest {
+  private fun connectWithRetry(host: String, port: Int, timeoutMillis: Long): Socket {
+    val deadline = System.nanoTime() + timeoutMillis * 1_000_000
+    var lastError: Exception? = null
+    while (System.nanoTime() < deadline) {
+      try {
+        val socket = Socket()
+        socket.connect(InetSocketAddress(host, port), 200)
+        return socket
+      } catch (ex: Exception) {
+        lastError = ex
+        Thread.sleep(50)
+      }
+    }
+    throw AssertionError("Failed to connect to $host:$port within ${timeoutMillis}ms", lastError)
+  }
+
   @Test
   fun writesJUnitReportAndCountsFailures() {
     val reportFile = Files.createTempFile("remoterunner", ".xml")
@@ -30,9 +47,7 @@ class RemoteRunnerAppTest {
       )
     }
     runner.start()
-    Thread.sleep(200) // give the server time to bind
-
-    Socket("127.0.0.1", port).use { socket ->
+    connectWithRetry("127.0.0.1", port, 2_000).use { socket ->
       val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))
       writer.write(MessageIds.TEST_RUN_START + "2 1"); writer.newLine()
       writer.write(MessageIds.TEST_START + "1,example.FailingTest"); writer.newLine()
