@@ -108,6 +108,7 @@ private fun resolveLogLevel(logLevel: String?, verbose: Boolean, debug: Boolean)
 }
 internal val launchOptionsRequiringValue = setOf(
   "--config",
+  "--log",
   "--target-root",
   "-t",
   "--workspace",
@@ -209,6 +210,11 @@ fun launchMain(args: Array<String>) {
     fullName = "log-level",
     description = "Logging level (error|warn|info|debug|trace)"
   )
+  val logFileOpt by parser.option(
+    ArgType.String,
+    fullName = "log",
+    description = "Write application stdout/stderr to log file"
+  )
   val verbose by parser.option(
     ArgType.Boolean,
     fullName = "verbose",
@@ -279,7 +285,8 @@ fun launchMain(args: Array<String>) {
       logger.info("Dry run: validation only. Exiting.")
       return
     }
-    executeLaunch(osgiContext, targetArgs, showDebugLogs = debug)
+    val logFile = logFileOpt?.let { Paths.get(it) }
+    executeLaunch(osgiContext, targetArgs, showDebugLogs = debug, logFile = logFile)
     return
   }
 
@@ -485,7 +492,12 @@ private fun applyTestEntry(
   return withDebug
 }
 
-private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunchArgs?, showDebugLogs: Boolean) {
+private fun executeLaunch(
+  context: LaunchConfigContext,
+  targetArgs: TargetLaunchArgs?,
+  showDebugLogs: Boolean,
+  logFile: Path?
+) {
   val prepared = prepareLaunch(context, targetArgs)
   logPlanSummary(prepared.planResult)
   if (showDebugLogs) {
@@ -494,6 +506,15 @@ private fun executeLaunch(context: LaunchConfigContext, targetArgs: TargetLaunch
   }
   logCommand(prepared.command)
   val processBuilder = ProcessBuilder(prepared.command)
+  val outputLog = logFile?.toAbsolutePath()?.normalize()
+  if (outputLog != null) {
+    outputLog.parent?.let { Files.createDirectories(it) }
+    processBuilder.redirectErrorStream(true)
+    processBuilder.redirectOutput(outputLog.toFile())
+  } else {
+    processBuilder.redirectErrorStream(true)
+    processBuilder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+  }
   if (context.config.env.isNotEmpty()) {
     val env = processBuilder.environment()
     context.config.env.forEach { (key, value) ->
