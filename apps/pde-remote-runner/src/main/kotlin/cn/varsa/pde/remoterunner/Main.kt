@@ -35,24 +35,26 @@ class RemoteRunnerApp {
     val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
     parser.parse(args)
 
+    val useColor = !noColor && System.console() != null
+
     val reports = runCatching { reportValues.map(::parseReportTarget) }
       .getOrElse { error ->
-        System.err.println("Invalid --report value: ${error.message}")
+        System.err.println("${ConsoleTags.error(useColor)} Invalid --report value: ${error.message}")
         return 2
       }
     val forwardSpecs = runCatching { forwardValues.map(::parseForwardSpec) }
       .getOrElse { error ->
-        System.err.println("Invalid --forward-log value: ${error.message}")
+        System.err.println("${ConsoleTags.error(useColor)} Invalid --forward-log value: ${error.message}")
         return 2
       }
     val includes = runCatching { includePatterns.map(::toRegexSafe) }
       .getOrElse { error ->
-        System.err.println("Invalid --include regex: ${error.message}")
+        System.err.println("${ConsoleTags.error(useColor)} Invalid --include regex: ${error.message}")
         return 2
       }
     val excludes = runCatching { excludePatterns.map(::toRegexSafe) }
       .getOrElse { error ->
-        System.err.println("Invalid --exclude regex: ${error.message}")
+        System.err.println("${ConsoleTags.error(useColor)} Invalid --exclude regex: ${error.message}")
         return 2
       }
 
@@ -60,7 +62,7 @@ class RemoteRunnerApp {
     val server = try {
       allocator.bind()
     } catch (ex: Exception) {
-      System.err.println("Failed to bind server socket: ${ex.message}")
+      System.err.println("${ConsoleTags.error(useColor)} Failed to bind server socket: ${ex.message}")
       return 2
     }
 
@@ -76,22 +78,21 @@ class RemoteRunnerApp {
       issuedAt = Instant.now().toString()
     )
     println(mapper.writeValueAsString(announcement))
-    println("[INFO] Listening on ${announcement.host}:${announcement.port}")
-    println("[INFO] Waiting up to ${timeoutSeconds}s for RemoteTestRunner connection...")
+    println("${ConsoleTags.info(useColor)} Listening on ${announcement.host}:${announcement.port}")
+    println("${ConsoleTags.info(useColor)} Waiting up to ${timeoutSeconds}s for RemoteTestRunner connection...")
 
     val client = try {
       server.accept()
     } catch (timeout: SocketTimeoutException) {
-      System.err.println("Timed out waiting for PDE connection after ${timeoutSeconds}s")
+      System.err.println("${ConsoleTags.error(useColor)} Timed out waiting for PDE connection after ${timeoutSeconds}s")
       server.close()
       return 3
     }
-    println("[INFO] Connection established from ${client.inetAddress.hostAddress}:${client.port}")
+    println("${ConsoleTags.info(useColor)} Connection established from ${client.inetAddress.hostAddress}:${client.port}")
 
-    startForwarders(forwardSpecs)
+    startForwarders(forwardSpecs, color = useColor)
 
     val listeners = mutableListOf<RemoteTestListener>()
-    val useColor = !noColor && System.console() != null
     listeners += LoggingRemoteTestListener(System.out, includes, excludes, color = useColor)
     val recorder = RecordingRemoteTestListener()
     listeners += recorder
@@ -111,15 +112,15 @@ class RemoteRunnerApp {
     reports.filterIsInstance<ReportTarget.JUnitXml>().forEach { target ->
       try {
         JUnitXmlReporter(target.path).write(summary, recorder.results)
-        println("[INFO] Wrote JUnit report to ${target.path}")
+        println("${ConsoleTags.info(useColor)} Wrote JUnit report to ${target.path}")
       } catch (ex: Exception) {
-        System.err.println("Failed to write JUnit report: ${ex.message}")
+        System.err.println("${ConsoleTags.error(useColor)} Failed to write JUnit report: ${ex.message}")
       }
     }
 
     val exitCode = if (summary.failures == 0 && summary.errors == 0 && !summary.stopped) 0 else 1
     if (exitCode != 0) {
-      System.err.println("Remote tests reported failures=${summary.failures} errors=${summary.errors} stopped=${summary.stopped}")
+      System.err.println("${ConsoleTags.error(useColor)} Remote tests reported failures=${summary.failures} errors=${summary.errors} stopped=${summary.stopped}")
     }
     return exitCode
   }
@@ -147,14 +148,14 @@ fun parseForwardSpec(value: String): ForwardLogSpec {
   return ForwardLogSpec(label, Path.of(path))
 }
 
-fun startForwarders(specs: List<ForwardLogSpec>): List<Thread> = specs.map { spec ->
+fun startForwarders(specs: List<ForwardLogSpec>, color: Boolean = false): List<Thread> = specs.map { spec ->
   thread(name = "forward-${spec.label}", isDaemon = true) {
     try {
       Files.newInputStream(spec.path).bufferedReader().useLines { lines ->
-        lines.forEach { line -> println("[${spec.label}] $line") }
+        lines.forEach { line -> println("${ConsoleTags.label(spec.label, color)} $line") }
       }
     } catch (ex: Exception) {
-      System.err.println("Failed to forward ${spec.label}: ${ex.message}")
+      System.err.println("${ConsoleTags.error(color)} Failed to forward ${spec.label}: ${ex.message}")
     }
   }
 }

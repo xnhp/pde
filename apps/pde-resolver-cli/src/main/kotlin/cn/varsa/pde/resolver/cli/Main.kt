@@ -59,6 +59,7 @@ import java.util.logging.Formatter
 import java.util.logging.Level
 import java.util.logging.LogRecord
 import java.util.logging.Logger
+import cn.varsa.pde.remoterunner.ConsoleTags
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
@@ -69,11 +70,11 @@ internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.ru
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-resolver-cli")
-private val messageOnlyFormatter = object : Formatter() {
+private fun createFormatter(useColor: Boolean) = object : Formatter() {
   override fun format(record: LogRecord): String {
     val message = formatMessage(record)
     val builder = StringBuilder()
-    builder.append(record.level.name).append(": ").append(message).append('\n')
+    builder.append(logPrefix(record.level, useColor)).append(' ').append(message).append('\n')
     record.thrown?.let { thrown ->
       val writer = java.io.StringWriter()
       val printer = java.io.PrintWriter(writer)
@@ -84,13 +85,24 @@ private val messageOnlyFormatter = object : Formatter() {
     return builder.toString()
   }
 }
-private fun configureLogging(level: Level) {
+private fun logPrefix(level: Level, useColor: Boolean): String {
+  val value = level.intValue()
+  return when {
+    value >= Level.SEVERE.intValue() -> ConsoleTags.error(useColor)
+    value >= Level.WARNING.intValue() -> ConsoleTags.warn(useColor)
+    value >= Level.INFO.intValue() -> ConsoleTags.info(useColor)
+    value >= Level.FINE.intValue() -> ConsoleTags.debug(useColor)
+    else -> ConsoleTags.trace(useColor)
+  }
+}
+private fun configureLogging(level: Level, useColor: Boolean) {
   logger.level = level
   val root = Logger.getLogger("")
   root.level = level
+  val formatter = createFormatter(useColor)
   root.handlers?.forEach { handler ->
     handler.level = level
-    handler.formatter = messageOnlyFormatter
+    handler.formatter = formatter
   }
 }
 private fun parseLogLevel(value: String?): Level = when (value?.lowercase()) {
@@ -107,6 +119,7 @@ private fun resolveLogLevel(logLevel: String?, verbose: Boolean, debug: Boolean)
   verbose -> Level.INFO
   else -> Level.WARNING
 }
+private fun shouldUseColor(noColor: Boolean = false): Boolean = !noColor && System.console() != null
 internal val launchOptionsRequiringValue = setOf(
   "--config",
   "--log",
@@ -306,7 +319,7 @@ fun launchMain(args: Array<String>) {
   val outputDirOpt by parser.option(ArgType.String, fullName = "output", shortName = "o", description = "Output directory for config.ini/bundles.info/dev.properties")
 
   parser.parse(normalizedArgs)
-  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
 
   val configPosValue = configPos
   val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
@@ -991,6 +1004,7 @@ private fun runTestLaunch(
   logFile: Path?,
   debug: Boolean
 ): Int {
+  val useColor = shouldUseColor(noColor)
   val allocator = PortAllocator(listenHost, listenPort, parsePortRange(portRangeSpec))
   val server = try {
     allocator.bind()
@@ -1050,11 +1064,10 @@ private fun runTestLaunch(
   }
   logger.info("Connection established from ${client.inetAddress.hostAddress}:${client.port}")
 
-  startForwarders(forwardSpecs)
+  startForwarders(forwardSpecs, color = useColor)
 
   val listeners = mutableListOf<RemoteTestListener>()
   if (!quiet) {
-    val useColor = !noColor && System.console() != null
     listeners += LoggingRemoteTestListener(System.out, includes, excludes, color = useColor)
   }
   val recorder = RecordingRemoteTestListener()
@@ -1157,7 +1170,7 @@ private fun testMain(args: Array<String>): Int {
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
   val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
   parser.parse(normalizedArgs)
-  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug))
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor(noColor))
 
   val configPosValue = configPos
   val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
@@ -1302,7 +1315,7 @@ internal fun compileMain(args: Array<String>): Int {
     description = "YAML launch configuration (positional)"
   ).optional()
   parser.parse(normalizedArgs)
-  configureLogging(Level.INFO)
+  configureLogging(Level.INFO, shouldUseColor())
 
   val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
