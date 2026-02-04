@@ -1267,7 +1267,7 @@ private fun testMain(args: Array<String>): Int {
   )
 }
 
-internal fun compileMain(args: Array<String>) {
+internal fun compileMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
   val parser = ArgParser("pde-compile")
   val configFileOpt by parser.option(
@@ -1313,11 +1313,11 @@ internal fun compileMain(args: Array<String>) {
     val profilePath = configContext.config.profilePath?.let { configContext.baseDir.resolve(it).normalize() }
     if (profilePath == null) {
       logger.severe("profilePath missing in YAML config; cannot derive target platform for compile.")
-      return
+      return 0
     }
     if (!Files.exists(profilePath)) {
       logger.severe("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
-      return
+      return 0
     }
 
     val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
@@ -1364,7 +1364,7 @@ internal fun compileMain(args: Array<String>) {
 
     if (json) {
       println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(specs))
-      return
+      return 0
     }
 
     if (!runCompile) {
@@ -1379,7 +1379,7 @@ internal fun compileMain(args: Array<String>) {
           logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
         }
       }
-      return
+      return 0
     }
 
     val results = CompileExecutor.compile(
@@ -1401,6 +1401,7 @@ internal fun compileMain(args: Array<String>) {
       }
     }
     val allOk = results.all { it.success }
+    val exitCode = if (allOk) 0 else 1
     if (bundlesInfoOut != null) {
       if (!allOk) {
         logger.severe("Skipping bundles.info write because some bundles failed to compile.")
@@ -1427,34 +1428,34 @@ internal fun compileMain(args: Array<String>) {
     if (runtimeOut != null) {
       if (!allOk) {
         logger.severe("Skipping runtime layout write because some bundles failed to compile.")
-      } else {
-        val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
-        val outDir = Paths.get(runtimeOut)
-        val devProps = buildDevProperties(specs, results)
-        val context = LaunchContext(
-          startupLevels = planResult.context.startupLevels,
-          devProperties = devProps
-        )
-        val defaults = RuntimeLayoutWriter.Defaults(
-          installArea = profilePath,
-          instanceArea = outDir.resolve("workspace")
-        )
-        RuntimeLayoutWriter.write(
-          layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
-          plan = rewrittenPlan,
-          context = context,
-          options = options,
-          defaults = defaults
-        )
-        logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
+        return exitCode
       }
+      val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
+      val outDir = Paths.get(runtimeOut)
+      val devProps = buildDevProperties(specs, results)
+      val context = LaunchContext(
+        startupLevels = planResult.context.startupLevels,
+        devProperties = devProps
+      )
+      val defaults = RuntimeLayoutWriter.Defaults(
+        installArea = profilePath,
+        instanceArea = outDir.resolve("workspace")
+      )
+      RuntimeLayoutWriter.write(
+        layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
+        plan = rewrittenPlan,
+        context = context,
+        options = options,
+        defaults = defaults
+      )
+      logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
     }
-    return
+    return exitCode
   }
 
   if (targetRoots.isEmpty()) {
     logger.severe("No --target-root specified")
-    return
+    return 0
   }
 
   val targetPaths = targetRoots.map { Paths.get(it) }
@@ -1494,13 +1495,13 @@ internal fun compileMain(args: Array<String>) {
 
   if (json) {
     println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(specs))
-    return
+    return 0
   }
 
-    if (!runCompile) {
-      logger.info("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
-      specs.forEachIndexed { idx, spec ->
-        logger.info("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
+  if (!runCompile) {
+    logger.info("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
+    specs.forEachIndexed { idx, spec ->
+      logger.info("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
       logger.info("    classpath: ${spec.classpath.joinToString(File.pathSeparator)}")
       if (spec.isWorkspace) {
         logger.info("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
@@ -1509,28 +1510,29 @@ internal fun compileMain(args: Array<String>) {
         logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
       }
     }
-    return
+    return 0
   }
 
-    val results = CompileExecutor.compile(
-      specs,
-      workspaceDependencies = planResult.workspaceDependencies,
-      forceFullRebuild = fullRebuild
-    )
-    resultsJson?.let { path ->
-      jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
-      logger.info("Wrote results to $path")
+  val results = CompileExecutor.compile(
+    specs,
+    workspaceDependencies = planResult.workspaceDependencies,
+    forceFullRebuild = fullRebuild
+  )
+  resultsJson?.let { path ->
+    jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
+    logger.info("Wrote results to $path")
+  }
+  val specsByBsn = specs.associateBy { it.bsn }
+  results.forEach { result ->
+    val spec = specsByBsn[result.bsn]
+    if (spec?.isWorkspace == true && result.success && !result.skipped) {
+      logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
+    } else if (spec?.isWorkspace == true && result.success && result.skipped) {
+      logger.info("skipped ${result.bsn}: ${result.output}")
     }
-    val specsByBsn = specs.associateBy { it.bsn }
-    results.forEach { result ->
-      val spec = specsByBsn[result.bsn]
-      if (spec?.isWorkspace == true && result.success && !result.skipped) {
-        logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
-      } else if (spec?.isWorkspace == true && result.success && result.skipped) {
-        logger.info("skipped ${result.bsn}: ${result.output}")
-      }
-    }
-    val allOk = results.all { it.success }
+  }
+  val allOk = results.all { it.success }
+  val exitCode = if (allOk) 0 else 1
   if (bundlesInfoOut != null) {
     if (!allOk) {
       logger.severe("Skipping bundles.info write because some bundles failed to compile.")
@@ -1557,7 +1559,7 @@ internal fun compileMain(args: Array<String>) {
   if (runtimeOut != null) {
     if (!allOk) {
       logger.severe("Skipping runtime layout write because some bundles failed to compile.")
-      return
+      return exitCode
     }
     val outDir = Paths.get(runtimeOut)
     val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
@@ -1579,6 +1581,7 @@ internal fun compileMain(args: Array<String>) {
     )
     logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
   }
+  return exitCode
 }
 
 private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCompileResult>): Map<String, List<String>> {
