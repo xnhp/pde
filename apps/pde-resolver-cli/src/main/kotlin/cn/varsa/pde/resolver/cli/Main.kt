@@ -20,6 +20,7 @@ import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.compile.BundleCompileCache
 import cn.varsa.pde.resolver.compile.BundleCompileResult
 import cn.varsa.pde.resolver.compile.CompileExecutor
 import cn.varsa.pde.resolver.compile.CompileService
@@ -200,6 +201,7 @@ private fun warnIfCompileOutOfDate(
   workspaceDescriptors: List<WorkspaceBundleDescriptor>
 ) {
   if (System.getProperty("pde.launch.disableStaleWorkspaceWarning") == "true") return
+  if (!Files.exists(BundleCompileCache.defaultCachePath())) return
   if (compileWarningShown) return
   if (workspaceDescriptors.isEmpty()) return
   val specs = CompileService.buildSpecs(planResult, workspaceDescriptors).specs

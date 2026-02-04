@@ -41,6 +41,8 @@ class BundleCompileCache(private val cacheFile: Path) {
 
     fun default(): BundleCompileCache = BundleCompileCache(defaultCacheFile())
 
+    fun defaultCachePath(): Path = defaultCacheFile()
+
     private fun defaultCacheFile(): Path {
       val base = System.getenv("XDG_CACHE_HOME")?.let { Path.of(it) }
         ?: Path.of(System.getProperty("user.home"), ".cache")
