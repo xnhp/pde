@@ -7,8 +7,11 @@ import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.DeserializationContext
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonDeserializer
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
@@ -111,10 +114,100 @@ object LaunchConfigLoader {
 
   fun load(path: Path, workingDir: Path = Paths.get("").toAbsolutePath()): LaunchConfigContext {
     val normalized = path.toAbsolutePath().normalize()
-    val config: LaunchConfig = normalized.inputStream().use { mapper.readValue(it) }
+    val mergedNode = loadMergedNode(normalized, mutableSetOf())
+    val config: LaunchConfig = mapper.treeToValue(mergedNode, LaunchConfig::class.java)
     val resolvedConfig = resolveWorkspaceModules(config, workingDir)
     val base = normalized.parent ?: normalized
     return LaunchConfigContext(file = normalized, baseDir = base, config = resolvedConfig)
+  }
+
+  private fun loadMergedNode(path: Path, visited: MutableSet<Path>): ObjectNode {
+    val normalized = path.toAbsolutePath().normalize()
+    require(visited.add(normalized)) { "Include cycle detected at ${normalized.toAbsolutePath()}" }
+    val node = normalized.inputStream().use { mapper.readTree(it) }
+    val objectNode = node as? ObjectNode ?: mapper.nodeFactory.objectNode()
+    val baseDir = normalized.parent ?: normalized
+    val includes = parseIncludes(objectNode, baseDir)
+
+    var merged = mapper.nodeFactory.objectNode()
+    for (include in includes) {
+      merged = mergeNodes(merged, loadMergedNode(include, visited))
+    }
+    merged = mergeNodes(merged, objectNode)
+    merged.remove("includes")
+    visited.remove(normalized)
+    return merged
+  }
+
+  private fun parseIncludes(node: ObjectNode, baseDir: Path): List<Path> {
+    val includesNode = node.get("includes") ?: return emptyList()
+    val raw = when {
+      includesNode.isArray -> includesNode.mapNotNull { it.asText(null) }
+      includesNode.isTextual -> listOf(includesNode.asText())
+      else -> emptyList()
+    }
+    return raw.map { include ->
+      val path = Paths.get(include)
+      (if (path.isAbsolute) path else baseDir.resolve(path)).toAbsolutePath().normalize()
+    }
+  }
+
+  private fun mergeNodes(base: ObjectNode, override: ObjectNode): ObjectNode {
+    val merged = base.deepCopy() as ObjectNode
+    val fields = override.fields()
+    while (fields.hasNext()) {
+      val (key, overrideValue) = fields.next()
+      val baseValue = merged.get(key)
+      val nextValue = when {
+        key == "launches" || key == "tests" -> mergeListByName(baseValue as? ArrayNode, overrideValue as? ArrayNode)
+        baseValue is ObjectNode && overrideValue is ObjectNode -> mergeObjectNodes(baseValue, overrideValue)
+        overrideValue is ArrayNode -> overrideValue.deepCopy() as ArrayNode
+        else -> overrideValue.deepCopy()
+      }
+      merged.set<JsonNode>(key, nextValue)
+    }
+    return merged
+  }
+
+  private fun mergeObjectNodes(base: ObjectNode, override: ObjectNode): ObjectNode {
+    val merged = base.deepCopy() as ObjectNode
+    val fields = override.fields()
+    while (fields.hasNext()) {
+      val (key, value) = fields.next()
+      merged.set<JsonNode>(key, value.deepCopy())
+    }
+    return merged
+  }
+
+  private fun mergeListByName(base: ArrayNode?, override: ArrayNode?): ArrayNode {
+    if (override == null) return (base?.deepCopy() as? ArrayNode) ?: mapper.nodeFactory.arrayNode()
+    if (base == null) return override.deepCopy() as ArrayNode
+
+    val merged = mapper.nodeFactory.arrayNode()
+    val indexByName = linkedMapOf<String, Int>()
+
+    for (node in base) {
+      val name = node.get("name")?.asText(null)
+      if (name != null) {
+        indexByName[name] = merged.size()
+      }
+      merged.add(node.deepCopy())
+    }
+
+    for (node in override) {
+      val name = node.get("name")?.asText(null)
+      if (name != null) {
+        val index = indexByName[name]
+        if (index != null) {
+          merged.set(index, node.deepCopy())
+          continue
+        }
+        indexByName[name] = merged.size()
+      }
+      merged.add(node.deepCopy())
+    }
+
+    return merged
   }
 
   private fun resolveWorkspaceModules(config: LaunchConfig, workingDir: Path): LaunchConfig {

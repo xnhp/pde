@@ -64,4 +64,50 @@ class LaunchConfigLoaderTest {
     assertEquals("launch.product", patched.product)
     assertEquals("launch.app", patched.application)
   }
+
+  @Test
+  fun mergesIncludesAndLaunchesByName() {
+    val root: Path = tmp.root.toPath()
+    val baseFile = root.resolve("base.yaml").toFile()
+    val configFile = root.resolve("config.yaml").toFile()
+
+    baseFile.writeText(
+      """
+      env:
+        BASE: "1"
+      launches:
+        - name: AP
+          vmArgs:
+            - -Xmx1024m
+        - name: GatewayDevServer
+          programArgs:
+            - -port=7000
+      """.trimIndent()
+    )
+
+    configFile.writeText(
+      """
+      includes:
+        - base.yaml
+      env:
+        OVERRIDE: "2"
+      launches:
+        - name: AP
+          vmArgs:
+            - -Xmx2048m
+        - name: Extra
+          vmArgs:
+            - -Xmx512m
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val env = loaded.config.env
+    val launchNames = loaded.config.launches.map { it.name }
+    val apLaunch = loaded.config.launches.first { it.name == "AP" }
+
+    assertEquals(mapOf("BASE" to "1", "OVERRIDE" to "2"), env)
+    assertEquals(listOf("AP", "GatewayDevServer", "Extra"), launchNames)
+    assertEquals(listOf("-Xmx2048m"), apLaunch.vmArgs)
+  }
 }

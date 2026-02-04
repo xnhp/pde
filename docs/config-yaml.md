@@ -8,6 +8,14 @@ The CLI looks for a config file path provided on the command line. If omitted, i
 
 ## Top-level fields
 
+### includes
+Optional list of config YAML files to merge before the current file. Paths are resolved relative to the current file.
+
+Merge rules:
+- Scalars and lists replace earlier values.
+- Maps merge by key (later entries override).
+- `launches` and `tests` merge by `name` (later entries override by name; new names append).
+
 ### issueId
 Optional string used for labeling/logging.
 
