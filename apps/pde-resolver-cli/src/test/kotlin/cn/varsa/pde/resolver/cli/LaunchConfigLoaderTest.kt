@@ -110,4 +110,35 @@ class LaunchConfigLoaderTest {
     assertEquals(listOf("AP", "GatewayDevServer", "Extra"), launchNames)
     assertEquals(listOf("-Xmx2048m"), apLaunch.vmArgs)
   }
+
+  @Test
+  fun loadsLaunchesFromIncludesOnly() {
+    val root: Path = tmp.root.toPath()
+    val baseFile = root.resolve("launches.yaml").toFile()
+    val configFile = root.resolve("config.yaml").toFile()
+
+    baseFile.writeText(
+      """
+      launches:
+        - name: GatewayDevServer
+          programArgs:
+            - -port=7000
+        - name: AP
+          vmArgs:
+            - -Xmx2048m
+      """.trimIndent()
+    )
+
+    configFile.writeText(
+      """
+      includes:
+        - launches.yaml
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val launchNames = loaded.config.launches.map { it.name }
+
+    assertEquals(listOf("GatewayDevServer", "AP"), launchNames)
+  }
 }

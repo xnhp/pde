@@ -158,7 +158,7 @@ object LaunchConfigLoader {
     while (fields.hasNext()) {
       val (key, overrideValue) = fields.next()
       val baseValue = merged.get(key)
-      val nextValue = when {
+      val nextValue: JsonNode = when {
         key == "launches" || key == "tests" -> mergeListByName(baseValue as? ArrayNode, overrideValue as? ArrayNode)
         baseValue is ObjectNode && overrideValue is ObjectNode -> mergeObjectNodes(baseValue, overrideValue)
         overrideValue is ArrayNode -> overrideValue.deepCopy() as ArrayNode
