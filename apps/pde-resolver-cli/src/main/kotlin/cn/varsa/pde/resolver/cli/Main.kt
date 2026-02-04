@@ -199,6 +199,7 @@ private fun warnIfCompileOutOfDate(
   planResult: LaunchPlanner.PlanResult,
   workspaceDescriptors: List<WorkspaceBundleDescriptor>
 ) {
+  if (System.getProperty("pde.launch.disableStaleWorkspaceWarning") == "true") return
   if (compileWarningShown) return
   if (workspaceDescriptors.isEmpty()) return
   val specs = CompileService.buildSpecs(planResult, workspaceDescriptors).specs
