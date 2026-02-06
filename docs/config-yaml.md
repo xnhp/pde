@@ -156,6 +156,7 @@ tests:
   - name: GatewayDefaultServiceTests
     testpluginname: org.knime.gateway.impl
     classname: org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests
+    runner: junit4
     debug: false
     env:
       GDK_BACKEND: x11
@@ -168,6 +169,8 @@ tests:
 Keys map to PDE/JUnit options:
 - `testpluginname` -> `-testpluginname`
 - `classname` -> `-classname`
+- `runner`: defaults to `junit4`; use `junit5` to add `-testLoaderClass org.eclipse.jdt.internal.junit5.runner.JUnit5TestLoader`
+  and `-loaderpluginname org.eclipse.jdt.junit5.runtime` unless already present in `programArgs`.
 - `env`: per-test environment variables (merged with top-level `env`).
 
 ## Practical notes

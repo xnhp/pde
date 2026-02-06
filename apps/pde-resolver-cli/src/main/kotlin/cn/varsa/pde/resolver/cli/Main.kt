@@ -542,6 +542,20 @@ private fun applyTestEntry(
   if (selected.className != null && "-classname" !in programArgs) {
     programArgs += listOf("-classname", selected.className)
   }
+  val normalizedRunner = selected.runner?.trim()?.lowercase() ?: "junit4"
+  when (normalizedRunner) {
+    "junit5" -> {
+      fun hasFlag(flag: String): Boolean = programArgs.indexOf(flag) != -1
+      if (!hasFlag("-testLoaderClass")) {
+        programArgs += listOf("-testLoaderClass", "org.eclipse.jdt.internal.junit5.runner.JUnit5TestLoader")
+      }
+      if (!hasFlag("-loaderpluginname")) {
+        programArgs += listOf("-loaderpluginname", "org.eclipse.jdt.junit5.runtime")
+      }
+    }
+    "junit4" -> Unit
+    else -> logger.warning("Unknown test runner '${selected.runner}', defaulting to junit4.")
+  }
   val vmArgs = context.config.additionalVmArgs + selected.vmArgs
   val patched = context.config.copy(
     additionalVmArgs = vmArgs,
@@ -961,19 +975,8 @@ internal fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()):
 }
 
 private fun applyTestDefaults(context: LaunchConfigContext): LaunchConfigContext {
-  val programArgs = context.config.programArgs.toMutableList()
-  fun hasFlag(flag: String): Boolean = programArgs.indexOf(flag) != -1
-
-  if (!hasFlag("-testLoaderClass")) {
-    programArgs += listOf("-testLoaderClass", "org.eclipse.jdt.internal.junit5.runner.JUnit5TestLoader")
-  }
-  if (!hasFlag("-loaderpluginname")) {
-    programArgs += listOf("-loaderpluginname", "org.eclipse.jdt.junit5.runtime")
-  }
-
   val patchedConfig = context.config.copy(
-    application = context.config.application?.takeUnless { it.isBlank() } ?: PDE_JUNIT_PLUGIN_TEST_APPLICATION,
-    programArgs = programArgs
+    application = context.config.application?.takeUnless { it.isBlank() } ?: PDE_JUNIT_PLUGIN_TEST_APPLICATION
   )
   return context.copy(config = patchedConfig)
 }

@@ -107,6 +107,7 @@ data class TestEntry(
   val testPluginName: String? = null,
   @JsonAlias("classname")
   val className: String? = null,
+  val runner: String? = null,
   val debug: Boolean = false,
   val env: Map<String, String> = emptyMap(),
   val programArgs: List<String> = emptyList(),
