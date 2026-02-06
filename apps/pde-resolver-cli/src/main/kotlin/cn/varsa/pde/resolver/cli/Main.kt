@@ -543,9 +543,9 @@ private fun applyTestEntry(
     programArgs += listOf("-classname", selected.className)
   }
   val normalizedRunner = selected.runner?.trim()?.lowercase() ?: "junit4"
+  fun hasFlag(flag: String): Boolean = programArgs.indexOf(flag) != -1
   when (normalizedRunner) {
     "junit5" -> {
-      fun hasFlag(flag: String): Boolean = programArgs.indexOf(flag) != -1
       if (!hasFlag("-testLoaderClass")) {
         programArgs += listOf("-testLoaderClass", "org.eclipse.jdt.internal.junit5.runner.JUnit5TestLoader")
       }
@@ -553,7 +553,14 @@ private fun applyTestEntry(
         programArgs += listOf("-loaderpluginname", "org.eclipse.jdt.junit5.runtime")
       }
     }
-    "junit4" -> Unit
+    "junit4" -> {
+      if (!hasFlag("-testLoaderClass")) {
+        programArgs += listOf("-testLoaderClass", "org.eclipse.jdt.internal.junit4.runner.JUnit4TestLoader")
+      }
+      if (!hasFlag("-loaderpluginname")) {
+        programArgs += listOf("-loaderpluginname", "org.eclipse.jdt.junit4.runtime")
+      }
+    }
     else -> logger.warning("Unknown test runner '${selected.runner}', defaulting to junit4.")
   }
   val vmArgs = context.config.additionalVmArgs + selected.vmArgs

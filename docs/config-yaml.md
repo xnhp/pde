@@ -169,7 +169,9 @@ tests:
 Keys map to PDE/JUnit options:
 - `testpluginname` -> `-testpluginname`
 - `classname` -> `-classname`
-- `runner`: defaults to `junit4`; use `junit5` to add `-testLoaderClass org.eclipse.jdt.internal.junit5.runner.JUnit5TestLoader`
+- `runner`: defaults to `junit4` which adds `-testLoaderClass org.eclipse.jdt.internal.junit4.runner.JUnit4TestLoader`
+  and `-loaderpluginname org.eclipse.jdt.junit4.runtime` unless already present in `programArgs`.
+  Use `junit5` to add `-testLoaderClass org.eclipse.jdt.internal.junit5.runner.JUnit5TestLoader`
   and `-loaderpluginname org.eclipse.jdt.junit5.runtime` unless already present in `programArgs`.
 - `env`: per-test environment variables (merged with top-level `env`).
 
