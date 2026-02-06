@@ -132,7 +132,8 @@ internal val launchOptionsRequiringValue = setOf(
   "--application",
   "--splash",
   "--framework",
-  "--output"
+  "--output",
+  "--launch"
 )
 internal val testOptionsRequiringValue = setOf(
   "--config",
@@ -262,6 +263,10 @@ private fun buildCompilePlanForWarning(
 }
 
 fun launchMain(args: Array<String>) {
+  if (args.isNotEmpty() && args[0] == "target") {
+    val exit = targetMain(args.drop(1).toTypedArray())
+    exitProcess(exit)
+  }
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
     exitProcess(exit)
@@ -339,17 +344,10 @@ fun launchMain(args: Array<String>) {
     val selected = selectLaunchConfig(configContext, launchName)
     if (selected == null) return
     val osgiContext = applyOsgiDebug(selected, osgiDebug)
-    val targetPath = selected.config.targetFile
-      ?.let { selected.baseDir.resolve(it).normalize() }
-    val targetArgs = if (selected.config.inheritTargetArgs && targetPath != null) {
-      runCatching { TargetFileParser.parse(targetPath) }
-        .onFailure { logger.warning("Failed to parse target file args: ${it.message}") }
-        .getOrNull()
-    } else null
-    if (selected.config.inheritTargetArgs && targetPath == null) {
-      logger.warning("inheritTargetArgs=true but targetFile is not set; skipping target argument import.")
-    }
-    describeConfig(osgiContext, targetPath, targetArgs)
+    val targetDefinition = resolveTargetDefinition(osgiContext)
+    val targetArgs = resolveTargetArgs(osgiContext, targetDefinition)
+    val profilePath = resolveProfilePath(osgiContext)
+    describeConfig(osgiContext, targetDefinition, profilePath, targetArgs)
     if (dryRun) {
       logger.info("Dry run: validation only. Exiting.")
       return
@@ -393,13 +391,18 @@ fun launchMain(args: Array<String>) {
   }
 }
 
-private fun describeConfig(config: LaunchConfigContext, targetFile: Path?, targetArgs: TargetLaunchArgs?) {
+private fun describeConfig(
+  config: LaunchConfigContext,
+  targetDefinition: Path?,
+  profilePath: Path?,
+  targetArgs: TargetLaunchArgs?
+) {
   logger.info("Loaded launch config from ${config.file}")
   logger.info("  product: ${config.config.product?.takeUnless { it.isBlank() } ?: "<unspecified>"}")
   logger.info("  application: ${config.config.application ?: "<unspecified>"}")
   logger.info("  workspace modules: ${config.config.workspaceModules.size}")
-  logger.info("  target file: ${targetFile ?: "<unspecified>"}")
-  logger.info("  profile path: ${config.config.profilePath ?: "<unspecified>"}")
+  logger.info("  target definition: ${targetDefinition ?: "<unspecified>"}")
+  logger.info("  profile path: ${profilePath ?: "<unspecified>"}")
   logger.info("  target vm args: ${targetArgs?.vmArgs?.size ?: 0}")
   logger.info("  target program args: ${targetArgs?.programArgs?.size ?: 0}")
   if (config.jvmDebug) {
@@ -565,9 +568,10 @@ private fun executeLaunch(
   context: LaunchConfigContext,
   targetArgs: TargetLaunchArgs?,
   showDebugLogs: Boolean,
-  logFile: Path?
+  logFile: Path?,
+  extraProgramArgs: List<String> = emptyList()
 ) {
-  val prepared = prepareLaunch(context, targetArgs)
+  val prepared = prepareLaunch(context, targetArgs, extraProgramArgs)
   logPlanSummary(prepared.planResult)
   if (showDebugLogs) {
     val logPath = prepared.layout.dataDir.resolve(".metadata").resolve(".log").toAbsolutePath().normalize()
@@ -639,8 +643,8 @@ private fun prepareLaunch(
   extraProgramArgs: List<String> = emptyList()
 ): PreparedLaunch {
   val workspaceInputs = WorkspaceModuleResolver.resolve(context)
-  val profilePath = context.config.profilePath?.let { context.baseDir.resolve(it).normalize() }
-    ?: error("profilePath missing in YAML config")
+  val profilePath = resolveProfilePath(context)
+    ?: error("target profile path missing in YAML config (set target.profile-id + target.p2-path or profilePath)")
   if (!Files.exists(profilePath)) {
     error("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
   }
@@ -738,7 +742,6 @@ private fun assembleCommand(
   val programArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.programArgs ?: emptyList())
     addAll(configProgramArgs)
-    addAll(extraProgramArgs)
   }
   val stdArgs = listOf(
     "-clean",
@@ -769,6 +772,7 @@ private fun assembleCommand(
     add("-dev")
     add(layout.devPropertiesFile.toUri().toString())
     add("-consoleLog")
+    addAll(extraProgramArgs)
   }
   return buildList {
     add(javaBin)
@@ -974,18 +978,116 @@ private fun applyTestDefaults(context: LaunchConfigContext): LaunchConfigContext
   return context.copy(config = patchedConfig)
 }
 
-private fun resolveTargetArgs(context: LaunchConfigContext): TargetLaunchArgs? {
-  val targetPath = context.config.targetFile
-    ?.let { context.baseDir.resolve(it).normalize() }
-  val targetArgs = if (context.config.inheritTargetArgs && targetPath != null) {
-    runCatching { TargetFileParser.parse(targetPath) }
+private fun resolveTargetArgs(
+  context: LaunchConfigContext,
+  targetDefinition: Path? = resolveTargetDefinition(context)
+): TargetLaunchArgs? {
+  val targetArgs = if (context.config.inheritTargetArgs && targetDefinition != null) {
+    runCatching { TargetFileParser.parse(targetDefinition) }
       .onFailure { logger.warning("Failed to parse target file args: ${it.message}") }
       .getOrNull()
   } else null
-  if (context.config.inheritTargetArgs && targetPath == null) {
-    logger.warning("inheritTargetArgs=true but targetFile is not set; skipping target argument import.")
+  if (context.config.inheritTargetArgs && targetDefinition == null) {
+    logger.warning("inheritTargetArgs=true but target.definition is not set; skipping target argument import.")
   }
   return targetArgs
+}
+
+private fun resolveTargetDefinition(context: LaunchConfigContext): Path? {
+  val baseDir = context.baseDir
+  val targetConfig = context.config.target
+  val targetDefinition = targetConfig?.definition?.takeUnless { it.isBlank() }
+    ?.let { baseDir.resolve(it).normalize() }
+  if (targetDefinition != null) return targetDefinition
+  val legacyTargetFile = context.config.targetFile?.takeUnless { it.isBlank() }
+    ?.let { baseDir.resolve(it).normalize() }
+  if (legacyTargetFile != null) {
+    logger.warning("targetFile is deprecated; use target.definition instead.")
+    return legacyTargetFile
+  }
+  val discovered = discoverTargetDefinition(baseDir)
+  if (discovered != null) {
+    logger.info("Discovered target definition at ${discovered.toAbsolutePath()}")
+  }
+  return discovered
+}
+
+private fun discoverTargetDefinition(baseDir: Path): Path? {
+  if (!Files.isDirectory(baseDir)) return null
+  val matches = Files.newDirectoryStream(baseDir, "*.target").use { stream ->
+    stream.toList()
+  }
+  return when {
+    matches.isEmpty() -> null
+    matches.size == 1 -> matches.first().toAbsolutePath().normalize()
+    else -> error("Multiple .target files found in $baseDir; set target.definition explicitly.")
+  }
+}
+
+private fun resolveProfilePath(context: LaunchConfigContext): Path? {
+  val baseDir = context.baseDir
+  val targetConfig = context.config.target
+  val legacyProfile = context.config.profilePath?.takeUnless { it.isBlank() }
+    ?.let { baseDir.resolve(it).normalize() }
+  if (targetConfig == null) return legacyProfile
+  if (legacyProfile != null) {
+    logger.warning("profilePath is deprecated; using target.profile-id + target.p2-path instead.")
+  }
+  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
+  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
+  val registryDir = baseDir.resolve(p2Path)
+    .resolve("org.eclipse.equinox.p2.engine/profileRegistry")
+    .normalize()
+  val preferred = registryDir.resolve("$profileId.Profile").normalize()
+  if (Files.exists(preferred)) return preferred
+  val lowercase = registryDir.resolve("$profileId.profile").normalize()
+  if (Files.exists(lowercase)) {
+    logger.warning("Using lowercase profile registry path: $lowercase")
+    return lowercase
+  }
+  return preferred
+}
+
+private fun removeConfigArg(context: LaunchConfigContext): LaunchConfigContext {
+  val expanded = expandArgs(context.config.programArgs)
+  val stripped = stripConfigArgs(expanded)
+  if (stripped == expanded) return context
+  logger.info("Removed -config argument from installer program args.")
+  return context.copy(config = context.config.copy(programArgs = stripped))
+}
+
+private fun stripConfigArgs(programArgs: List<String>): List<String> {
+  if (programArgs.isEmpty()) return programArgs
+  val result = mutableListOf<String>()
+  var skipNext = false
+  programArgs.forEach { arg ->
+    when {
+      skipNext -> skipNext = false
+      arg == "-config" -> skipNext = true
+      else -> result += arg
+    }
+  }
+  return result
+}
+
+private fun buildTargetInstallerArgs(context: LaunchConfigContext, targetDefinition: Path): List<String> {
+  val targetConfig = context.config.target
+    ?: error("Missing target config while building installer args")
+  val baseDir = context.baseDir
+  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
+  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
+  val installPath = targetConfig.install?.takeUnless { it.isBlank() } ?: "./target/install"
+  val bundlePool = targetConfig.bundlePool?.takeUnless { it.isBlank() } ?: "./target/bundle-pool"
+  val resolvedP2 = baseDir.resolve(p2Path).normalize()
+  val resolvedInstall = baseDir.resolve(installPath).normalize()
+  val resolvedBundlePool = baseDir.resolve(bundlePool).normalize()
+  return listOf(
+    "-profileId", profileId,
+    "-p2Path", resolvedP2.toString(),
+    "-targetDefinition", targetDefinition.toString(),
+    "-install-folder", resolvedInstall.toString(),
+    "-bundlePool", resolvedBundlePool.toString()
+  )
 }
 
 private fun runTestLaunch(
@@ -1114,6 +1216,90 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
     instanceArea = dir
   )
   RuntimeLayoutWriter.write(layout, plan, ctx, opts, defaults)
+}
+
+private fun targetMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
+  val parser = ArgParser("pde-launch target")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  val launchOpt by parser.option(ArgType.String, fullName = "launch", description = "Installer launch name (defaults to 'install' if present)")
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Logging level (error|warn|info|debug|trace)"
+  )
+  val logFileOpt by parser.option(
+    ArgType.String,
+    fullName = "log",
+    description = "Write application stdout/stderr to log file"
+  )
+  val verbose by parser.option(
+    ArgType.Boolean,
+    fullName = "verbose",
+    shortName = "v",
+    description = "Enable INFO logging"
+  ).default(false)
+  val debug by parser.option(
+    ArgType.Boolean,
+    fullName = "debug",
+    description = "Enable DEBUG logging"
+  ).default(false)
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
+
+  val configPosValue = configPos
+  val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory")
+    return 2
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
+  }
+  val issueContext = LaunchConfigLoader.load(discoveredConfig)
+  val targetConfig = issueContext.config.target
+  if (targetConfig == null) {
+    logger.severe("Missing target config in ${issueContext.file}")
+    return 2
+  }
+  val installerPath = targetConfig.installer?.takeUnless { it.isBlank() }
+  if (installerPath == null) {
+    logger.severe("target.installer is required in ${issueContext.file}")
+    return 2
+  }
+  val installerDir = issueContext.baseDir.resolve(installerPath).normalize()
+  if (!Files.isDirectory(installerDir)) {
+    logger.severe("target.installer is not a directory: $installerDir")
+    return 2
+  }
+  val installerConfig = discoverConfigFile(installerDir)
+  if (installerConfig == null) {
+    logger.severe("Missing launch config under $installerDir")
+    return 2
+  }
+  val installerContext = LaunchConfigLoader.load(installerConfig, installerDir)
+  val preferredLaunch = launchOpt ?: installerContext.config.launches.firstOrNull { it.name == "install" }?.name
+  val selectedInstaller = selectLaunchConfig(installerContext, preferredLaunch)
+  if (selectedInstaller == null) return 2
+  val sanitizedInstaller = removeConfigArg(selectedInstaller)
+  val targetDefinition = resolveTargetDefinition(issueContext)
+  if (targetDefinition == null) {
+    logger.severe("Missing target.definition (or a discoverable .target) in ${issueContext.file}")
+    return 2
+  }
+  val installerArgs = buildTargetInstallerArgs(issueContext, targetDefinition)
+  val targetArgs = resolveTargetArgs(sanitizedInstaller)
+  val logFile = logFileOpt?.let { Paths.get(it) }
+  executeLaunch(
+    context = sanitizedInstaller,
+    targetArgs = targetArgs,
+    showDebugLogs = debug,
+    logFile = logFile,
+    extraProgramArgs = installerArgs
+  )
+  return 0
 }
 
 private fun testMain(args: Array<String>): Int {
@@ -1326,13 +1512,15 @@ internal fun compileMain(args: Array<String>): Int {
       logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig)
-    val profilePath = configContext.config.profilePath?.let { configContext.baseDir.resolve(it).normalize() }
+    val profilePath = resolveProfilePath(configContext)
     if (profilePath == null) {
-      logger.severe("profilePath missing in YAML config; cannot derive target platform for compile.")
+      logger.severe("target profile path missing in YAML config; set target.profile-id + target.p2-path (or legacy profilePath).")
       return 0
     }
     if (!Files.exists(profilePath)) {
-      logger.severe("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
+      logger.severe(
+        "target profile registry does not exist: $profilePath (check target.profile-id/target.p2-path or run pde-launch target)"
+      )
       return 0
     }
 
@@ -1453,10 +1641,10 @@ internal fun compileMain(args: Array<String>): Int {
         startupLevels = planResult.context.startupLevels,
         devProperties = devProps
       )
-      val defaults = RuntimeLayoutWriter.Defaults(
-        installArea = profilePath,
-        instanceArea = outDir.resolve("workspace")
-      )
+    val defaults = RuntimeLayoutWriter.Defaults(
+      installArea = profilePath,
+      instanceArea = outDir.resolve("workspace")
+    )
       RuntimeLayoutWriter.write(
         layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
         plan = rewrittenPlan,

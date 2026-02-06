@@ -26,6 +26,7 @@ data class LaunchConfig(
   val application: String? = null,
   val productFiles: List<String> = emptyList(),
   val startupLevelsFile: String? = null,
+  val target: TargetConfig? = null,
   val targetFile: String? = null,
   val inheritTargetArgs: Boolean = true,
   val whitelistFile: String? = null,
@@ -53,6 +54,19 @@ data class LaunchConfig(
     "org.eclipse.io",
     "org.eclipse.swt"
   )
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TargetConfig(
+  val definition: String? = null,
+  @JsonAlias("profile-id")
+  val profileId: String? = null,
+  @JsonAlias("p2-path")
+  val p2Path: String? = null,
+  val install: String? = null,
+  @JsonAlias("bundle-pool")
+  val bundlePool: String? = null,
+  val installer: String? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

@@ -35,18 +35,19 @@ shared resolver library and its on‑disk cache.
   the `whitelist` array defined in YAML; if both are missing it falls back to the default
   trio (`org.eclipse.jdt.annotation`, `org.eclipse.io`, `org.eclipse.swt`).
 
-### Target file
+### Target configuration
 
-- Set `targetFile: path/to/Your.target` in `launch.yaml`. The CLI reads this file to pick up
-  the VM/program arguments defined by the target definition when `inheritTargetArgs` is set
-  to `true` (default). Set `inheritTargetArgs: false` if you want to ignore the `.target`
-  file’s arguments and rely solely on the `additionalVmArgs` / `programArgs` arrays in YAML. For backward compatibility you can still spell it `vmArgs`, but future configs should migrate to `additionalVmArgs`.
-
-### Profile path
-
-- Set `profilePath: path/to/profileRegistry/MyProfile.profile` to tell the resolver which
-  p2 profile to launch against. The CLI follows the profile’s `org.eclipse.equinox.p2.cache`
-  pointer automatically, so you no longer need to add bundle pool directories explicitly.
+- Use the `target` object in `launch.yaml` to describe the target platform:
+  - `target.definition`: path to a `.target` file (optional, auto-discovered if omitted)
+  - `target.profile-id`: profile id (default `profile`)
+  - `target.p2-path`: p2 area path (default `./target/p2`)
+- The CLI reads the `.target` file to pick up VM/program arguments when `inheritTargetArgs`
+  is `true` (default). Set `inheritTargetArgs: false` if you want to ignore the `.target`
+  arguments and rely solely on `additionalVmArgs` / `programArgs` in YAML. For backward
+  compatibility you can still spell it `vmArgs`, but future configs should migrate to
+  `additionalVmArgs`.
+- The profile registry path is derived from `target.p2-path` + `target.profile-id`, so you
+  no longer need to set `profilePath` explicitly.
 
 ### Remote debugging PDE tests
 

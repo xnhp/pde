@@ -25,15 +25,16 @@ Optional string used for labeling/logging.
 ### relatedNotes
 Optional list of strings; no functional impact.
 
-### targetFile
-Path to a target definition (`.target`).
+### target
+Target platform and installer configuration.
 
-### profilePath
-Path to the p2 profile registry directory (must exist). Example:
-
-```
-.../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile/
-```
+Fields:
+- `definition`: optional path to a target definition (`.target`). If omitted, a `.target` file is discovered in the issue directory.
+- `profile-id`: optional profile id (default `profile`).
+- `p2-path`: optional path to the p2 area (default `./target/p2`).
+- `install`: optional install folder (default `./target/install`).
+- `bundle-pool`: optional bundle pool (default `./target/bundle-pool`).
+- `installer`: required for `pde-launch target` (path to the installer config directory).
 
 ### product
 Optional product id for launching (e.g. `org.knime.product.KNIME_PRODUCT`).
@@ -173,4 +174,4 @@ Keys map to PDE/JUnit options:
 
 - If you want local sources and dev-classpath overrides, prefer the object form in `bundlesPerRepo`.
 - `classes` paths are relative to the bundle directory.
-- When in doubt, use absolute paths for `repo`, `path`, `targetFile`, and `profilePath`.
+- When in doubt, use absolute paths for `repo`, `path`, and `target.*` paths.
