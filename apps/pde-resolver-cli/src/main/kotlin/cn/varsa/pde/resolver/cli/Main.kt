@@ -18,6 +18,7 @@ import cn.varsa.pde.remoterunner.startForwarders
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
+import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.compile.BundleCompileCache
@@ -67,6 +68,8 @@ import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
 import cn.varsa.pde.resolver.launch.LaunchContext
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
+internal const val PDE_API_ANALYZER_APPLICATION = "org.eclipse.pde.api.tools.apiAnalyzer"
+internal const val KNIME_API_ANALYZER_APPLICATION = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-resolver-cli")
@@ -158,6 +161,14 @@ internal val compileOptionsRequiringValue = setOf(
   "--output-root",
   "--bundles-info-out",
   "--runtime-out"
+)
+internal val apiAnalyzeOptionsRequiringValue = setOf(
+  "--config",
+  "--log",
+  "--baseline-root",
+  "--dependency-list",
+  "--baseline-list",
+  "--application"
 )
 
 private fun looksLikeYamlFile(arg: String): Boolean {
@@ -269,6 +280,10 @@ fun launchMain(args: Array<String>) {
   }
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
+    exitProcess(exit)
+  }
+  if (args.isNotEmpty() && (args[0] == "api-analyze" || args[0] == "api-analyzer")) {
+    val exit = apiAnalyzeMain(args.drop(1).toTypedArray())
     exitProcess(exit)
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
@@ -590,9 +605,12 @@ private fun executeLaunch(
   targetArgs: TargetLaunchArgs?,
   showDebugLogs: Boolean,
   logFile: Path?,
-  extraProgramArgs: List<String> = emptyList()
+  extraProgramArgs: List<String> = emptyList(),
+  includeDevProperties: Boolean = true,
+  preLaunch: ((PreparedLaunch) -> Unit)? = null
 ) {
-  val prepared = prepareLaunch(context, targetArgs, extraProgramArgs)
+  val prepared = prepareLaunch(context, targetArgs, extraProgramArgs, includeDevProperties)
+  preLaunch?.invoke(prepared)
   logPlanSummary(prepared.planResult)
   if (showDebugLogs) {
     val logPath = prepared.layout.dataDir.resolve(".metadata").resolve(".log").toAbsolutePath().normalize()
@@ -621,6 +639,215 @@ private fun executeLaunch(
     .start()
   val exit = process.waitFor()
   if (exit != 0) error("Launcher exited with code $exit")
+}
+
+private fun writePdeTargetPreferences(layout: LaunchLayout, targetDefinition: Path) {
+  val settingsDirs = listOf(
+    layout.dataDir
+      .resolve(".metadata")
+      .resolve(".plugins")
+      .resolve("org.eclipse.core.runtime")
+      .resolve(".settings"),
+    layout.dataDir
+      .resolve(".metadata")
+      .resolve(".plugins")
+      .resolve("org.eclipse.pde.core")
+      .resolve(".settings")
+  )
+  val targetHandle = targetDefinition.toUri().toString()
+  settingsDirs.forEach { settingsDir ->
+    Files.createDirectories(settingsDir)
+    val prefsFile = settingsDir.resolve("org.eclipse.pde.core.prefs")
+    Files.newBufferedWriter(prefsFile, StandardCharsets.UTF_8).use { writer ->
+      writer.write("eclipse.preferences.version=1")
+      writer.newLine()
+      writer.write("workspace_target_handle=$targetHandle")
+      writer.newLine()
+    }
+    logger.info("Wrote PDE target preferences to ${prefsFile.toAbsolutePath().normalize()}")
+  }
+}
+
+private fun writeBundlePoolTarget(outputRoot: Path, bundlePool: Path): Path? {
+  val pluginsDir = when {
+    Files.isDirectory(bundlePool.resolve("plugins")) -> bundlePool.resolve("plugins")
+    Files.isDirectory(bundlePool) -> bundlePool
+    else -> null
+  } ?: run {
+    logger.warning("Bundle pool path does not exist: ${bundlePool.toAbsolutePath().normalize()}")
+    return null
+  }
+  val targetFile = outputRoot.resolve("bundle-pool.target")
+  Files.createDirectories(targetFile.parent)
+  Files.newBufferedWriter(targetFile, StandardCharsets.UTF_8).use { writer ->
+    writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>")
+    writer.newLine()
+    writer.write("<?pde version=\"3.8\"?>")
+    writer.newLine()
+    writer.write("<target name=\"Bundle Pool Target\" sequenceNumber=\"1\">")
+    writer.newLine()
+    writer.write("  <locations>")
+    writer.newLine()
+    writer.write("    <location type=\"Directory\" includeAllPlatforms=\"false\" includeSource=\"true\" path=\"")
+    writer.write(pluginsDir.toAbsolutePath().normalize().toString())
+    writer.write("\"/>")
+    writer.newLine()
+    writer.write("  </locations>")
+    writer.newLine()
+    writer.write("</target>")
+    writer.newLine()
+  }
+  logger.info("Wrote bundle pool target to ${targetFile.toAbsolutePath().normalize()}")
+  return targetFile
+}
+
+private fun prepareBaselineWorkspace(outputRoot: Path, baselineTarget: Path): Pair<Path, Path> {
+  val baselineWorkspace = outputRoot.resolve("baseline-workspace")
+  Files.createDirectories(baselineWorkspace)
+  val targetCopy = baselineWorkspace.resolve(baselineTarget.fileName)
+  Files.copy(baselineTarget, targetCopy, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+  return baselineWorkspace to targetCopy
+}
+
+private fun cleanBaselineWorkspace(workspaceDir: Path) {
+  val pluginsDir = workspaceDir.resolve(".metadata").resolve(".plugins")
+  val resourceDir = pluginsDir.resolve("org.eclipse.core.resources")
+  val jdtDir = pluginsDir.resolve("org.eclipse.jdt.core")
+  if (Files.exists(resourceDir)) {
+    resourceDir.toFile().deleteRecursively()
+  }
+  if (Files.exists(jdtDir)) {
+    jdtDir.toFile().deleteRecursively()
+  }
+}
+
+private fun copyDirectory(source: Path, target: Path) {
+  if (Files.exists(target)) {
+    target.toFile().deleteRecursively()
+  }
+  Files.walk(source).use { stream ->
+    stream.forEach { path ->
+      val relative = source.relativize(path)
+      val destination = target.resolve(relative)
+      if (Files.isDirectory(path)) {
+        Files.createDirectories(destination)
+      } else {
+        destination.parent?.let { Files.createDirectories(it) }
+        Files.copy(path, destination)
+      }
+    }
+  }
+}
+
+private fun updateJdtPrefs(projectDir: Path, compliance: String) {
+  val prefs = projectDir.resolve(".settings").resolve("org.eclipse.jdt.core.prefs")
+  if (!Files.exists(prefs)) return
+  val updated = Files.readString(prefs, StandardCharsets.UTF_8)
+    .replace("org.eclipse.jdt.core.compiler.compliance=21", "org.eclipse.jdt.core.compiler.compliance=$compliance")
+    .replace("org.eclipse.jdt.core.compiler.source=21", "org.eclipse.jdt.core.compiler.source=$compliance")
+    .replace("org.eclipse.jdt.core.compiler.codegen.targetPlatform=21", "org.eclipse.jdt.core.compiler.codegen.targetPlatform=$compliance")
+  Files.writeString(prefs, updated, StandardCharsets.UTF_8)
+}
+
+private fun updateClasspathJre(projectDir: Path, compliance: String) {
+  val classpath = projectDir.resolve(".classpath")
+  if (!Files.exists(classpath)) return
+  val updated = Files.readString(classpath, StandardCharsets.UTF_8)
+    .replace("/JavaSE-21", "/JavaSE-$compliance")
+  Files.writeString(classpath, updated, StandardCharsets.UTF_8)
+}
+
+
+private fun runApiAnalyzer(
+  launcherExecutable: Path,
+  dataDir: String,
+  applicationId: String,
+  args: List<String>,
+  logFile: Path?
+): Int {
+  val command = mutableListOf(
+    launcherExecutable.toString(),
+    "-nosplash",
+    "-consoleLog",
+    "-data",
+    dataDir,
+    "-application",
+    applicationId
+  )
+  command.addAll(args)
+  val process = ProcessBuilder(command).apply {
+    redirectErrorStream(true)
+    if (logFile != null) {
+      logFile.parent?.let { Files.createDirectories(it) }
+      redirectOutput(logFile.toFile())
+    } else {
+      inheritIO()
+    }
+  }.start()
+  val exitCode = process.waitFor()
+  if (exitCode != 0) {
+    logger.severe("API analyzer exited with code $exitCode")
+  }
+  return exitCode
+}
+
+private fun resolveP2DirectorLauncher(
+  installPath: Path?,
+  installerPath: Path?,
+  targetDefinition: Path?
+): Path? {
+  val localP2Director = Paths.get("/home/ben/Desktop/ap-dev-setup/p2-director/p2-director")
+  if (Files.exists(localP2Director)) {
+    return localP2Director
+  }
+  val fallbackEclipse = Paths.get("/home/ben/eclipse/eclipse")
+  if (Files.exists(fallbackEclipse)) {
+    return fallbackEclipse
+  }
+  val candidates = mutableListOf<Path>()
+  if (installPath != null) {
+    candidates.add(installPath.resolve("eclipse"))
+    candidates.add(installPath.resolve("launcher"))
+    candidates.add(installPath.resolve("target").resolve("install").resolve("eclipse"))
+    candidates.add(installPath.resolve("target").resolve("install").resolve("launcher"))
+  }
+  val installerRoot = when {
+    installerPath == null -> null
+    Files.isDirectory(installerPath) -> installerPath
+    Files.isRegularFile(installerPath) -> installerPath.parent
+    else -> installerPath
+  }
+  if (installerRoot != null) {
+    candidates.add(installerRoot.resolve("eclipse"))
+    candidates.add(installerRoot.resolve("launcher"))
+    candidates.add(installerRoot.resolve("target").resolve("install").resolve("eclipse"))
+    candidates.add(installerRoot.resolve("target").resolve("install").resolve("launcher"))
+  }
+  candidates.firstOrNull { Files.exists(it) }?.let { return it }
+
+  val roots = buildList {
+    if (installPath != null) add(installPath)
+    if (installerRoot != null) {
+      add(installerRoot)
+      add(installerRoot.resolve("target"))
+    }
+    if (targetDefinition != null) {
+      targetDefinition.parent?.let { add(it) }
+    }
+  }
+  roots.forEach { root ->
+    if (Files.isDirectory(root)) {
+      Files.newDirectoryStream(root).use { stream ->
+        stream.filter { Files.isDirectory(it) && it.fileName.toString().startsWith("standalone-install-") }
+          .map { it.resolve("eclipse") }
+          .filter { Files.exists(it) }
+          .sortedBy { it.toAbsolutePath().normalize().toString() }
+          .lastOrNull()
+          ?.let { return it }
+      }
+    }
+  }
+  return null
 }
 
 private fun logPlanSummary(planResult: LaunchPlanner.PlanResult) {
@@ -658,10 +885,34 @@ internal fun mergeEnv(base: Map<String, String>, overrides: Map<String, String>)
   return base + overrides
 }
 
+
+private fun collectBundlePaths(targetIndex: TargetPlatformIndex, excludedBsns: Set<String> = emptySet()): List<Path> {
+  return targetIndex.bundlesByBsn()
+    .entries
+    .flatMap { (bsn, nav) ->
+      if (excludedBsns.contains(bsn)) emptyList() else nav.values
+    }
+    .filter { it.manifest.eclipseSourceBundle == null }
+    .map { it.location.toAbsolutePath().normalize() }
+    .distinct()
+    .sortedBy { it.toString() }
+}
+
+private fun writePathList(output: Path, entries: List<Path>) {
+  output.toAbsolutePath().normalize().parent?.let { Files.createDirectories(it) }
+  Files.newBufferedWriter(output, StandardCharsets.UTF_8).use { writer ->
+    entries.forEach { entry ->
+      writer.write(entry.toString())
+      writer.newLine()
+    }
+  }
+}
+
 private fun prepareLaunch(
   context: LaunchConfigContext,
   targetArgs: TargetLaunchArgs?,
-  extraProgramArgs: List<String> = emptyList()
+  extraProgramArgs: List<String> = emptyList(),
+  includeDevProperties: Boolean = true
 ): PreparedLaunch {
   val workspaceInputs = WorkspaceModuleResolver.resolve(context)
   val profilePath = resolveProfilePath(context)
@@ -740,7 +991,15 @@ private fun prepareLaunch(
   }
   writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig, extraProperties)
   val launcherJar = resolveLauncherJar(targetIndex)
-  val command = assembleCommand(context, layout, targetArgs, planResult, launcherJar, extraProgramArgs)
+  val command = assembleCommand(
+    context,
+    layout,
+    targetArgs,
+    planResult,
+    launcherJar,
+    extraProgramArgs,
+    includeDevProperties
+  )
   return PreparedLaunch(command, planResult, layout)
 }
 
@@ -750,7 +1009,8 @@ private fun assembleCommand(
   targetArgs: TargetLaunchArgs?,
   planResult: LaunchPlanner.PlanResult,
   launcherJar: Path,
-  extraProgramArgs: List<String> = emptyList()
+  extraProgramArgs: List<String> = emptyList(),
+  includeDevProperties: Boolean = true
 ): List<String> {
   val javaBin = System.getenv("JAVA_HOME")?.let { Path.of(it, "bin", "java").toString() } ?: "java"
   val configVmArgs = expandArgs(context.config.additionalVmArgs)
@@ -790,8 +1050,10 @@ private fun assembleCommand(
     add(layout.dataDir.toString())
     add("-configuration")
     add(layout.configDir.toUri().toString())
-    add("-dev")
-    add(layout.devPropertiesFile.toUri().toString())
+    if (includeDevProperties) {
+      add("-dev")
+      add(layout.devPropertiesFile.toUri().toString())
+    }
     add("-consoleLog")
     addAll(extraProgramArgs)
   }
@@ -1279,36 +1541,60 @@ private fun targetMain(args: Array<String>): Int {
     logger.severe("target.installer is required in ${issueContext.file}")
     return 2
   }
-  val installerDir = issueContext.baseDir.resolve(installerPath).normalize()
-  if (!Files.isDirectory(installerDir)) {
-    logger.severe("target.installer is not a directory: $installerDir")
+  val installerJar = issueContext.baseDir.resolve(installerPath).normalize()
+  if (Files.isDirectory(installerJar)) {
+    logger.severe("target.installer must point to the target-installer launcher jar, not a directory: $installerJar")
     return 2
   }
-  val installerConfig = discoverConfigFile(installerDir)
-  if (installerConfig == null) {
-    logger.severe("Missing launch config under $installerDir")
+  if (!Files.exists(installerJar)) {
+    logger.severe("target.installer does not exist: $installerJar")
     return 2
   }
-  val installerContext = LaunchConfigLoader.load(installerConfig, installerDir)
-  val preferredLaunch = launchOpt ?: installerContext.config.launches.firstOrNull { it.name == "install" }?.name
-  val selectedInstaller = selectLaunchConfig(installerContext, preferredLaunch)
-  if (selectedInstaller == null) return 2
-  val sanitizedInstaller = removeConfigArg(selectedInstaller)
+  if (!installerJar.toString().lowercase(Locale.ROOT).endsWith(".jar")) {
+    logger.severe("target.installer must be a launcher jar: $installerJar")
+    return 2
+  }
+  if (launchOpt != null) {
+    logger.warning("--launch is ignored when target.installer points to a launcher jar.")
+  }
   val targetDefinition = resolveTargetDefinition(issueContext)
   if (targetDefinition == null) {
     logger.severe("Missing target.definition (or a discoverable .target) in ${issueContext.file}")
     return 2
   }
   val installerArgs = buildTargetInstallerArgs(issueContext, targetDefinition)
-  val targetArgs = resolveTargetArgs(sanitizedInstaller)
   val logFile = logFileOpt?.let { Paths.get(it) }
-  executeLaunch(
-    context = sanitizedInstaller,
-    targetArgs = targetArgs,
-    showDebugLogs = debug,
-    logFile = logFile,
-    extraProgramArgs = installerArgs
-  )
+  val javaBin = System.getenv("JAVA_HOME")?.let { Path.of(it, "bin", "java").toString() } ?: "java"
+  val command = mutableListOf(
+    javaBin,
+    "-jar",
+    installerJar.toString(),
+    "--cache=persistent",
+    "--"
+  ).apply { addAll(installerArgs) }
+  logCommand(command)
+  val processBuilder = ProcessBuilder(command)
+  val outputLog = logFile?.toAbsolutePath()?.normalize()
+  if (outputLog != null) {
+    outputLog.parent?.let { Files.createDirectories(it) }
+    processBuilder.redirectErrorStream(true)
+    processBuilder.redirectOutput(outputLog.toFile())
+  } else {
+    processBuilder.redirectErrorStream(true)
+    processBuilder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+  }
+  if (issueContext.config.env.isNotEmpty()) {
+    val env = processBuilder.environment()
+    issueContext.config.env.forEach { (key, value) ->
+      env[key] = value
+    }
+  }
+  val exit = processBuilder
+    .directory(issueContext.baseDir.toFile())
+    .inheritIO()
+    .start()
+    .waitFor()
+  if (exit != 0) error("Target installer exited with code $exit")
   return 0
 }
 
@@ -1477,6 +1763,298 @@ private fun testMain(args: Array<String>): Int {
     logFile = logFile,
     debug = debug
   )
+}
+
+private fun apiAnalyzeMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
+  val parser = ArgParser("pde-launch api-analyze")
+  val configFileOpt by parser.option(
+    ArgType.String,
+    fullName = "config",
+    description = "Path to launch config YAML"
+  )
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Log level (trace, debug, info, warn, error)"
+  )
+  val logFileOpt by parser.option(
+    ArgType.String,
+    fullName = "log",
+    description = "Redirect launcher output to file"
+  )
+  val verboseOpt by parser.option(
+    ArgType.Boolean,
+    shortName = "v",
+    fullName = "verbose",
+    description = "Enable verbose logging"
+  ).default(false)
+  val debugOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "debug",
+    description = "Enable debug logging"
+  ).default(false)
+  val baselineRootOpt by parser.option(
+    ArgType.String,
+    fullName = "baseline-root",
+    description = "Baseline target root, profile path, or .target file (defaults to target.install, target.p2Path, or target profile)"
+  )
+  val dependencyListOpt by parser.option(
+    ArgType.String,
+    fullName = "dependency-list",
+    description = "Dependency list output path (defaults to api-analyzer/dependencies-list.txt)"
+  )
+  val baselineListOpt by parser.option(
+    ArgType.String,
+    fullName = "baseline-list",
+    description = "Baseline list output path (defaults to api-analyzer/baseline-list.txt)"
+  )
+  val jdtComplianceOpt by parser.option(
+    ArgType.String,
+    fullName = "jdt-compliance",
+    description = "Override JDT compliance (uses temp project copy)"
+  )
+  val applicationOpt by parser.option(
+    ArgType.String,
+    fullName = "application",
+    description = "API analyzer application id"
+  ).default(PDE_API_ANALYZER_APPLICATION)
+  val failOnErrorOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "fail-on-error",
+    description = "Fail when API errors are detected"
+  ).default(false)
+  val configPosOpt by parser.argument(
+    ArgType.String,
+    description = "Launch config YAML"
+  ).optional()
+
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verboseOpt, debugOpt), shouldUseColor())
+  val jdtCompliance = jdtComplianceOpt
+
+  val baselineRootValue = baselineRootOpt
+
+  val configFile = configFileOpt ?: configPosOpt?.takeIf { looksLikeYamlFile(it) }
+  val resolvedConfigFile = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (resolvedConfigFile == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory.")
+    return 2
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${resolvedConfigFile.toAbsolutePath().normalize()} and will use it.")
+  }
+
+  val baseContext = LaunchConfigLoader.load(resolvedConfigFile)
+  val outputRoot = baseContext.file.parent?.resolve("api-analyzer") ?: Paths.get("api-analyzer")
+  val applicationId = applicationOpt
+  val apiContext = baseContext.copy(
+    config = baseContext.config.copy(
+      application = applicationId,
+      product = null,
+      splash = null,
+      programArgs = emptyList()
+    )
+  )
+
+  val targetDefinition = resolveTargetDefinition(apiContext)
+  if (targetDefinition != null) {
+    if (!Files.exists(targetDefinition)) {
+      logger.severe("Target definition does not exist: ${targetDefinition.toAbsolutePath().normalize()}")
+      return 2
+    }
+    logger.info("Using target definition at ${targetDefinition.toAbsolutePath().normalize()}")
+  }
+  val profilePath = resolveProfilePath(apiContext)
+  if (profilePath == null) {
+    logger.severe("No target profile path resolved from config.")
+    return 2
+  }
+  if (!Files.exists(profilePath)) {
+    logger.severe("Target profile path does not exist: ${profilePath.toAbsolutePath().normalize()}")
+    return 2
+  }
+
+  val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
+  val runtimeApplicationId = if (applicationId == PDE_API_ANALYZER_APPLICATION &&
+    targetIndex.get("com.knime.enterprise.devops.eclipse") != null
+  ) {
+    KNIME_API_ANALYZER_APPLICATION
+  } else {
+    applicationId
+  }
+  val workspaceInputs = WorkspaceModuleResolver.resolve(apiContext, allowMissingClasses = true)
+  if (workspaceInputs.descriptors.isEmpty()) {
+    logger.severe("No workspace modules resolved from config; add workspaceModules or bundlesPerRepo.")
+    return 2
+  }
+  val workspaceDescriptors = workspaceInputs.descriptors
+  val descriptorsToAnalyze = workspaceDescriptors.filter { descriptor ->
+    val bsn = descriptor.manifest.bundleSymbolicName?.key.orEmpty()
+    !bsn.contains(".tests") && !bsn.endsWith(".test")
+  }
+  val skippedCount = workspaceDescriptors.size - descriptorsToAnalyze.size
+  if (skippedCount > 0) {
+    logger.info("Skipping $skippedCount test bundles for API analysis.")
+  }
+  logger.info("Analyzing ${descriptorsToAnalyze.size} workspace bundles.")
+
+  val baselineRootPath = when {
+    baselineRootValue != null -> Paths.get(baselineRootValue)
+    apiContext.config.target?.install != null -> {
+      logger.info("Using target.install from config as baseline root.")
+      Paths.get(apiContext.config.target!!.install!!)
+    }
+    apiContext.config.target?.p2Path != null -> {
+      logger.info("Using target.p2Path from config as baseline root.")
+      Paths.get(apiContext.config.target!!.p2Path!!)
+    }
+    else -> {
+      logger.info("Using target profile path as baseline root.")
+      profilePath
+    }
+  }
+  val baselineTargetDefinition = baselineRootPath.takeIf { it.toString().lowercase(Locale.ROOT).endsWith(".target") }
+  if (!Files.exists(baselineRootPath)) {
+    logger.severe("Baseline root path does not exist: ${baselineRootPath.toAbsolutePath().normalize()}")
+    return 2
+  }
+  val baselineIndex = TargetPlatformCache.buildWithCache(listOf(baselineRootPath))
+
+  val baselineWorkspace = baselineTargetDefinition?.let { prepareBaselineWorkspace(outputRoot, it) }
+  val dataDirOverride = when {
+    baseContext.config.dataDir != null -> baseContext.config.dataDir
+    baselineWorkspace != null -> baselineWorkspace.first.toString()
+    else -> outputRoot.resolve("workspace").toString()
+  }
+  if (baselineWorkspace != null) {
+    logger.info("Using baseline workspace for API analysis: ${baselineWorkspace.first.toAbsolutePath().normalize()}")
+  }
+  val installPath = apiContext.config.target?.install?.let { Paths.get(it) }
+  val installerPath = apiContext.config.target?.installer?.let { apiContext.baseDir.resolve(it).normalize() }
+  val launcherExecutable = resolveP2DirectorLauncher(installPath, installerPath, targetDefinition)
+  if (launcherExecutable == null) {
+    logger.severe("Missing p2 director launcher under target.install or target.installer.")
+    return 2
+  }
+  val dependencyListPath = when {
+    dependencyListOpt != null -> Paths.get(dependencyListOpt)
+    else -> outputRoot.resolve("dependencies-list.txt")
+  }
+  val dependencyListFallbackRoot = Paths.get("/home/ben/repos/knime-gateway")
+    .takeIf { Files.isDirectory(it) }
+  val baselineListPath = when {
+    baselineListOpt != null -> Paths.get(baselineListOpt)
+    baselineTargetDefinition != null -> null
+    else -> outputRoot.resolve("baseline-list.txt")
+  }
+
+  fun resolveProjectDependencyList(descriptor: WorkspaceBundleDescriptor): Path? {
+    val local = descriptor.path.resolve("target").resolve("dependencies-list.txt")
+    if (Files.exists(local)) return local
+    val fallbackRoot = dependencyListFallbackRoot ?: return null
+    val fallback = fallbackRoot.resolve(descriptor.path.fileName).resolve("target").resolve("dependencies-list.txt")
+    return fallback.takeIf { Files.exists(it) }
+  }
+
+  val perProjectDependencyLists = descriptorsToAnalyze
+    .mapNotNull { resolveProjectDependencyList(it) }
+  val needsGlobalDependencyList = dependencyListOpt != null ||
+    perProjectDependencyLists.size != descriptorsToAnalyze.size
+  if (dependencyListPath.toString().lowercase(Locale.ROOT).endsWith(".target")) {
+    logger.info("Dependency list: using target definition ${dependencyListPath.toAbsolutePath().normalize()}")
+  } else if (needsGlobalDependencyList) {
+    val dependencyPlan = buildCompilePlanForWarning(apiContext, targetIndex, workspaceInputs)
+    val dependencyBundles = dependencyPlan.selectedBundles
+    val dependencyEntries = dependencyBundles
+      .map { it.path.toAbsolutePath().normalize() }
+      .distinct()
+      .sortedBy { it.toString() }
+    val workspaceBundleCount = dependencyBundles.count { it.isWorkspace }
+    val targetBundleCount = dependencyBundles.size - workspaceBundleCount
+    logger.info("Dependency list entries: ${dependencyEntries.size} (workspace $workspaceBundleCount, target $targetBundleCount)")
+    writePathList(dependencyListPath, dependencyEntries)
+  }
+  if (baselineListPath != null) {
+    writePathList(baselineListPath, collectBundlePaths(baselineIndex))
+  }
+  if (!dependencyListPath.toString().lowercase(Locale.ROOT).endsWith(".target")) {
+    if (needsGlobalDependencyList) {
+      logger.info("Dependency list: ${dependencyListPath.toAbsolutePath().normalize()}")
+    } else {
+      logger.info("Dependency list: using per-project target/dependencies-list.txt")
+    }
+  }
+  if (baselineTargetDefinition != null) {
+    val baselineTargetPath = baselineWorkspace?.second ?: baselineTargetDefinition
+    logger.info("Baseline: using target definition ${baselineTargetPath.toAbsolutePath().normalize()}")
+  } else {
+    logger.info("Baseline list: ${baselineListPath!!.toAbsolutePath().normalize()}")
+  }
+
+  val tempProjectsRoot = outputRoot.resolve("analysis-projects")
+  descriptorsToAnalyze.forEach { descriptor ->
+    if (baselineWorkspace != null) {
+      cleanBaselineWorkspace(baselineWorkspace.first)
+    }
+    val projectArg = if (jdtCompliance != null) {
+      val projectName = descriptor.manifest.bundleSymbolicName?.key ?: descriptor.path.fileName.toString()
+      val tempProject = tempProjectsRoot.resolve(projectName)
+      copyDirectory(descriptor.path, tempProject)
+      updateJdtPrefs(tempProject, jdtCompliance)
+      updateClasspathJre(tempProject, jdtCompliance)
+      tempProject.toString()
+    } else {
+      descriptor.path.toString()
+    }
+    val label = descriptor.manifest.bundleSymbolicName?.key ?: projectArg
+    logger.info("Running API analysis for $label")
+    val extraProgramArgs = mutableListOf(
+      "-project",
+      projectArg,
+      "-baseline",
+      (baselineWorkspace?.second ?: baselineTargetDefinition ?: baselineListPath!!).toString()
+    )
+    val projectDependencyList = if (dependencyListOpt == null) {
+      resolveProjectDependencyList(descriptor)?.also { listPath ->
+        if (!descriptor.path.resolve("target").resolve("dependencies-list.txt").equals(listPath)) {
+          logger.info("Using dependency list from ${listPath.toAbsolutePath().normalize()}")
+        }
+      } ?: dependencyListPath
+    } else {
+      dependencyListPath
+    }
+    if (projectDependencyList != null) {
+      extraProgramArgs += "-dependencyList"
+      extraProgramArgs += projectDependencyList.toString()
+    }
+    if (failOnErrorOpt) {
+      extraProgramArgs += "-failOnError"
+    }
+    val logFile = logFileOpt?.let { base ->
+      val basePath = Paths.get(base)
+      val fileName = basePath.fileName.toString()
+      val dot = fileName.lastIndexOf('.')
+      val suffix = label.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+      val derived = if (dot > 0) {
+        fileName.substring(0, dot) + "-" + suffix + fileName.substring(dot)
+      } else {
+        fileName + "-" + suffix
+      }
+      basePath.parent?.resolve(derived) ?: Paths.get(derived)
+    }
+    val exitCode = runApiAnalyzer(
+      launcherExecutable = launcherExecutable,
+      dataDir = dataDirOverride,
+      applicationId = runtimeApplicationId,
+      args = extraProgramArgs,
+      logFile = logFile
+    )
+    if (exitCode != 0) {
+      return exitCode
+    }
+  }
+  return 0
 }
 
 internal fun compileMain(args: Array<String>): Int {

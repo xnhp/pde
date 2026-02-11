@@ -24,6 +24,16 @@ This repository contains:
 - Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`
   - Binary: `apps/pde-resolver-cli/build/install/pde-resolver-cli/bin/pde-resolver-cli`
 
+## Target installer
+
+The standalone target-installer lives under `tools/target-installer`.
+
+- Build the launcher jar: `./gradlew buildTargetInstallerLauncher`
+  - Requires Gradle properties in `~/.gradle/gradle.properties`:
+    - `eclipseSdk=/path/to/eclipse-sdk`
+    - `p2Repositories=https://download.eclipse.org/releases/2024-12`
+  - Output: `tools/target-installer/dist/target-installer-launcher.jar`
+
 ## Versioning
 
 All published artifacts in this repo use semantic versioning via the `pluginVersion` Gradle property.

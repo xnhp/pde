@@ -1,6 +1,6 @@
 # pde-resolver config.yaml
 
-This document describes the YAML configuration consumed by the `pde-resolver-cli` (`pde-launch`, `pde-compile`, `pde-test`).
+This document describes the YAML configuration consumed by the `pde-resolver-cli` (`pde-launch`, `pde-compile`, `pde-test`, `pde-launch api-analyze`).
 
 ## File discovery
 
@@ -34,7 +34,7 @@ Fields:
 - `p2-path`: optional path to the p2 area (default `./target/p2`).
 - `install`: optional install folder (default `./target/install`).
 - `bundle-pool`: optional bundle pool (default `./target/bundle-pool`).
-- `installer`: required for `pde-launch target` (path to the installer config directory).
+- `installer`: required for `pde-launch target` (path to the target-installer launcher JAR).
 
 ### product
 Optional product id for launching (e.g. `org.knime.product.KNIME_PRODUCT`).
@@ -180,3 +180,33 @@ Keys map to PDE/JUnit options:
 - If you want local sources and dev-classpath overrides, prefer the object form in `bundlesPerRepo`.
 - `classes` paths are relative to the bundle directory.
 - When in doubt, use absolute paths for `repo`, `path`, and `target.*` paths.
+
+## API analysis (pde-launch api-analyze)
+
+The API analyzer runs once per workspace bundle resolved from the config and compares each bundle against the baseline.
+
+Requirements:
+- `workspaceModules` or `bundlesPerRepo` must resolve at least one workspace bundle.
+- `target.definition` should point at the target definition used to build the dependency list.
+- `--baseline-root` is optional; if omitted, the CLI falls back to `target.install`, then `target.p2Path`, then the resolved target profile path.
+- `--baseline-root` can point to a `.target` file (for API baselines) and will be passed directly to the analyzer.
+
+Outputs:
+- `api-analyzer/dependencies-list.txt` (from the target platform, excluding workspace bundles).
+- `api-analyzer/baseline-list.txt` (from `--baseline-root`).
+
+Example:
+
+```yaml
+target:
+  definition: /abs/path/to/knime.target
+
+bundlesPerRepo:
+  - repo: /abs/path/to/knime
+    bundles:
+      - org.knime.gateway.impl
+```
+
+```bash
+pde-launch api-analyze --config /abs/path/to/config.yaml --baseline-root /abs/path/to/API-Baseline.target
+```

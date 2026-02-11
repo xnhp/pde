@@ -4,6 +4,8 @@
 .qodana
 .kotlin
 build
+tools/target-installer/build/
+tools/target-installer/dist/
 # Allow resolver tests (override broad 'test/' ignore)
 !core/pde-resolver/src/test/**
 !apps/pde-resolver-cli/src/test/**

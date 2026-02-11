@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.0"?>
+<plugin>
+
+    <extension
+            id="target_installer_application_id"
+            point="org.eclipse.core.runtime.applications">
+        <application>
+            <run
+                    class="org.knime.targetinstaller.osgi.Application">
+            </run>
+        </application>
+    </extension>
+</plugin>
