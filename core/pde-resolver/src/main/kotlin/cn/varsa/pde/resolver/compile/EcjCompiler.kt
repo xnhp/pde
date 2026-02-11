@@ -59,13 +59,14 @@ class EcjCompiler(
 
     val sourceLevel = compilerSourceLevel(spec) ?: "17"
     val targetLevel = compilerTargetLevel(spec, sourceLevel)
+    var classfileWarning: String? = null
     val classfileMajor = ClassfileVersionChecker.classMajorForLevel(targetLevel)
     if (classfileMajor != null) {
       val targetVersion = ClassfileVersionChecker.javaVersionForLevel(targetLevel)
       val mismatches = ClassfileVersionChecker.findMismatches(classpath, classfileMajor, targetVersion)
       if (mismatches.isNotEmpty()) {
-        val msg = buildString {
-          append("Classpath contains class files requiring a newer Java version than the bundle target.\n")
+        classfileWarning = buildString {
+          append("WARNING: Classpath contains class files requiring a newer Java version than the bundle target.\n")
           append("Target: Java ").append(targetLevel)
           spec.executionEnvironment?.let { append(" (BREE ").append(it).append(")") }
           append("; max classfile version ").append(classfileMajor).append(".\n")
@@ -85,13 +86,6 @@ class EcjCompiler(
             .append(targetLevel)
             .append(" or update the bundle BREE/compile prefs to match the target.")
         }
-        return BundleCompileResult(
-          spec.bsn,
-          success = false,
-          output = msg.trimEnd(),
-          durationMillis = 0,
-          skipped = false
-        )
       }
     }
     args += listOf("-source", sourceLevel, "-target", targetLevel)
@@ -106,10 +100,18 @@ class EcjCompiler(
     val compiler = Main(writer, writer, false, null, null)
     val success = compiler.compile(args.toTypedArray())
 
+    val output = buildString {
+      classfileWarning?.let {
+        append(it.trimEnd())
+        append("\n")
+      }
+      append(baos.toString())
+    }
+
     return BundleCompileResult(
       spec.bsn,
       success = success,
-      output = baos.toString(),
+      output = output,
       durationMillis = 0,
       skipped = false
     )

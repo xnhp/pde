@@ -1613,6 +1613,11 @@ internal fun compileMain(args: Array<String>): Int {
       } else if (spec?.isWorkspace == true && result.success && result.skipped) {
         logger.info("skipped ${result.bsn}: ${result.output}")
       }
+      val classfileWarning = extractClassfileWarning(result.output)
+      if (classfileWarning != null) {
+        logger.warning("${result.bsn}:")
+        logger.warning(classfileWarning)
+      }
     }
     val allOk = results.all { it.success }
     val exitCode = if (allOk) 0 else 1
@@ -1744,6 +1749,11 @@ internal fun compileMain(args: Array<String>): Int {
     } else if (spec?.isWorkspace == true && result.success && result.skipped) {
       logger.info("skipped ${result.bsn}: ${result.output}")
     }
+    val classfileWarning = extractClassfileWarning(result.output)
+    if (classfileWarning != null) {
+      logger.warning("${result.bsn}:")
+      logger.warning(classfileWarning)
+    }
   }
   val allOk = results.all { it.success }
   val exitCode = if (allOk) 0 else 1
@@ -1846,6 +1856,30 @@ private fun extractErrorBlocks(output: String): String? {
     blocks += sb.toString().trimEnd()
   }
   return blocks.joinToString("\n")
+}
+
+private fun extractClassfileWarning(output: String): String? {
+  val marker = "WARNING: Classpath contains class files requiring a newer Java version"
+  val lines = output.lineSequence().toList()
+  val startIndex = lines.indexOfFirst { it.startsWith(marker) }
+  if (startIndex < 0) return null
+  val warningLines = mutableListOf<String>()
+  for (i in startIndex until lines.size) {
+    val line = lines[i]
+    if (i != startIndex && line.isBlank()) break
+    if (
+      i != startIndex &&
+      !line.startsWith("Target: ") &&
+      !line.startsWith("- ") &&
+      !line.startsWith("... and ") &&
+      !line.startsWith("Use a target platform ") &&
+      !line.startsWith("WARNING:")
+    ) {
+      break
+    }
+    warningLines += line
+  }
+  return warningLines.joinToString("\n").trimEnd().ifEmpty { null }
 }
 
 fun main(args: Array<String>) {
