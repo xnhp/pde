@@ -5,7 +5,7 @@ import com.intellij.icons.*
 import com.intellij.openapi.module.*
 import javax.swing.*
 
-class PDEFacetType : FacetType<PDEFacet, PDEFacetConfiguration>(id, id.toString(), "Eclipse PDE Partial") {
+class PDEFacetType : FacetType<PDEFacet, PDEFacetConfiguration>(id, id.toString(), "pde-tools") {
   companion object {
     val id = FacetTypeId<PDEFacet>("cn.varsa.idea.pde.partial.plugin")
     fun getInstance(): PDEFacetType = findInstance(PDEFacetType::class.java)

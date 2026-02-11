@@ -1,15 +1,15 @@
-# Eclipse PDE Partial IDEA Plugin
+# pde-tools
 
 [![Apache License](https://img.shields.io/badge/license-Apache%20License%202.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Version](https://img.shields.io/jetbrains/plugin/v/16761-eclipse-pde-partial.svg)](https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)
 [![View at JetBrains](https://img.shields.io/jetbrains/plugin/d/16761-eclipse-pde-partial.svg)](https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)
 
 <!-- Plugin description -->
-Eclipse PDE partial foundation, and support for eclipse RCP(OSGI) platform and its application.
+pde-tools foundation, and support for eclipse RCP(OSGI) platform and its application.
 
 - Open **Preferences... | Languages & Frameworks | Eclipse Target**.
 - Add the OSGI bundles that you want to work with (Eclipse root, Teamcenter root, plugins directory, p2, etc.).
-- Add the Eclipse PDE Partial facet (or by add framework) to any module that should be an Eclipse Plugins.
+- Add the pde-tools facet (or by add framework) to any module that should be an Eclipse Plugins.
 
 To run eclipse application on local machine, create a new Eclipse Application Partial run configuration.
 
@@ -25,7 +25,7 @@ directly from your IDE.
 
 ## Issues or questions?
 
-Please report any [issues](https://github.com/JaneWardSandy/eclipse-pde-partial-idea/issues)
+Please report any [issues](https://github.com/JaneWardSandy/pde-tools/issues)
 
 ## Features
 
@@ -69,7 +69,7 @@ reports), and exits with a non-zero code whenever the remote test suite reports 
 
 ## Comparison
 
-| Feature                | [PDE Partial]((https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)) | [Osmorc](https://plugins.jetbrains.com/plugin/1816-osgi) |
+| Feature                | [pde-tools]((https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)) | [Osmorc](https://plugins.jetbrains.com/plugin/1816-osgi) |
 |------------------------|---------------------------------------------------------------------------------|----------------------------------------------------------|
 | Framework support      | equinox Only                                                                    | equinox, felix, concierge, knopflerfish                  |
 | Project import support | x                                                                               | by bnd                                                   |
@@ -123,8 +123,8 @@ reports), and exits with a non-zero code whenever the remote test suite reports 
 ## Thanks
 
 Development powered
-by [JetBrains.](https://www.jetbrains.com/community/opensource/?utm_campaign=opensource&utm_content=approved&utm_medium=email&utm_source=newsletter&utm_term=jblogo#support&from=eclipse-pde-partial-idea)
+by [JetBrains.](https://www.jetbrains.com/community/opensource/?utm_campaign=opensource&utm_content=approved&utm_medium=email&utm_source=newsletter&utm_term=jblogo#support&from=pde-tools)
 
-[![JetBrains Logo (Main) logo](https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg)](https://www.jetbrains.com/?from=eclipse-pde-partial-idea)
+[![JetBrains Logo (Main) logo](https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.svg)](https://www.jetbrains.com/?from=pde-tools)
 
 Whichever technologies you use, there's a JetBrains tool to match.

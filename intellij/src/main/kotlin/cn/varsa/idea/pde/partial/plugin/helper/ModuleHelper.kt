@@ -128,7 +128,7 @@ object ModuleHelper {
       }
     }.also { rootElement.addOrFindChildren(it) }
 
-    logger.info("Eclipse PDE Partial Bundle artifact changed: $artifactName, binaryOutput: $binaryOutput")
+    logger.info("pde-tools bundle artifact changed: $artifactName, binaryOutput: $binaryOutput")
     return true
   }
 

@@ -1,8 +1,8 @@
-# Eclipse PDE tooling workspace
+# pde-tools
 
 This repository contains:
 
-- `intellij/` – the IntelliJ IDEA plugin (Eclipse PDE Partial)
+- `intellij/` – the IntelliJ IDEA plugin (pde-tools)
 - `core/` – reusable libraries (target platform indexing, launch planning, remote test protocol)
 - `apps/` – headless tools built on top of `core/` (`pde-launch`, `pde-resolver-cli`, `pde-remote-runner`)
 

@@ -1308,3 +1308,4 @@ gradle-app.setting
 
 # End of https://www.toptal.com/developers/gitignore/api/cmake,clion,macos,windows,linux,maven,gradle,eclipse,java,svn,git,kotlin,vuejs,intellij,jetbrains,webstorm,c++,c,visualstudio,visualstudiocode,csharp,xcode,cocoapods,appcode,vue,objective-c,swiftpackagemanager
 .aider*
+.todos/

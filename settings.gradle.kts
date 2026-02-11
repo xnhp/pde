@@ -1,4 +1,4 @@
-rootProject.name = "eclipse-pde-partial-idea"
+rootProject.name = "pde-tools"
 
 plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"

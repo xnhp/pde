@@ -9,7 +9,7 @@ import com.intellij.openapi.roots.ui.configuration.*
 import javax.swing.*
 
 class TcRacFrameworkSupportProvider :
-  FrameworkSupportProvider("facet:cn.varsa.idea.pde.partial.plugin", "Eclipse PDE Partial") {
+  FrameworkSupportProvider("facet:cn.varsa.idea.pde.partial.plugin", "pde-tools") {
   private val facetType = PDEFacetType.getInstance()
 
   override fun getUnderlyingFrameworkId(): String? {
