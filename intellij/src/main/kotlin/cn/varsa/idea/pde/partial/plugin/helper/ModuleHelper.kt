@@ -128,7 +128,7 @@ object ModuleHelper {
       }
     }.also { rootElement.addOrFindChildren(it) }
 
-    logger.info("pde-tools bundle artifact changed: $artifactName, binaryOutput: $binaryOutput")
+    logger.info("PDE Tools bundle artifact changed: $artifactName, binaryOutput: $binaryOutput")
     return true
   }
 

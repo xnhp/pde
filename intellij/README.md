@@ -1,15 +1,15 @@
-# pde-tools
+# PDE Tools
 
 [![Apache License](https://img.shields.io/badge/license-Apache%20License%202.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Version](https://img.shields.io/jetbrains/plugin/v/16761-eclipse-pde-partial.svg)](https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)
 [![View at JetBrains](https://img.shields.io/jetbrains/plugin/d/16761-eclipse-pde-partial.svg)](https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)
 
 <!-- Plugin description -->
-pde-tools foundation, and support for eclipse RCP(OSGI) platform and its application.
+PDE Tools foundation, and support for eclipse RCP(OSGI) platform and its application.
 
 - Open **Preferences... | Languages & Frameworks | Eclipse Target**.
 - Add the OSGI bundles that you want to work with (Eclipse root, Teamcenter root, plugins directory, p2, etc.).
-- Add the pde-tools facet (or by add framework) to any module that should be an Eclipse Plugins.
+- Add the PDE Tools facet (or by add framework) to any module that should be an Eclipse Plugins.
 
 To run eclipse application on local machine, create a new Eclipse Application Partial run configuration.
 
@@ -69,7 +69,7 @@ reports), and exits with a non-zero code whenever the remote test suite reports 
 
 ## Comparison
 
-| Feature                | [pde-tools]((https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)) | [Osmorc](https://plugins.jetbrains.com/plugin/1816-osgi) |
+| Feature                | [PDE Tools]((https://plugins.jetbrains.com/plugin/16761-eclipse-pde-partial)) | [Osmorc](https://plugins.jetbrains.com/plugin/1816-osgi) |
 |------------------------|---------------------------------------------------------------------------------|----------------------------------------------------------|
 | Framework support      | equinox Only                                                                    | equinox, felix, concierge, knopflerfish                  |
 | Project import support | x                                                                               | by bnd                                                   |

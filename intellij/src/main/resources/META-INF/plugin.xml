@@ -1,6 +1,6 @@
 <idea-plugin>
-  <id>cn.varsa.idea.eclipse.pde.partial</id>
-  <name>pde-tools</name>
+  <id>cn.varsa.idea.pde.tools</id>
+  <name>PDE Tools</name>
   <category>JVM Frameworks</category>
   <vendor email="lyj19940214@live.com" url="https://github.com/JaneWardSandy">JaneWardSandy</vendor>
 
@@ -71,7 +71,7 @@
         dynamic="true"/>
   </extensionPoints>
 
-  <extensions defaultExtensionNs="cn.varsa.idea.eclipse.pde.partial">
+  <extensions defaultExtensionNs="cn.varsa.idea.pde.tools">
     <!-- Removed PdeProjectLibraryResolver: libraries are created lazily per module -->
 
     <manifestLibraryResolver

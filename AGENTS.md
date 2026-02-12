@@ -9,7 +9,7 @@ resolving Eclipse target platforms, planning launches, and running remote tests.
 
 ## Architecture and main contents
 
-- `intellij/`: IntelliJ IDEA plugin implementation (pde-tools).
+- `intellij/`: IntelliJ IDEA plugin implementation (PDE Tools).
 - `core/`: shared libraries for target platform indexing, launch planning, and the remote test protocol.
 - `apps/`: headless CLI tools built on `core/`:
   - `pde-launch`: launch planning/runtime assembly for PDE-style runs.

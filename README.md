@@ -1,8 +1,8 @@
-# pde-tools
+# PDE Tools
 
 This repository contains:
 
-- `intellij/` – the IntelliJ IDEA plugin (pde-tools)
+- `intellij/` – the IntelliJ IDEA plugin (PDE Tools)
 - `core/` – reusable libraries (target platform indexing, launch planning, remote test protocol)
 - `apps/` – headless tools built on top of `core/` (`pde-launch`, `pde-resolver-cli`, `pde-remote-runner`)
 
