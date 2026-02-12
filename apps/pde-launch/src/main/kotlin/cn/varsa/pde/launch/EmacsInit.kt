@@ -376,7 +376,15 @@ object EmacsInit {
     val dirLocals = projectDir.resolve(".dir-locals.el")
     val content = """
       ((nil . ((projectile-follow-symlinks . t)
-               (projectile-indexing-method . alien))))
+               (projectile-indexing-method . alien)
+               (eval . (setq-local projectile-generic-command
+                                   (cond
+                                    ((executable-find "fd")
+                                     "fd --type f --color=never --hidden --follow --exclude .git --exclude bin --exclude target --exclude .gradle --exclude .idea --exclude node_modules")
+                                    ((executable-find "fdfind")
+                                     "fdfind --type f --color=never --hidden --follow --exclude .git --exclude bin --exclude target --exclude .gradle --exclude .idea --exclude node_modules")
+                                    (t
+                                     "find . -type f -not -path '*/.git/*' -not -path '*/bin/*' -not -path '*/target/*' -not -path '*/.gradle/*' -not -path '*/.idea/*' -not -path '*/node_modules/*' -print")))))))
     """.trimIndent() + "\n"
     Files.write(dirLocals, content.toByteArray(Charsets.UTF_8))
   }
