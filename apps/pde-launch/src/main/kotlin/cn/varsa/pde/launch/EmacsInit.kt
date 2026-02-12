@@ -377,6 +377,7 @@ object EmacsInit {
     val content = """
       ((nil . ((projectile-follow-symlinks . t)
                (projectile-indexing-method . alien)
+               (projectile-completion-system . default)
                (eval . (setq-local projectile-generic-command
                                    (cond
                                     ((executable-find "fd")
