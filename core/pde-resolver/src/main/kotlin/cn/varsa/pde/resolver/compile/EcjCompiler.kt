@@ -7,6 +7,7 @@ import java.nio.file.Files
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import java.nio.file.Path
 import java.util.jar.JarFile
+import java.util.logging.Logger
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 
@@ -14,15 +15,26 @@ class EcjCompiler(
   private val failOnProcessors: Boolean = true
 ) : CompilerPort {
 
+  private val logger = Logger.getLogger(EcjCompiler::class.java.name)
+
   override fun compile(spec: CompileSpec): BundleCompileResult {
     val bundleRoot = Path.of(spec.bundlePath)
     val outDir = spec.outputDirectory?.let { Path.of(it) }
       ?: bundleRoot.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
 
-    val sources = spec.sourceRoots
+    val sourceRoots = spec.sourceRoots
       .map { Path.of(it) }
       .filter { it.exists() && it.isDirectory() }
+    val allSources = sourceRoots
       .flatMap { root -> Files.walk(root).filter { p -> p.toString().endsWith(".java") }.toList() }
+    val (lockFiles, sources) = allSources.partition { path ->
+      path.fileName?.toString()?.startsWith(".#") == true
+    }
+    if (lockFiles.isNotEmpty()) {
+      val preview = lockFiles.take(3).joinToString(", ") { it.toString() }
+      val suffix = if (lockFiles.size > 3) " ... and ${lockFiles.size - 3} more" else ""
+      logger.info("Ignoring ${lockFiles.size} editor lock file(s) from compilation: $preview$suffix")
+    }
 
     if (sources.isEmpty()) {
       return BundleCompileResult(
