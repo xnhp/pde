@@ -5,9 +5,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
 import java.nio.file.Files
-import java.util.jar.Attributes
-import java.util.jar.JarOutputStream
-import java.util.jar.Manifest
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.assertTrue
@@ -16,12 +13,13 @@ class CompileResultsJsonTest {
 
   @Test
   fun `writes results json when executing`() {
-    val tpDir = Files.createTempDirectory("tp")
+    val baseDir = Files.createTempDirectory("cfg")
     val workspace = Files.createTempDirectory("ws")
-    createFramework(tpDir)
+    createProfileWithFramework(baseDir)
     val srcDir = createWorkspaceBundle(workspace)
     // create minimal java source
     srcDir.resolve("Foo.java").writeText("public class Foo {}")
+    val configFile = writeConfigFile(baseDir, workspace)
 
     val resultsFile = Files.createTempFile("results", ".json").toFile()
 
@@ -29,11 +27,10 @@ class CompileResultsJsonTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(
+      compileMain(
         arrayOf(
           "--execute",
-          "--target-root", tpDir.toString(),
-          "--workspace", workspace.toString(),
+          "--config", configFile.toString(),
           "--results-json", resultsFile.absolutePath
         )
       )
@@ -45,17 +42,6 @@ class CompileResultsJsonTest {
     val content = resultsFile.readText()
     assertTrue(content.contains("\"bsn\""))
     assertTrue(content.contains("\"success\""))
-  }
-
-  private fun createFramework(tpDir: java.nio.file.Path) {
-    val plugins = tpDir.resolve("plugins").createDirectories()
-    val mf = Manifest().apply {
-      mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
-      mainAttributes.putValue("Bundle-ManifestVersion", "2")
-      mainAttributes.putValue("Bundle-SymbolicName", "org.eclipse.osgi")
-      mainAttributes.putValue("Bundle-Version", "1.0.0")
-    }
-    JarOutputStream(Files.newOutputStream(plugins.resolve("org.eclipse.osgi_1.0.0.jar")), mf).use { /* empty */ }
   }
 
   private fun createWorkspaceBundle(dir: java.nio.file.Path): java.nio.file.Path {

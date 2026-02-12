@@ -9,38 +9,40 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.assertTrue
 
-class CompileMainDryRunTest {
+class CompileMainConfigDiscoveryTest {
 
   @Test
-  fun `compile command resolves workspace before target`() {
-    val baseDir = Files.createTempDirectory("cfg")
+  fun `compile command discovers config yaml in working directory`() {
+    val baseDir = java.nio.file.Paths.get("").toAbsolutePath().normalize()
     val workspace = Files.createTempDirectory("ws")
-    createProfileWithFramework(baseDir)
+    val p2Root = Files.createTempDirectory("p2")
+    createProfileWithFramework(baseDir, p2Root = p2Root)
     createWorkspaceBundle(workspace)
-    val configFile = writeConfigFile(baseDir, workspace)
+    val configFile = writeConfigFile(
+      baseDir,
+      workspace,
+      "config.yaml",
+      p2Path = p2Root.toAbsolutePath().toString()
+    )
 
     val out = ByteArrayOutputStream()
-    val err = ByteArrayOutputStream()
     val savedOut = System.out
+    val err = ByteArrayOutputStream()
     val savedErr = System.err
     System.setOut(PrintStream(out))
     System.setErr(PrintStream(err))
     try {
-      compileMain(
-        arrayOf(
-          "--config", configFile.toString(),
-          "--json"
-        )
-      )
+      compileMain(arrayOf("--json"))
     } finally {
       System.setOut(savedOut)
       System.setErr(savedErr)
+      Files.deleteIfExists(configFile)
     }
 
     val output = out.toString()
+    val errorOutput = err.toString()
+    assertTrue(errorOutput.contains("Discovered launch config"))
     assertTrue(output.contains("\"bsn\" : \"org.example.test\""))
-    assertTrue(output.contains("\"origin\" : \"workspace\""))
-    assertTrue(output.contains("\"sourceRoots\""))
   }
 
   private fun createWorkspaceBundle(dir: Path) {

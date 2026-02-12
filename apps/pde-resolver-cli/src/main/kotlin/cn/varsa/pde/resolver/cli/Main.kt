@@ -152,8 +152,6 @@ internal val testOptionsRequiringValue = setOf(
 )
 internal val compileOptionsRequiringValue = setOf(
   "--config",
-  "--target-root",
-  "-t",
   "--workspace",
   "-w",
   "--framework",
