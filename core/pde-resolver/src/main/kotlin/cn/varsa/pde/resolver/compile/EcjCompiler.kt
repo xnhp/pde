@@ -70,7 +70,7 @@ class EcjCompiler(
           append("Target: Java ").append(targetLevel)
           spec.executionEnvironment?.let { append(" (BREE ").append(it).append(")") }
           append("; max classfile version ").append(classfileMajor).append(".\n")
-          mismatches.take(10).forEach { mismatch ->
+          mismatches.take(2).forEach { mismatch ->
             append("- ")
               .append(mismatch.classpathEntry)
               .append(": ")
@@ -79,8 +79,8 @@ class EcjCompiler(
               .append(mismatch.majorVersion)
               .append(")\n")
           }
-          if (mismatches.size > 10) {
-            append("... and ").append(mismatches.size - 10).append(" more\n")
+          if (mismatches.size > 2) {
+            append("... and ").append(mismatches.size - 2).append(" more\n")
           }
           append("Use a target platform built for Java ")
             .append(targetLevel)
