@@ -1,0 +1,451 @@
+package cn.varsa.pde.launch
+
+import cn.varsa.pde.resolver.algo.ResolveOptions
+import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
+import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
+import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
+import cn.varsa.pde.resolver.compile.CompileService
+import cn.varsa.pde.resolver.launch.LaunchEnvironment
+import cn.varsa.pde.resolver.launch.LaunchPlanner
+import cn.varsa.pde.resolver.launch.LauncherOptions
+import cn.varsa.pde.resolver.workspace.WorkspaceBundleDescriptor
+import cn.varsa.pde.resolver.index.TargetPlatformCache
+import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import kotlinx.cli.ArgParser
+import kotlinx.cli.ArgType
+import kotlinx.cli.default
+import kotlinx.cli.multiple
+import kotlinx.cli.optional
+import org.w3c.dom.Document
+import org.w3c.dom.Element
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.util.logging.Level
+import java.util.logging.Logger
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
+
+object EmacsInit {
+  private val logger = Logger.getLogger(EmacsInit::class.java.name)
+
+  fun main(args: Array<String>): Int {
+    val parser = ArgParser("pde-launch emacs-init")
+    val issueDirOpt by parser.option(
+      ArgType.String,
+      fullName = "issue-dir",
+      description = "Issue directory containing config.yaml and repos"
+    )
+    val configOpt by parser.option(
+      ArgType.String,
+      fullName = "config",
+      description = "YAML launch configuration path"
+    )
+    val sourcesRoots by parser.option(
+      ArgType.String,
+      fullName = "sources-root",
+      description = "Local source checkout root (repeatable)"
+    ).multiple()
+    val sourceZipDirOpt by parser.option(
+      ArgType.String,
+      fullName = "source-zip-dir",
+      description = "Output directory for generated source zips"
+    )
+    val framework by parser.option(
+      ArgType.String,
+      fullName = "framework",
+      description = "Framework BSN"
+    ).default("org.eclipse.osgi")
+    val configPos by parser.argument(
+      ArgType.String,
+      description = "YAML launch configuration (positional)"
+    ).optional()
+    parser.parse(args)
+
+    logger.level = Level.INFO
+
+    val issueDir = issueDirOpt?.let { Paths.get(it) } ?: Paths.get("").toAbsolutePath()
+    val configPath = resolveConfigPath(issueDir, configOpt, configPos)
+    if (configPath == null) {
+      logger.severe("No launch config found (config.yaml/launch.yaml). Use --config or --issue-dir.")
+      return 1
+    }
+
+    val context = LaunchConfigLoader.load(configPath, issueDir)
+    val profilePath = resolveProfilePath(context)
+    if (profilePath == null || !Files.exists(profilePath)) {
+      logger.severe("Target profile registry missing; run pde-launch target first.")
+      return 1
+    }
+
+    val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
+    val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
+    val workspaceEntries = workspaceInputs.descriptors
+    if (workspaceEntries.isEmpty()) {
+      logger.severe("No workspace modules found in config.")
+      return 1
+    }
+
+    val env = LaunchEnvironment(
+      targetIndex = targetIndex,
+      workspaceEntries = workspaceEntries,
+      resolverOptions = ResolveOptions(
+        whitelistPrefixes = emptySet(),
+        preferWorkspace = true,
+        includeHostsForFragments = true
+      ),
+      autoStartBundles = emptyMap(),
+      startupLevels = emptyMap(),
+      devProperties = emptyMap()
+    )
+    val options = LauncherOptions(frameworkBSN = framework, autoStartDefault = false)
+    val planResult = LaunchPlanner.build(env, options)
+    val specs = CompileService.buildSpecs(planResult, workspaceEntries).specs
+
+    val workspaceRoot = issueDir.toAbsolutePath().normalize()
+    val sourceZipDir = sourceZipDirOpt?.let { resolvePath(issueDir, it) }
+      ?: workspaceRoot.resolve(".jdtls-sources")
+
+    val sourceZips = buildSourceZips(sourcesRoots, sourceZipDir)
+
+    val bundlePool = resolveBundlePool(context)
+    val pluginPool = bundlePool?.resolve("plugins")
+
+    val specsByPath = specs.filter { it.isWorkspace }
+      .associateBy { Paths.get(it.bundlePath).toAbsolutePath().normalize() }
+    val workspaceProjects = workspaceEntries.map { it.path.fileName.toString() }.sorted()
+
+    workspaceEntries.forEach { descriptor ->
+      val moduleDir = descriptor.path.toAbsolutePath().normalize()
+      val classpathFile = moduleDir.resolve(".classpath")
+      if (!Files.exists(classpathFile)) {
+        logger.warning("Skipping ${moduleDir.fileName}: missing .classpath")
+        return@forEach
+      }
+      val spec = specsByPath[moduleDir]
+      if (spec == null) {
+        logger.warning("Skipping ${moduleDir.fileName}: missing compile spec")
+        return@forEach
+      }
+      updateClasspath(
+        classpathFile = classpathFile,
+        moduleDir = moduleDir,
+        workspaceRoot = workspaceRoot,
+        workspaceProjects = workspaceProjects,
+        specClasspath = spec.classpath,
+        pluginPool = pluginPool,
+        localSourceZips = sourceZips
+      )
+      ensureOutputDirectory(classpathFile, moduleDir)
+    }
+
+    logger.info("Emacs/JDT LS setup complete for ${workspaceEntries.size} workspace bundles.")
+    return 0
+  }
+
+  private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
+    val candidate = configOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
+    if (candidate != null) {
+      return resolvePath(baseDir, candidate)
+    }
+    return discoverConfigFile(baseDir)
+  }
+
+  private fun resolvePath(baseDir: Path, raw: String): Path {
+    val path = Paths.get(raw)
+    return if (path.isAbsolute) path else baseDir.resolve(path).normalize()
+  }
+
+  private fun looksLikeYamlFile(value: String): Boolean =
+    value.endsWith(".yaml", ignoreCase = true) || value.endsWith(".yml", ignoreCase = true)
+
+  private fun discoverConfigFile(baseDir: Path): Path? {
+    val candidates = listOf(
+      "config.yaml",
+      "config.yml",
+      "launch.yaml",
+      "launch.yml",
+      "pde-launch.yaml",
+      "pde-launch.yml"
+    )
+    return candidates
+      .map { baseDir.resolve(it) }
+      .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
+  }
+
+  private fun resolveProfilePath(context: LaunchConfigContext): Path? {
+    val baseDir = context.baseDir
+    val targetConfig = context.config.target
+    val legacyProfile = context.config.profilePath?.takeUnless { it.isBlank() }
+      ?.let { baseDir.resolve(it).normalize() }
+    if (targetConfig == null) return legacyProfile
+    val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
+    val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
+    val registryDir = baseDir.resolve(p2Path)
+      .resolve("org.eclipse.equinox.p2.engine/profileRegistry")
+      .normalize()
+    val preferred = registryDir.resolve("$profileId.Profile").normalize()
+    if (Files.exists(preferred)) return preferred
+    val lowercase = registryDir.resolve("$profileId.profile").normalize()
+    return if (Files.exists(lowercase)) lowercase else preferred
+  }
+
+  private fun resolveBundlePool(context: LaunchConfigContext): Path? {
+    val baseDir = context.baseDir
+    val targetConfig = context.config.target ?: return null
+    val raw = targetConfig.bundlePool?.takeUnless { it.isBlank() } ?: return null
+    return resolvePath(baseDir, raw)
+  }
+
+  private fun updateClasspath(
+    classpathFile: Path,
+    moduleDir: Path,
+    workspaceRoot: Path,
+    workspaceProjects: List<String>,
+    specClasspath: List<String>,
+    pluginPool: Path?,
+    localSourceZips: Map<String, Path>
+  ) {
+    val doc = parseXml(classpathFile)
+    val root = doc.documentElement
+    val entries = classpathEntries(root)
+
+    val outputEntry = entries.firstOrNull { it.getAttribute("kind") == "output" }
+    val existingLibAbs = entries
+      .filter { it.getAttribute("kind") == "lib" }
+      .mapNotNull { entry ->
+        entry.getAttribute("path")?.takeIf { it.isNotBlank() }?.let { toAbsPath(moduleDir, it) }
+      }
+      .toMutableSet()
+
+    // Remove PDE container + bad libs
+    entries.forEach { entry ->
+      val kind = entry.getAttribute("kind")
+      val path = entry.getAttribute("path")
+      if (kind == "con" && path == "org.eclipse.pde.core.requiredPlugins") {
+        root.removeChild(entry)
+        return@forEach
+      }
+      if (kind != "lib" || path.isNullOrBlank()) return@forEach
+      val absPath = toAbsPath(moduleDir, path)
+      if (!Files.exists(absPath)) {
+        root.removeChild(entry)
+        return@forEach
+      }
+      if (absPath.startsWith(workspaceRoot)) {
+        val libRoot = moduleDir.resolve("lib")
+        val libsRoot = moduleDir.resolve("libs")
+        if (absPath.startsWith(libRoot) || absPath.startsWith(libsRoot)) {
+          return@forEach
+        }
+        root.removeChild(entry)
+      }
+    }
+
+    // Add workspace project refs
+    val existingSrc = classpathEntries(root)
+      .filter { it.getAttribute("kind") == "src" }
+      .mapNotNull { it.getAttribute("path") }
+      .toSet()
+    val projectName = moduleDir.fileName.toString()
+    val newProjectEntries = workspaceProjects
+      .filter { it != projectName }
+      .map { "/$it" }
+      .filter { !existingSrc.contains(it) }
+      .map { path ->
+        doc.createElement("classpathentry").apply {
+          setAttribute("kind", "src")
+          setAttribute("path", path)
+          setAttribute("combineaccessrules", "false")
+        }
+      }
+    insertBeforeOutput(root, outputEntry, newProjectEntries)
+
+    // Add lib entries from compile spec
+    val libEntriesToAdd = specClasspath.mapNotNull { raw ->
+      val absPath = Paths.get(raw).toAbsolutePath().normalize()
+      if (!Files.exists(absPath)) return@mapNotNull null
+      if (absPath.startsWith(workspaceRoot)) return@mapNotNull null
+      if (existingLibAbs.contains(absPath)) return@mapNotNull null
+      existingLibAbs.add(absPath)
+      doc.createElement("classpathentry").apply {
+        setAttribute("kind", "lib")
+        setAttribute("path", absPath.toString())
+        setAttribute("exported", "true")
+      }
+    }
+    insertBeforeOutput(root, outputEntry, libEntriesToAdd)
+
+    // Attach sources
+    val currentEntries = classpathEntries(root).filter { it.getAttribute("kind") == "lib" }
+    currentEntries.forEach { entry ->
+      if (!entry.getAttribute("sourcepath").isNullOrBlank()) return@forEach
+      val path = entry.getAttribute("path") ?: return@forEach
+      val absLib = toAbsPath(moduleDir, path)
+      if (!Files.exists(absLib)) return@forEach
+
+      // Local -sources.jar sibling
+      val siblingSource = absLib.parent.resolve(absLib.fileName.toString().removeSuffix(".jar") + "-sources.jar")
+      if (Files.exists(siblingSource)) {
+        entry.setAttribute("sourcepath", toSourcePath(moduleDir, path, siblingSource))
+        return@forEach
+      }
+
+      // Local checkout source zips
+      val bundleId = deriveBundleId(absLib)
+      val localSource = bundleId?.let { localSourceZips[it] }
+      if (localSource != null && Files.exists(localSource)) {
+        entry.setAttribute("sourcepath", localSource.toString())
+        return@forEach
+      }
+
+      // Bundle pool .source bundles
+      if (pluginPool != null && absLib.startsWith(pluginPool)) {
+        val sourceBundle = resolveSourceBundle(pluginPool, absLib)
+        if (sourceBundle != null && Files.exists(sourceBundle)) {
+          entry.setAttribute("sourcepath", sourceBundle.toString())
+        }
+      }
+    }
+
+    writeXml(doc, classpathFile)
+  }
+
+  private fun ensureOutputDirectory(classpathFile: Path, moduleDir: Path) {
+    val doc = parseXml(classpathFile)
+    val outputEntry = classpathEntries(doc.documentElement)
+      .firstOrNull { it.getAttribute("kind") == "output" }
+    val outputPath = outputEntry?.getAttribute("path")?.takeIf { it.isNotBlank() } ?: "bin"
+    Files.createDirectories(moduleDir.resolve(outputPath))
+  }
+
+  private fun buildSourceZips(sourcesRoots: List<String>, outputDir: Path): Map<String, Path> {
+    if (sourcesRoots.isEmpty()) return emptyMap()
+    Files.createDirectories(outputDir)
+    val result = linkedMapOf<String, Path>()
+    sourcesRoots.forEach { rootRaw ->
+      val root = Paths.get(rootRaw).toAbsolutePath().normalize()
+      if (!Files.isDirectory(root)) {
+        logger.warning("Sources root does not exist: $root")
+        return@forEach
+      }
+      Files.list(root).use { stream ->
+        stream.filter { Files.isDirectory(it) }.forEach { projectRoot ->
+          val bundleId = projectRoot.fileName.toString()
+          val srcRoots = findSourceRoots(projectRoot)
+          if (srcRoots.isEmpty()) return@forEach
+          val outZip = outputDir.resolve("$bundleId.src.zip")
+          ZipOutputStream(BufferedOutputStream(Files.newOutputStream(outZip))).use { zip ->
+            srcRoots.forEach { srcRoot ->
+              Files.walk(srcRoot).use { walker ->
+                walker.filter { Files.isRegularFile(it) }.forEach { file ->
+                  val name = file.fileName.toString()
+                  if (!name.endsWith(".java") && !name.endsWith(".kt") && !name.endsWith(".properties") && !name.endsWith(".xml")) {
+                    return@forEach
+                  }
+                  val rel = srcRoot.relativize(file).toString()
+                  zip.putNextEntry(ZipEntry(rel))
+                  BufferedInputStream(Files.newInputStream(file)).use { input ->
+                    input.copyTo(zip)
+                  }
+                  zip.closeEntry()
+                }
+              }
+            }
+          }
+          result[bundleId] = outZip
+        }
+      }
+    }
+    return result
+  }
+
+  private fun findSourceRoots(projectRoot: Path): List<Path> {
+    val classpathFile = projectRoot.resolve(".classpath")
+    if (Files.exists(classpathFile)) {
+      val doc = parseXml(classpathFile)
+      val srcEntries = classpathEntries(doc.documentElement)
+        .filter { it.getAttribute("kind") == "src" }
+        .mapNotNull { it.getAttribute("path") }
+        .filterNot { it.startsWith("/") }
+        .map { projectRoot.resolve(it).normalize() }
+        .filter { Files.isDirectory(it) }
+      if (srcEntries.isNotEmpty()) return srcEntries
+    }
+    val fallback = projectRoot.resolve("src")
+    return if (Files.isDirectory(fallback)) listOf(fallback) else emptyList()
+  }
+
+  private fun parseXml(path: Path): Document {
+    val factory = DocumentBuilderFactory.newInstance()
+    factory.isNamespaceAware = false
+    return factory.newDocumentBuilder().parse(path.toFile())
+  }
+
+  private fun classpathEntries(root: Element): List<Element> {
+    val nodes = root.getElementsByTagName("classpathentry")
+    return (0 until nodes.length).mapNotNull { idx -> nodes.item(idx) as? Element }
+  }
+
+  private fun insertBeforeOutput(root: Element, outputEntry: Element?, entries: List<Element>) {
+    if (entries.isEmpty()) return
+    if (outputEntry == null) {
+      entries.forEach { root.appendChild(it) }
+      return
+    }
+    entries.forEach { root.insertBefore(it, outputEntry) }
+  }
+
+  private fun toAbsPath(moduleDir: Path, raw: String): Path {
+    val path = Paths.get(raw)
+    return if (path.isAbsolute) path.normalize() else moduleDir.resolve(path).normalize()
+  }
+
+  private fun toSourcePath(moduleDir: Path, libPath: String, sourcePath: Path): String {
+    val libIsAbsolute = Paths.get(libPath).isAbsolute
+    return if (libIsAbsolute) sourcePath.toString() else moduleDir.relativize(sourcePath).toString()
+  }
+
+  private fun deriveBundleId(absLib: Path): String? {
+    val parentName = absLib.parent?.fileName?.toString() ?: return null
+    if (parentName.contains("_")) {
+      return parentName.substringBefore("_")
+    }
+    val fileName = absLib.fileName.toString()
+    if (!fileName.endsWith(".jar")) return null
+    return fileName.substringBeforeLast("_")
+  }
+
+  private fun resolveSourceBundle(pluginPool: Path, absLib: Path): Path? {
+    val parentName = absLib.parent?.fileName?.toString() ?: return null
+    val fileName = absLib.fileName.toString()
+    if (!fileName.endsWith(".jar")) return null
+    return if (parentName.contains("_")) {
+      val bundleId = parentName.substringBefore("_")
+      val version = parentName.substringAfter("_", "")
+      if (version.isNotBlank()) pluginPool.resolve("$bundleId.source_$version.jar") else null
+    } else if (fileName.contains("_")) {
+      val bundleId = fileName.substringBefore("_")
+      val version = fileName.substringAfter("_", "").removeSuffix(".jar")
+      if (version.isNotBlank()) pluginPool.resolve("$bundleId.source_$version.jar") else null
+    } else null
+  }
+
+  private fun writeXml(doc: Document, path: Path) {
+    val transformer = TransformerFactory.newInstance().newTransformer().apply {
+      setOutputProperty(OutputKeys.INDENT, "yes")
+      setOutputProperty(OutputKeys.ENCODING, "UTF-8")
+      setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2")
+    }
+    BufferedOutputStream(Files.newOutputStream(path)).use { output ->
+      transformer.transform(DOMSource(doc), StreamResult(output))
+    }
+  }
+}
