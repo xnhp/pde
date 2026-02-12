@@ -346,7 +346,8 @@ object EmacsInit {
   private fun writeDirLocals(projectDir: Path) {
     val dirLocals = projectDir.resolve(".dir-locals.el")
     val content = """
-      ((nil . ((find-file-visit-truename . nil))))
+      ((nil . ((find-file-visit-truename . nil)
+               (dired-find-file-visit-truename . nil))))
     """.trimIndent() + "\n"
     Files.write(dirLocals, content.toByteArray(Charsets.UTF_8))
   }
