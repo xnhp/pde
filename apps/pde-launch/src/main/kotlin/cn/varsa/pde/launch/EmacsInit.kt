@@ -157,6 +157,7 @@ object EmacsInit {
 
     if (workspaceMode == WorkspaceMode.SYMLINK) {
       Files.createDirectories(emacsWorkspaceRoot)
+      writeDirLocals(emacsWorkspaceRoot)
       setupSymlinkWorkspace(
         workspaceRoot = workspaceRoot,
         workspaceDir = emacsWorkspaceRoot,
@@ -327,6 +328,7 @@ object EmacsInit {
       Files.createDirectories(projectDir)
 
       val sourceLinks = createSourceSymlinks(projectDir, moduleDir, descriptor)
+      writeDirLocals(projectDir)
       writeProjectFile(projectDir, projectName)
       writeClasspathFile(
         projectDir = projectDir,
@@ -339,6 +341,14 @@ object EmacsInit {
       )
       Files.createDirectories(projectDir.resolve("bin"))
     }
+  }
+
+  private fun writeDirLocals(projectDir: Path) {
+    val dirLocals = projectDir.resolve(".dir-locals.el")
+    val content = """
+      ((nil . ((find-file-visit-truename . nil))))
+    """.trimIndent() + "\n"
+    Files.write(dirLocals, content.toByteArray(Charsets.UTF_8))
   }
 
 
