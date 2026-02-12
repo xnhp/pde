@@ -157,9 +157,6 @@ object EmacsInit {
 
     if (workspaceMode == WorkspaceMode.SYMLINK) {
       Files.createDirectories(emacsWorkspaceRoot)
-      writeProjectileFile(emacsWorkspaceRoot)
-      writeIssueProjectileFile(issueDir, emacsWorkspaceRoot)
-      writeDirLocals(emacsWorkspaceRoot)
       setupSymlinkWorkspace(
         workspaceRoot = workspaceRoot,
         workspaceDir = emacsWorkspaceRoot,
@@ -330,8 +327,6 @@ object EmacsInit {
       Files.createDirectories(projectDir)
 
       val sourceLinks = createSourceSymlinks(projectDir, moduleDir, descriptor)
-      writeProjectileFile(projectDir)
-      writeDirLocals(projectDir)
       writeProjectFile(projectDir, projectName)
       writeClasspathFile(
         projectDir = projectDir,
@@ -346,49 +341,6 @@ object EmacsInit {
     }
   }
 
-  private fun writeProjectileFile(workspaceDir: Path) {
-    val lines = listOf(
-      "-**/bin",
-      "-**/target",
-      "-**/.git",
-      "-**/.gradle",
-      "-**/.idea",
-      "-**/node_modules"
-    )
-    val projectileFile = workspaceDir.resolve(".projectile")
-    Files.write(projectileFile, lines)
-  }
-
-  private fun writeIssueProjectileFile(issueDir: Path, workspaceDir: Path) {
-    val ignoreEntry = if (workspaceDir.startsWith(issueDir)) {
-      issueDir.relativize(workspaceDir).toString().ifBlank { defaultWorkspaceDir }
-    } else {
-      workspaceDir.fileName.toString()
-    }
-    val lines = listOf(
-      "-" + ignoreEntry
-    )
-    val projectileFile = issueDir.resolve(".projectile")
-    Files.write(projectileFile, lines)
-  }
-
-  private fun writeDirLocals(projectDir: Path) {
-    val dirLocals = projectDir.resolve(".dir-locals.el")
-    val content = """
-      ((nil . ((projectile-follow-symlinks . t)
-               (projectile-indexing-method . alien)
-               (projectile-completion-system . default)
-               (eval . (setq-local projectile-generic-command
-                                   (cond
-                                    ((executable-find "fd")
-                                     "fd --type f --color=never --hidden --follow --exclude .git --exclude bin --exclude target --exclude .gradle --exclude .idea --exclude node_modules")
-                                    ((executable-find "fdfind")
-                                     "fdfind --type f --color=never --hidden --follow --exclude .git --exclude bin --exclude target --exclude .gradle --exclude .idea --exclude node_modules")
-                                    (t
-                                     "find . -type f -not -path '*/.git/*' -not -path '*/bin/*' -not -path '*/target/*' -not -path '*/.gradle/*' -not -path '*/.idea/*' -not -path '*/node_modules/*' -print")))))))
-    """.trimIndent() + "\n"
-    Files.write(dirLocals, content.toByteArray(Charsets.UTF_8))
-  }
 
   private fun createSourceSymlinks(
     projectDir: Path,
