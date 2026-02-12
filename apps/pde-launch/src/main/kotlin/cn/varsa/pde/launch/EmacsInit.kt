@@ -8,9 +8,7 @@ import cn.varsa.pde.resolver.compile.CompileService
 import cn.varsa.pde.resolver.launch.LaunchEnvironment
 import cn.varsa.pde.resolver.launch.LaunchPlanner
 import cn.varsa.pde.resolver.launch.LauncherOptions
-import cn.varsa.pde.resolver.workspace.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
-import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
