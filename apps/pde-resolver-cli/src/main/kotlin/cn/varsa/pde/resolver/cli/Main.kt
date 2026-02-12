@@ -1459,6 +1459,24 @@ private fun runTestLaunch(
   client.close()
   server.close()
 
+  val junit4InvalidTests = recorder.results
+    .asSequence()
+    .filter { it.trace?.contains("InvalidTestClassError") == true }
+    .filter { it.trace?.contains("JUnit4TestLoader") == true }
+    .map { it.descriptor.className }
+    .distinct()
+    .toList()
+  val junit5Configured = configContext.config.tests
+    .any { it.runner?.lowercase(Locale.ROOT) == "junit5" }
+  if (junit4InvalidTests.isNotEmpty() && !junit5Configured) {
+    val preview = junit4InvalidTests.take(3).joinToString(", ")
+    val suffix = if (junit4InvalidTests.size > 3) " ... and ${junit4InvalidTests.size - 3} more" else ""
+    logger.warning(
+      "Hint: JUnit4 reported InvalidTestClassError for $preview$suffix. " +
+        "If these are JUnit 5 tests, set tests[].runner: junit5 in config.yaml."
+    )
+  }
+
   reports.filterIsInstance<ReportTarget.JUnitXml>().forEach { target ->
     try {
       JUnitXmlReporter(target.path).write(summary, recorder.results)
