@@ -159,6 +159,7 @@ object EmacsInit {
       Files.createDirectories(emacsWorkspaceRoot)
       writeProjectileFile(emacsWorkspaceRoot)
       writeIssueProjectileFile(issueDir, emacsWorkspaceRoot)
+      writeDirLocals(emacsWorkspaceRoot)
       setupSymlinkWorkspace(
         workspaceRoot = workspaceRoot,
         workspaceDir = emacsWorkspaceRoot,
@@ -330,6 +331,7 @@ object EmacsInit {
 
       val sourceLinks = createSourceSymlinks(projectDir, moduleDir, descriptor)
       writeProjectileFile(projectDir)
+      writeDirLocals(projectDir)
       writeProjectFile(projectDir, projectName)
       writeClasspathFile(
         projectDir = projectDir,
@@ -368,6 +370,15 @@ object EmacsInit {
     )
     val projectileFile = issueDir.resolve(".projectile")
     Files.write(projectileFile, lines)
+  }
+
+  private fun writeDirLocals(projectDir: Path) {
+    val dirLocals = projectDir.resolve(".dir-locals.el")
+    val content = """
+      ((nil . ((projectile-follow-symlinks . t)
+               (projectile-indexing-method . alien))))
+    """.trimIndent() + "\n"
+    Files.write(dirLocals, content.toByteArray(Charsets.UTF_8))
   }
 
   private fun createSourceSymlinks(
