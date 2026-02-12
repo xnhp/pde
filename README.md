@@ -19,6 +19,10 @@ This repository contains:
 
 - Build/install the launch tool: `./gradlew :pde-launch:installDist`
   - Binary: `apps/pde-launch/build/install/pde-launch/bin/pde-launch`
+- Emacs/JDT LS workspace setup: `pde-launch emacs-init`
+  - Default mode is symlinked workspace under `.pde-jdtls`
+  - Example:
+    - `apps/pde-launch/build/install/pde-launch/bin/pde-launch emacs-init --issue-dir /path/to/issue --config config.yaml --sources-root /path/to/knime-core`
 - Build/install the remote runner: `./gradlew :pde-remote-runner:installDist`
   - Binary: `apps/pde-remote-runner/build/install/pde-remote-runner/bin/pde-remote-runner`
 - Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`
