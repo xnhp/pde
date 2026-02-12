@@ -242,7 +242,7 @@ private fun warnIfCompileOutOfDate(
   val more = if (actionable.size > sampleCount) " (+${actionable.size - sampleCount} more)" else ""
   val exampleText = if (examples.isNotBlank()) " Examples: $examples$more" else ""
   logger.warning(
-    "Workspace bundles appear out of date (${actionable.size}). Run pde-compile --execute.$exampleText"
+    "Workspace bundles appear out of date (${actionable.size}). Run pde compile --execute.$exampleText"
   )
 }
 
@@ -2077,15 +2077,14 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   return 0
 }
 
-internal fun compileMain(args: Array<String>): Int {
+fun compileMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
-  val parser = ArgParser("pde-compile")
+  val parser = ArgParser("pde compile")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
     description = "YAML launch configuration"
   )
-  val targetRoots by parser.option(ArgType.String, fullName = "target-root", shortName = "t", description = "Target root/profile (repeatable)").multiple()
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
@@ -2270,140 +2269,12 @@ internal fun compileMain(args: Array<String>): Int {
     return exitCode
   }
 
-  if (targetRoots.isEmpty()) {
-    logger.severe("No --target-root specified")
-    return 0
+  if (configFile == null) {
+    logger.severe("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config.")
+  } else {
+    logger.severe("Launch config not found at ${Paths.get(configFile).toAbsolutePath()}")
   }
-
-  val targetPaths = targetRoots.map { Paths.get(it) }
-  val targetIndex = TargetPlatformCache.buildWithCache(targetPaths)
-  val workspaceDescriptors = workspaceRoots.mapNotNull { root ->
-    runCatching { WorkspaceBundleLoader.load(Paths.get(root)) }
-      .onFailure { logger.severe("Failed to load workspace bundle at $root: ${it.message}") }
-      .getOrNull()
-  }
-
-  val env = LaunchEnvironment(
-    targetIndex = targetIndex,
-    workspaceEntries = workspaceDescriptors,
-    resolverOptions = ResolveOptions(
-      whitelistPrefixes = emptySet(),
-      preferWorkspace = true,
-      includeHostsForFragments = true
-    ),
-    autoStartBundles = emptyMap(),
-    startupLevels = emptyMap(),
-    devProperties = emptyMap()
-  )
-  val options = LauncherOptions(
-    frameworkBSN = framework,
-    autoStartDefault = false
-  )
-
-  val planResult = LaunchPlanner.build(env, options)
-  val specs = CompileService.buildSpecs(planResult, workspaceDescriptors)
-    .specs
-    .map { spec ->
-      if (spec.isWorkspace && outputRoot != null) {
-        val overrideDir = Paths.get(spec.bundlePath).resolve(outputRoot).normalize()
-        spec.copy(outputDirectory = overrideDir.toString())
-      } else spec
-    }
-
-  if (json) {
-    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(specs))
-    return 0
-  }
-
-  if (!runCompile) {
-    logger.info("Resolved ${specs.size} bundles (dry-run; use --execute to compile).")
-    specs.forEachIndexed { idx, spec ->
-      logger.info("${idx + 1}. ${spec.bsn}@${spec.version} [${spec.origin}]")
-      logger.info("    classpath: ${spec.classpath.joinToString(File.pathSeparator)}")
-      if (spec.isWorkspace) {
-        logger.info("    sources: ${spec.sourceRoots.joinToString(File.pathSeparator)}")
-        logger.info("    resources include: ${spec.resourceIncludes.joinToString()}")
-        logger.info("    resources exclude: ${spec.resourceExcludes.joinToString()}")
-        logger.info("    EE: ${spec.executionEnvironment ?: "<unspecified>"}  output: ${spec.outputDirectory ?: "<bin>"}")
-      }
-    }
-    return 0
-  }
-
-  val results = CompileExecutor.compile(
-    specs,
-    workspaceDependencies = planResult.workspaceDependencies,
-    forceFullRebuild = fullRebuild
-  )
-  resultsJson?.let { path ->
-    jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
-    logger.info("Wrote results to $path")
-  }
-  val specsByBsn = specs.associateBy { it.bsn }
-  results.forEach { result ->
-    val spec = specsByBsn[result.bsn]
-    if (spec?.isWorkspace == true && result.success && !result.skipped) {
-      logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
-    } else if (spec?.isWorkspace == true && result.success && result.skipped) {
-      logger.info("skipped ${result.bsn}: ${result.output}")
-    }
-    val classfileWarning = extractClassfileWarning(result.output)
-    if (classfileWarning != null) {
-      logger.warning("${result.bsn}:")
-      logger.warning(classfileWarning)
-    }
-  }
-  val allOk = results.all { it.success }
-  val exitCode = if (allOk) 0 else 1
-  if (bundlesInfoOut != null) {
-    if (!allOk) {
-      logger.severe("Skipping bundles.info write because some bundles failed to compile.")
-    } else {
-      val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
-      val outPath = Paths.get(bundlesInfoOut)
-      outPath.parent?.let { Files.createDirectories(it) }
-      val text = BundlesInfoRenderer.toText(rewrittenPlan)
-      Files.writeString(outPath, text)
-      logger.info("Wrote bundles.info with compiled workspace outputs to $outPath")
-    }
-  }
-  results.forEach { r ->
-    if (!r.success) {
-      val errorsOnly = extractErrorBlocks(r.output)
-      if (errorsOnly != null) {
-        logger.info("${r.bsn}: FAIL")
-        logger.severe(errorsOnly)
-      } else {
-        logger.info("${r.bsn}: FAIL (warnings only)")
-      }
-    }
-  }
-  if (runtimeOut != null) {
-    if (!allOk) {
-      logger.severe("Skipping runtime layout write because some bundles failed to compile.")
-      return exitCode
-    }
-    val outDir = Paths.get(runtimeOut)
-    val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
-    val devProps = buildDevProperties(specs, results)
-    val context = LaunchContext(
-      startupLevels = planResult.context.startupLevels,
-      devProperties = devProps
-    )
-    val defaults = RuntimeLayoutWriter.Defaults(
-      installArea = targetPaths.firstOrNull() ?: outDir,
-      instanceArea = outDir.resolve("workspace")
-    )
-    RuntimeLayoutWriter.write(
-      layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
-      plan = rewrittenPlan,
-      context = context,
-      options = options,
-      defaults = defaults
-    )
-    logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
-  }
-  return exitCode
+  return 0
 }
 
 private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCompileResult>): Map<String, List<String>> {
