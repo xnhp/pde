@@ -157,6 +157,8 @@ object EmacsInit {
 
     if (workspaceMode == WorkspaceMode.SYMLINK) {
       Files.createDirectories(emacsWorkspaceRoot)
+      writeProjectileFile(emacsWorkspaceRoot)
+      writeIssueProjectileFile(issueDir, emacsWorkspaceRoot)
       setupSymlinkWorkspace(
         workspaceRoot = workspaceRoot,
         workspaceDir = emacsWorkspaceRoot,
@@ -327,6 +329,7 @@ object EmacsInit {
       Files.createDirectories(projectDir)
 
       val sourceLinks = createSourceSymlinks(projectDir, moduleDir, descriptor)
+      writeProjectileFile(projectDir)
       writeProjectFile(projectDir, projectName)
       writeClasspathFile(
         projectDir = projectDir,
@@ -339,6 +342,32 @@ object EmacsInit {
       )
       Files.createDirectories(projectDir.resolve("bin"))
     }
+  }
+
+  private fun writeProjectileFile(workspaceDir: Path) {
+    val lines = listOf(
+      "-**/bin",
+      "-**/target",
+      "-**/.git",
+      "-**/.gradle",
+      "-**/.idea",
+      "-**/node_modules"
+    )
+    val projectileFile = workspaceDir.resolve(".projectile")
+    Files.write(projectileFile, lines)
+  }
+
+  private fun writeIssueProjectileFile(issueDir: Path, workspaceDir: Path) {
+    val ignoreEntry = if (workspaceDir.startsWith(issueDir)) {
+      issueDir.relativize(workspaceDir).toString().ifBlank { defaultWorkspaceDir }
+    } else {
+      workspaceDir.fileName.toString()
+    }
+    val lines = listOf(
+      "-" + ignoreEntry
+    )
+    val projectileFile = issueDir.resolve(".projectile")
+    Files.write(projectileFile, lines)
   }
 
   private fun createSourceSymlinks(
