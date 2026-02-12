@@ -14,6 +14,7 @@ import kotlinx.cli.ArgType
 import kotlinx.cli.default
 import kotlinx.cli.multiple
 import kotlinx.cli.optional
+import cn.varsa.pde.remoterunner.ConsoleTags
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import java.io.BufferedInputStream
@@ -21,7 +22,9 @@ import java.io.BufferedOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.logging.Formatter
 import java.util.logging.Level
+import java.util.logging.LogRecord
 import java.util.logging.Logger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -35,6 +38,7 @@ object EmacsInit {
   private val logger = Logger.getLogger(EmacsInit::class.java.name)
 
   fun main(args: Array<String>): Int {
+    configureLogging(Level.INFO, shouldUseColor())
     val parser = ArgParser("pde-launch emacs-init")
     val issueDirOpt by parser.option(
       ArgType.String,
@@ -147,6 +151,46 @@ object EmacsInit {
     logger.info("Emacs/JDT LS setup complete for ${workspaceEntries.size} workspace bundles.")
     return 0
   }
+
+  private fun configureLogging(level: Level, useColor: Boolean) {
+    logger.level = level
+    val root = Logger.getLogger("")
+    root.level = level
+    val formatter = createFormatter(useColor)
+    root.handlers?.forEach { handler ->
+      handler.level = level
+      handler.formatter = formatter
+    }
+  }
+
+  private fun createFormatter(useColor: Boolean) = object : Formatter() {
+    override fun format(record: LogRecord): String {
+      val message = formatMessage(record)
+      val builder = StringBuilder()
+      builder.append(logPrefix(record.level, useColor)).append(' ').append(message).append('\n')
+      record.thrown?.let { thrown ->
+        val writer = java.io.StringWriter()
+        val printer = java.io.PrintWriter(writer)
+        thrown.printStackTrace(printer)
+        printer.flush()
+        builder.append(writer.toString())
+      }
+      return builder.toString()
+    }
+  }
+
+  private fun logPrefix(level: Level, useColor: Boolean): String {
+    val value = level.intValue()
+    return when {
+      value >= Level.SEVERE.intValue() -> ConsoleTags.error(useColor)
+      value >= Level.WARNING.intValue() -> ConsoleTags.warn(useColor)
+      value >= Level.INFO.intValue() -> ConsoleTags.info(useColor)
+      value >= Level.FINE.intValue() -> ConsoleTags.debug(useColor)
+      else -> ConsoleTags.trace(useColor)
+    }
+  }
+
+  private fun shouldUseColor(): Boolean = System.console() != null
 
   private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
     val candidate = configOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
