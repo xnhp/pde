@@ -11,7 +11,7 @@ PDE Tools foundation, and support for eclipse RCP(OSGI) platform and its applica
 - Add the OSGI bundles that you want to work with (Eclipse root, Teamcenter root, plugins directory, p2, etc.).
 - Add the PDE Tools facet (or by add framework) to any module that should be an Eclipse Plugins.
 
-To run eclipse application on local machine, create a new Eclipse Application Partial run configuration.
+To run eclipse application on local machine, create a new Eclipse Application run configuration.
 
 **Breaking Changed:** Versions after v1.6.8 no longer support remote debugging and Wishes-launcher
 <!-- Plugin description end -->
@@ -74,7 +74,7 @@ reports), and exits with a non-zero code whenever the remote test suite reports 
 | Framework support      | equinox Only                                                                    | equinox, felix, concierge, knopflerfish                  |
 | Project import support | x                                                                               | by bnd                                                   |
 | Bundle source          | eclipse target                                                                  | bundle directory                                         |
-| Manifest lint          | partial support                                                                 | partial support                                          |
+| Manifest lint          | basic support                                                                   | basic support                                            |
 | Manifest auto gen      | x                                                                               | by bnd                                                   |
 | Manifest manually edit | support with hint, reference navigate                                           | support                                                  |
 | Code inspection        | support                                                                         | support                                                  |

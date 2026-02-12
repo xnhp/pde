@@ -17,7 +17,7 @@
     <fileBasedIndex implementation="cn.varsa.idea.pde.partial.plugin.indexes.BundleManifestIndex"/>
 
     <projectConfigurable
-        id="cn.varsa.idea.pde.partial.plugin.config.TargetConfigurable"
+        id="cn.varsa.idea.pde.tools.plugin.config.TargetConfigurable"
         parentId="language"
         bundle="messages.EclipsePDEPartialBundles_locale"
         key="config.displayName"
@@ -39,13 +39,13 @@
 
     <notificationGroup
         displayType="STICKY_BALLOON"
-        id="PDE-Important"
+        id="PDE.Tools.Important"
         isLogByDefault="true"
         bundle="messages.EclipsePDEPartialBundles_locale"
         key="notification.group.important"/>
     <notificationGroup
         displayType="BALLOON"
-        id="PDE-Information"
+        id="PDE.Tools.Information"
         isLogByDefault="true"
         bundle="messages.EclipsePDEPartialBundles_locale"
         key="notification.group.standard"/>
@@ -121,7 +121,7 @@
   </projectListeners>
 
   <actions>
-    <action id="PDE.CleanPartialLibraries" class="cn.varsa.idea.pde.partial.plugin.action.CleanPartialLibrariesAction" text="PDE: Clean Partial Libraries" description="Remove stale 'Partial:' project libraries not present in current target platform" icon="AllIcons.Actions.GC">
+    <action id="PDE.CleanLibraries" class="cn.varsa.idea.pde.partial.plugin.action.CleanPartialLibrariesAction" text="PDE: Clean Libraries" description="Remove stale 'PDE:' project libraries not present in current target platform" icon="AllIcons.Actions.GC">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
     </action>
     <action class="cn.varsa.idea.pde.partial.plugin.action.ResolveWorkspaceAction" icon="AllIcons.Actions.Refresh">

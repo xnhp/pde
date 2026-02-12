@@ -55,10 +55,9 @@ class CleanPartialLibrariesAction : AnAction(), DumbAware {
 
     model.commit()
 
-    val group = NotificationGroupManager.getInstance().getNotificationGroup("PDE-Information")
-    val msg = if (removed > 0) "Removed $removed stale Partial libraries" else "No stale Partial libraries found"
+    val group = NotificationGroupManager.getInstance().getNotificationGroup("PDE.Tools.Information")
+    val msg = if (removed > 0) "Removed $removed stale PDE libraries" else "No stale PDE libraries found"
     group.createNotification(EclipsePDEPartialBundles.message("config.displayName"), msg, NotificationType.INFORMATION)
       .notify(project)
   }
 }
-

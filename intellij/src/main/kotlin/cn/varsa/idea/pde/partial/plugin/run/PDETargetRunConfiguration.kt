@@ -53,7 +53,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
   var application: String? = "com.teamcenter.rac.aifrcp.application"
   var splashBundlePath: String = "org.knime.product"
   var dataDirectory: String = File(
-    compiler?.compilerOutputPointer?.presentableUrl ?: project.presentableUrl, "partial-runtime"
+    compiler?.compilerOutputPointer?.presentableUrl ?: project.presentableUrl, "pde-runtime"
   ).absolutePath
   var cleanRuntimeDir = false
   var additionalClasspath = ""
@@ -103,7 +103,7 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
 
   override fun writeExternal(element: Element) {
     super.writeExternal(element)
-    element.getOrCreateChild("partial").apply {
+    element.getOrCreateChild("pde").apply {
       setAttribute("product", product ?: "")
       setAttribute("application", application ?: "")
       setAttribute("splashBundlePath", splashBundlePath)
@@ -116,12 +116,12 @@ class PDETargetRunConfiguration(project: Project, factory: ConfigurationFactory,
 
   override fun readExternal(element: Element) {
     super.readExternal(element)
-    element.getChild("partial")?.also {
+    (element.getChild("pde") ?: element.getChild("partial"))?.also {
       product = it.getAttributeValue("product") ?: ""
       application = it.getAttributeValue("application") ?: ""
       splashBundlePath = it.getAttributeValue("splashBundlePath") ?: ""
       dataDirectory = it.getAttributeValue("dataDirectory") ?: File(
-        compiler?.compilerOutputPointer?.presentableUrl ?: project.presentableUrl, "partial-runtime"
+        compiler?.compilerOutputPointer?.presentableUrl ?: project.presentableUrl, "pde-runtime"
       ).absolutePath
       cleanRuntimeDir = it.getAttributeValue("cleanRuntimeDir", cleanRuntimeDir.toString()).toBoolean()
       additionalClasspath = it.getAttributeValue("additionalClasspath") ?: ""

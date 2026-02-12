@@ -3,8 +3,8 @@ package cn.varsa.idea.pde.partial.plugin.helper
 import com.intellij.notification.*
 
 object PdeNotifier {
-  private const val important = "PDE-Important"
-  private const val information = "PDE-Information"
+  private const val important = "PDE.Tools.Important"
+  private const val information = "PDE.Tools.Information"
 
   fun notification(title: String, message: String) =
     NotificationGroupManager.getInstance().getNotificationGroup(information)
