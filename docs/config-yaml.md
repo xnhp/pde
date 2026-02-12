@@ -36,6 +36,21 @@ Fields:
 - `bundle-pool`: optional bundle pool (default `./target/bundle-pool`).
 - `installer`: required for `pde-launch target` (path to the target-installer launcher JAR).
 
+Notes:
+- `pde-launch target` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
+- The target installer resolves relative paths against its runtime cache directory, not the CLI working directory, so prefer absolute paths for `target.*` values.
+
+Example:
+
+```yaml
+target:
+  installer: /abs/path/to/target-installer-launcher.jar
+  definition: /abs/path/to/KNIME-AP-internal.target
+  install: /abs/path/to/install-folder
+  bundle-pool: /abs/path/to/bundle-pool
+  p2-path: /abs/path/to/install-folder/p2
+```
+
 ### product
 Optional product id for launching (e.g. `org.knime.product.KNIME_PRODUCT`).
 
