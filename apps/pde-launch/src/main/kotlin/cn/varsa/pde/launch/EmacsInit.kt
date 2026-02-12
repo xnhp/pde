@@ -379,8 +379,6 @@ object EmacsInit {
                (projectile-indexing-method . alien)
                (eval . (setq-local projectile-generic-command
                                    (cond
-                                    ((executable-find "rg")
-                                     "rg --files -uu --follow --glob '!**/.git/**' --glob '!**/bin/**' --glob '!**/target/**' --glob '!**/.gradle/**' --glob '!**/.idea/**' --glob '!**/node_modules/**'")
                                     ((executable-find "fd")
                                      "fd --type f --color=never --hidden --follow --exclude .git --exclude bin --exclude target --exclude .gradle --exclude .idea --exclude node_modules")
                                     ((executable-find "fdfind")
