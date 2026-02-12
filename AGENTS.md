@@ -12,7 +12,7 @@ resolving Eclipse target platforms, planning launches, and running remote tests.
 - `intellij/`: IntelliJ IDEA plugin implementation (PDE Tools).
 - `core/`: shared libraries for target platform indexing, launch planning, and the remote test protocol.
 - `apps/`: headless CLI tools built on `core/`:
-  - `pde-launch`: launch planning/runtime assembly for PDE-style runs.
+  - `pde`: launch planning/runtime assembly for PDE-style runs.
   - `pde-resolver-cli`: target platform resolver and config-driven inputs.
   - `pde-remote-runner`: remote test runner (protocol in `core`).
 - `docs/`: documentation, including `config-yaml.md` for resolver configuration.

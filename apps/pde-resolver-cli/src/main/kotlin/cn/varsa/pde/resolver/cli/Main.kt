@@ -288,7 +288,7 @@ fun launchMain(args: Array<String>) {
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
 
-  val parser = ArgParser("pde-launch")
+  val parser = ArgParser("pde launch")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -1235,6 +1235,8 @@ internal fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()):
     "config.yml",
     "launch.yaml",
     "launch.yml",
+    "pde.yaml",
+    "pde.yml",
     "pde-launch.yaml",
     "pde-launch.yml"
   )
@@ -1394,7 +1396,7 @@ private fun runTestLaunch(
     timeoutSeconds = timeoutSeconds,
     instructions = listOf(
       "Add '-port ${server.localPort}' to PDE launch program arguments.",
-      "Example: pde-launch --programArg \"-port ${server.localPort}\""
+      "Example: pde launch --programArg \"-port ${server.localPort}\""
     ),
     issuedAt = Instant.now().toString()
   )
@@ -1510,7 +1512,7 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
 
 private fun targetMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
-  val parser = ArgParser("pde-launch target")
+  val parser = ArgParser("pde target")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchOpt by parser.option(ArgType.String, fullName = "launch", description = "Installer launch name (defaults to 'install' if present)")
@@ -1619,7 +1621,7 @@ private fun targetMain(args: Array<String>): Int {
 private fun testMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, testOptionsRequiringValue)
 
-  val parser = ArgParser("pde-launch test")
+  val parser = ArgParser("pde test")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchPos by parser.argument(ArgType.String, description = "Test name (optional, ignored with --all)").optional()
@@ -1785,7 +1787,7 @@ private fun testMain(args: Array<String>): Int {
 
 private fun apiAnalyzeMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
-  val parser = ArgParser("pde-launch api-analyze")
+  val parser = ArgParser("pde api-analyze")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -2125,7 +2127,7 @@ internal fun compileMain(args: Array<String>): Int {
     }
     if (!Files.exists(profilePath)) {
       logger.severe(
-        "target profile registry does not exist: $profilePath (check target.profile-id/target.p2-path or run pde-launch target)"
+        "target profile registry does not exist: $profilePath (check target.profile-id/target.p2-path or run pde target)"
       )
       return 0
     }

@@ -1,10 +1,10 @@
 # pde-resolver config.yaml
 
-This document describes the YAML configuration consumed by the `pde-resolver-cli` (`pde-launch`, `pde-compile`, `pde-test`, `pde-launch api-analyze`).
+This document describes the YAML configuration consumed by the `pde` CLI (`pde launch`, `pde test`, `pde api-analyze`) and `pde-compile`.
 
 ## File discovery
 
-The CLI looks for a config file path provided on the command line. If omitted, it attempts to discover a `config.yaml` near the working directory (see `pde-resolver-cli` logs for the resolved path).
+The CLI looks for a config file path provided on the command line. If omitted, it attempts to discover a `config.yaml`, `launch.yaml`, `pde.yaml`, or `pde-launch.yaml` near the working directory (see logs for the resolved path).
 
 ## Top-level fields
 
@@ -34,10 +34,10 @@ Fields:
 - `p2-path`: optional path to the p2 area (default `./target/p2`).
 - `install`: optional install folder (default `./target/install`).
 - `bundle-pool`: optional bundle pool (default `./target/bundle-pool`).
-- `installer`: required for `pde-launch target` (path to the target-installer launcher JAR).
+- `installer`: required for `pde target` (path to the target-installer launcher JAR).
 
 Notes:
-- `pde-launch target` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
+- `pde target` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
 - The target installer resolves relative paths against its runtime cache directory, not the CLI working directory, so prefer absolute paths for `target.*` values.
 
 Example:
@@ -79,7 +79,7 @@ List of bundles that should *not* be resolved from workspace (even if listed els
 Whether launch inherits target platform arguments (default `true`).
 
 ### env
-Optional map of environment variables set when running `pde-launch`.
+Optional map of environment variables set when running `pde`.
 
 ### dataDir / configDir / workDir
 Optional directories to control launch locations (P2 data area, config, work dir).
@@ -154,7 +154,7 @@ launches:
 ```
 
 Fields:
-- `name`: identifier used by `pde-launch`.
+- `name`: identifier used by `pde`.
 - `product`, `application`, `splash`: override top-level values.
 - `debug`: enable JVM debug (CLI may add JDWP).
 - `env`: per-launch environment variables (merged with top-level `env`).
@@ -196,7 +196,7 @@ Keys map to PDE/JUnit options:
 - `classes` paths are relative to the bundle directory.
 - When in doubt, use absolute paths for `repo`, `path`, and `target.*` paths.
 
-## API analysis (pde-launch api-analyze)
+## API analysis (pde api-analyze)
 
 The API analyzer runs once per workspace bundle resolved from the config and compares each bundle against the baseline.
 
@@ -223,5 +223,5 @@ bundlesPerRepo:
 ```
 
 ```bash
-pde-launch api-analyze --config /abs/path/to/config.yaml --baseline-root /abs/path/to/API-Baseline.target
+pde api-analyze --config /abs/path/to/config.yaml --baseline-root /abs/path/to/API-Baseline.target
 ```

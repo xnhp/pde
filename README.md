@@ -4,7 +4,7 @@ This repository contains:
 
 - `intellij/` – the IntelliJ IDEA plugin (PDE Tools)
 - `core/` – reusable libraries (target platform indexing, launch planning, remote test protocol)
-- `apps/` – headless tools built on top of `core/` (`pde-launch`, `pde-resolver-cli`, `pde-remote-runner`)
+- `apps/` – headless tools built on top of `core/` (`pde`, `pde-resolver-cli`, `pde-remote-runner`)
 
 ## Build
 
@@ -18,11 +18,11 @@ This repository contains:
 ## Headless tools
 
 - Build/install the launch tool: `./gradlew :pde-launch:installDist`
-  - Binary: `apps/pde-launch/build/install/pde-launch/bin/pde-launch`
-- Emacs/JDT LS workspace setup: `pde-launch emacs-init`
+  - Binary: `apps/pde-launch/build/install/pde/bin/pde`
+- Emacs/JDT LS workspace setup: `pde emacs-init`
   - Default mode is symlinked workspace under `.pde-jdtls`
   - Example:
-    - `apps/pde-launch/build/install/pde-launch/bin/pde-launch emacs-init --issue-dir /path/to/issue --config config.yaml --sources-root /path/to/knime-core`
+    - `apps/pde-launch/build/install/pde/bin/pde emacs-init --issue-dir /path/to/issue --config config.yaml --sources-root /path/to/knime-core`
 - Build/install the remote runner: `./gradlew :pde-remote-runner:installDist`
   - Binary: `apps/pde-remote-runner/build/install/pde-remote-runner/bin/pde-remote-runner`
 - Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`

@@ -50,7 +50,7 @@ object EmacsInit {
 
   fun main(args: Array<String>): Int {
     configureLogging(Level.INFO, shouldUseColor())
-    val parser = ArgParser("pde-launch emacs-init")
+    val parser = ArgParser("pde emacs-init")
     val issueDirOpt by parser.option(
       ArgType.String,
       fullName = "issue-dir",
@@ -97,14 +97,14 @@ object EmacsInit {
     val issueDir = issueDirOpt?.let { Paths.get(it) } ?: Paths.get("").toAbsolutePath()
     val configPath = resolveConfigPath(issueDir, configOpt, configPos)
     if (configPath == null) {
-      logger.severe("No launch config found (config.yaml/launch.yaml). Use --config or --issue-dir.")
+      logger.severe("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config or --issue-dir.")
       return 1
     }
 
     val context = LaunchConfigLoader.load(configPath, issueDir)
     val profilePath = resolveProfilePath(context)
     if (profilePath == null || !Files.exists(profilePath)) {
-      logger.severe("Target profile registry missing; run pde-launch target first.")
+      logger.severe("Target profile registry missing; run pde target first.")
       return 1
     }
 
@@ -262,6 +262,8 @@ object EmacsInit {
       "config.yml",
       "launch.yaml",
       "launch.yml",
+      "pde.yaml",
+      "pde.yml",
       "pde-launch.yaml",
       "pde-launch.yml"
     )

@@ -8,5 +8,9 @@ fun main(args: Array<String>) {
     val exitCode = EmacsInit.main(args.drop(1).toTypedArray())
     exitProcess(exitCode)
   }
+  if (args.isNotEmpty() && args[0] == "launch") {
+    launchMain(args.drop(1).toTypedArray())
+    return
+  }
   launchMain(args)
 }

@@ -18,6 +18,7 @@ dependencies {
 
 application {
   mainClass = "cn.varsa.pde.launch.MainKt"
+  applicationName = "pde"
 }
 
 // toolchain/version configured in the root build
