@@ -37,10 +37,10 @@ Fields:
 - `p2-path`: optional path to the p2 area (default `./target/p2`).
 - `install`: optional install folder (default `./target/install`).
 - `bundle-pool`: optional bundle pool (default `./target/bundle-pool`).
-- `installer`: required for `pde target` (path to the target-installer launcher JAR).
+- `installer`: required for `pde target-install` (path to the target-installer launcher JAR).
 
 Notes:
-- `pde target` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
+- `pde target-install` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
 - The target installer resolves relative paths against its runtime cache directory, not the CLI working directory, so prefer absolute paths for `target.*` values.
 
 Example:

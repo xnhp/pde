@@ -272,7 +272,7 @@ private fun buildCompilePlanForWarning(
 }
 
 fun launchMain(args: Array<String>) {
-  if (args.isNotEmpty() && args[0] == "target") {
+  if (args.isNotEmpty() && args[0] == "target-install") {
     val exit = targetMain(args.drop(1).toTypedArray())
     exitProcess(exit)
   }
@@ -1510,7 +1510,7 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
 
 private fun targetMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
-  val parser = ArgParser("pde target")
+  val parser = ArgParser("pde target-install")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchOpt by parser.option(ArgType.String, fullName = "launch", description = "Installer launch name (defaults to 'install' if present)")
@@ -2124,7 +2124,7 @@ fun compileMain(args: Array<String>): Int {
     }
     if (!Files.exists(profilePath)) {
       logger.severe(
-        "target profile registry does not exist: $profilePath (check target.profile-id/target.p2-path or run pde target)"
+        "target profile registry does not exist: $profilePath (check target.profile-id/target.p2-path or run pde target-install)"
       )
       return 0
     }

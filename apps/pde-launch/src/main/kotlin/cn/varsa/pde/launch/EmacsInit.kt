@@ -78,7 +78,7 @@ object EmacsInit {
     val context = LaunchConfigLoader.load(configPath, baseDir)
     val profilePath = resolveProfilePath(context)
     if (profilePath == null || !Files.exists(profilePath)) {
-      logger.severe("Target profile registry missing; run pde target first.")
+      logger.severe("Target profile registry missing; run pde target-install first.")
       return 1
     }
 

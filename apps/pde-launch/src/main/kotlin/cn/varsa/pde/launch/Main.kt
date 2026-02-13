@@ -46,7 +46,7 @@ private fun printHelp() {
   println("  clone        Clone repos and sparse-checkout bundles")
   println("  launch       Run a launch config")
   println("  compile      Compile workspace bundles")
-  println("  target       Resolve/prepare target platform")
+  println("  target-install  Resolve/prepare target platform")
   println("  test         Run PDE test launch")
   println("  api-analyze  Run API analysis")
   println("  ij-init      Generate IntelliJ/PDE project")
