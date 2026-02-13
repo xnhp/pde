@@ -54,4 +54,19 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("pde compile"))
   }
+
+  @Test
+  fun `clone subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("clone", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde clone"))
+  }
 }

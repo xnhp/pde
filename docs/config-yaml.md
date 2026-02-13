@@ -19,6 +19,9 @@ Merge rules:
 ### issueId
 Optional string used for labeling/logging.
 
+### branch
+Optional string used by `pde clone` to select a git branch for each repo (accepts `branch` or `origin/branch`).
+
 ### branchName
 Optional string used for labeling/logging.
 

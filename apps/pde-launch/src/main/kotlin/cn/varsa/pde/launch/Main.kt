@@ -25,6 +25,10 @@ fun main(args: Array<String>) {
     val exitCode = compileMain(args.drop(1).toTypedArray())
     exitProcess(exitCode)
   }
+  if (args.isNotEmpty() && args[0] == "clone") {
+    val exitCode = CloneCommand.main(args.drop(1).toTypedArray())
+    exitProcess(exitCode)
+  }
   if (args.isNotEmpty() && args[0] == "launch") {
     launchMain(args.drop(1).toTypedArray())
     return
@@ -39,6 +43,7 @@ private fun printHelp() {
   println("  pde <command> [options]")
   println()
   println("Commands:")
+  println("  clone        Clone repos and sparse-checkout bundles")
   println("  launch       Run a launch config")
   println("  compile      Compile workspace bundles")
   println("  target       Resolve/prepare target platform")
