@@ -13,6 +13,10 @@ fun main(args: Array<String>) {
     printHelp()
     return
   }
+  if (args.isNotEmpty() && args[0] == "ij-init") {
+    val exitCode = IjInit.main(args.drop(1).toTypedArray())
+    exitProcess(exitCode)
+  }
   if (args.isNotEmpty() && args[0] == "emacs-init") {
     val exitCode = EmacsInit.main(args.drop(1).toTypedArray())
     exitProcess(exitCode)
@@ -40,6 +44,7 @@ private fun printHelp() {
   println("  target       Resolve/prepare target platform")
   println("  test         Run PDE test launch")
   println("  api-analyze  Run API analysis")
+  println("  ij-init      Generate IntelliJ/PDE project")
   println("  emacs-init   Generate Emacs/JDT LS workspace")
   println()
   println("Run 'pde <command> --help' for command-specific options.")

@@ -48,6 +48,8 @@ data class LaunchConfig(
   val additionalVmArgs: List<String> = emptyList(),
   val programArgs: List<String> = emptyList(),
   val profilePath: String? = null,
+  @JsonAlias("formatter-config-path")
+  val formatterConfigPath: String? = null,
   val startupLevels: Map<String, Int> = emptyMap(),
   val whitelist: List<String> = listOf(
     "org.eclipse.jdt.annotation",

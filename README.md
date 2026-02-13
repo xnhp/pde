@@ -23,6 +23,9 @@ This repository contains:
   - Default mode is symlinked workspace under `.pde-jdtls`
   - Example:
     - `apps/pde-launch/build/install/pde/bin/pde emacs-init --issue-dir /path/to/issue --config config.yaml --sources-root /path/to/knime-core`
+- IntelliJ/PDE project setup: `pde ij-init`
+  - Example:
+    - `apps/pde-launch/build/install/pde/bin/pde ij-init --issue-dir /path/to/issue`
 - Build/install the remote runner: `./gradlew :pde-remote-runner:installDist`
   - Binary: `apps/pde-remote-runner/build/install/pde-remote-runner/bin/pde-remote-runner`
 - Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`
