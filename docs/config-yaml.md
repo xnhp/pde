@@ -1,6 +1,6 @@
 # pde-resolver config.yaml
 
-This document describes the YAML configuration consumed by the `pde` CLI (`pde launch`, `pde compile`, `pde test`, `pde api-analyze`).
+This document describes the YAML configuration consumed by the `pde` CLI (`pde run`, `pde compile`, `pde test`, `pde api-analyze`).
 
 ## File discovery
 

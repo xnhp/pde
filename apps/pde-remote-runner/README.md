@@ -14,7 +14,7 @@ PDE runtime to connect using the standard `-port <value>` argument.
   - `./apps/pde-remote-runner/build/install/pde-remote-runner/bin/pde-remote-runner --listen-host 0.0.0.0`
 - Typical workflow:
   1. Start the helper and capture the emitted JSON payload to learn the selected port.
-2. Launch `pde launch ... --programArg "-port <port>"` (or add to `launch.yaml`). The PDE
+2. Launch `pde run ... --programArg "-port <port>"` (or add to `launch.yaml`). The PDE
      runtime connects back automatically.
   3. Observe streaming logs / TeamCity service messages, or inspect the generated
      JUnit XML report.
@@ -41,7 +41,7 @@ JUnit artifact and TeamCity live service messages.
 ```
 {"host":"127.0.0.1","port":50521,"timeoutSeconds":120,
   "instructions":["Add '-port 50521' to PDE launch program arguments.",
-    "Example: pde launch --programArg \"-port 50521\""],
+    "Example: pde run --programArg \"-port 50521\""],
  "issuedAt":"2025-12-01T20:15:04.312Z"}
 ```
 

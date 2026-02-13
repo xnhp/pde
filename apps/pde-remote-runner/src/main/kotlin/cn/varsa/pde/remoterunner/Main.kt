@@ -73,7 +73,7 @@ class RemoteRunnerApp {
       timeoutSeconds = timeoutSeconds,
       instructions = listOf(
         "Add '-port ${server.localPort}' to PDE launch program arguments.",
-        "Example: pde launch --programArg \"-port ${server.localPort}\""
+        "Example: pde run --programArg \"-port ${server.localPort}\""
       ),
       issuedAt = Instant.now().toString()
     )

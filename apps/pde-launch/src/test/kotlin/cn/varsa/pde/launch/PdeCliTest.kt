@@ -37,7 +37,7 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("Usage:"))
-    assertTrue(output.contains("launch"))
+    assertTrue(output.contains("run"))
   }
 
   @Test

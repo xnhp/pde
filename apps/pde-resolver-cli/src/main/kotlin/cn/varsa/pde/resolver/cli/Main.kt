@@ -286,7 +286,7 @@ fun launchMain(args: Array<String>) {
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
 
-  val parser = ArgParser("pde launch")
+  val parser = ArgParser("pde run")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -1394,7 +1394,7 @@ private fun runTestLaunch(
     timeoutSeconds = timeoutSeconds,
     instructions = listOf(
       "Add '-port ${server.localPort}' to PDE launch program arguments.",
-      "Example: pde launch --programArg \"-port ${server.localPort}\""
+      "Example: pde run --programArg \"-port ${server.localPort}\""
     ),
     issuedAt = Instant.now().toString()
   )

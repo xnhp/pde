@@ -56,7 +56,7 @@ instance of IntelliJ IDEA with the plugin installed
 
 Use the `pde` binary for headless executions of `.yaml` launch configs. Build it with
 `./gradlew :pde-launch:installDist`, then run
-`./apps/pde-launch/build/install/pde/bin/pde launch --config /path/to/launch.yaml` to stage a
+`./apps/pde-launch/build/install/pde/bin/pde run --config /path/to/launch.yaml` to stage a
 runtime.
 
 ### Remote PDE test helper CLI

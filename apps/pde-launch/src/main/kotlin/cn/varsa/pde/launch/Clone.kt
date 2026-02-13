@@ -1,5 +1,6 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
 import cn.varsa.pde.resolver.cli.config.RepoBundles
 import kotlinx.cli.ArgParser
@@ -33,7 +34,8 @@ object CloneCommand {
     }
 
     return try {
-      cloneFromConfig(configPath, workingDir)
+      val context = LaunchConfigLoader.load(configPath, workingDir)
+      cloneFromConfig(context)
       0
     } catch (ex: CliException) {
       System.err.println(ex.message)
@@ -42,12 +44,11 @@ object CloneCommand {
   }
 }
 
-private fun cloneFromConfig(configPath: Path, workingDir: Path) {
-  val baseDir = configPath.parent?.toAbsolutePath()?.normalize() ?: workingDir
-  val context = LaunchConfigLoader.load(configPath, baseDir)
+private fun cloneFromConfig(context: LaunchConfigContext) {
+  val baseDir = context.baseDir
   val config = context.config
   if (config.bundlesPerRepo.isEmpty()) {
-    fail("No bundlesPerRepo entries found in ${configPath.fileName}.")
+    fail("No bundlesPerRepo entries found in ${context.file.fileName}.")
   }
   val configuredBranch = config.branch?.trim()?.takeIf { it.isNotBlank() }
   val nonPdeBundles = config.nonPdeBundles.mapNotNull { it.trim().takeIf { it.isNotBlank() } }
