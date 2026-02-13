@@ -13,7 +13,6 @@ import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
-import kotlinx.cli.multiple
 import kotlinx.cli.optional
 import cn.varsa.pde.remoterunner.ConsoleTags
 import org.w3c.dom.Document
@@ -51,41 +50,16 @@ object EmacsInit {
   fun main(args: Array<String>): Int {
     configureLogging(Level.INFO, shouldUseColor())
     val parser = ArgParser("pde emacs-init")
-    val issueDirOpt by parser.option(
-      ArgType.String,
-      fullName = "issue-dir",
-      description = "Issue directory containing config.yaml and repos"
-    )
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",
       description = "YAML launch configuration path"
-    )
-    val sourcesRoots by parser.option(
-      ArgType.String,
-      fullName = "sources-root",
-      description = "Local source checkout root (repeatable)"
-    ).multiple()
-    val sourceZipDirOpt by parser.option(
-      ArgType.String,
-      fullName = "source-zip-dir",
-      description = "Output directory for generated source zips"
     )
     val workspaceModeRaw by parser.option(
       ArgType.String,
       fullName = "workspace-mode",
       description = "Workspace mode: symlink or in-place"
     ).default("symlink")
-    val workspaceDirOpt by parser.option(
-      ArgType.String,
-      fullName = "workspace-dir",
-      description = "Workspace directory for symlink mode"
-    )
-    val framework by parser.option(
-      ArgType.String,
-      fullName = "framework",
-      description = "Framework BSN"
-    ).default("org.eclipse.osgi")
     val configPos by parser.argument(
       ArgType.String,
       description = "YAML launch configuration (positional)"
@@ -94,14 +68,14 @@ object EmacsInit {
 
     logger.level = Level.INFO
 
-    val issueDir = issueDirOpt?.let { Paths.get(it) } ?: Paths.get("").toAbsolutePath()
-    val configPath = resolveConfigPath(issueDir, configOpt, configPos)
+    val workingDir = Paths.get("").toAbsolutePath()
+    val configPath = resolveConfigPath(workingDir, configOpt, configPos)
     if (configPath == null) {
-      logger.severe("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config or --issue-dir.")
+      logger.severe("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config.")
       return 1
     }
-
-    val context = LaunchConfigLoader.load(configPath, issueDir)
+    val baseDir = configPath.parent ?: workingDir
+    val context = LaunchConfigLoader.load(configPath, baseDir)
     val profilePath = resolveProfilePath(context)
     if (profilePath == null || !Files.exists(profilePath)) {
       logger.severe("Target profile registry missing; run pde target first.")
@@ -128,25 +102,22 @@ object EmacsInit {
       startupLevels = emptyMap(),
       devProperties = emptyMap()
     )
-    val options = LauncherOptions(frameworkBSN = framework, autoStartDefault = false)
+    val options = LauncherOptions(frameworkBSN = "org.eclipse.osgi", autoStartDefault = false)
     val planResult = LaunchPlanner.build(env, options)
     val specs = CompileService.buildSpecs(planResult, workspaceEntries).specs
 
-    val workspaceRoot = issueDir.toAbsolutePath().normalize()
+    val workspaceRoot = baseDir.toAbsolutePath().normalize()
     val workspaceMode = parseWorkspaceMode(workspaceModeRaw)
     if (workspaceMode == null) {
       logger.severe("Unknown workspace mode: $workspaceModeRaw (use symlink or in-place)")
       return 1
     }
     val emacsWorkspaceRoot = if (workspaceMode == WorkspaceMode.SYMLINK) {
-      resolvePath(issueDir, workspaceDirOpt ?: defaultWorkspaceDir)
+      resolvePath(baseDir, defaultWorkspaceDir)
     } else {
       workspaceRoot
     }
-    val sourceZipDir = sourceZipDirOpt?.let { resolvePath(issueDir, it) }
-      ?: workspaceRoot.resolve(".jdtls-sources")
-
-    val sourceZips = buildSourceZips(sourcesRoots, sourceZipDir)
+    val sourceZips = emptyMap<String, Path>()
 
     val bundlePool = resolveBundlePool(context)
     val pluginPool = bundlePool?.resolve("plugins")
