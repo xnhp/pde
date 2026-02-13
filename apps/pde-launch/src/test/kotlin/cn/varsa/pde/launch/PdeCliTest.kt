@@ -69,4 +69,34 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("pde clone"))
   }
+
+  @Test
+  fun `fetch_jars subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("fetch_jars", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde fetch_jars"))
+  }
+
+  @Test
+  fun `issue-new subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("issue-new", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde issue-new"))
+  }
 }

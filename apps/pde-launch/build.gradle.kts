@@ -10,6 +10,7 @@ repositories {
 dependencies {
   implementation(kotlin("stdlib"))
   implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
+  implementation("org.yaml:snakeyaml:2.2")
   implementation(project(":pde-remote-runner"))
   implementation(project(":pde-resolver"))
   implementation(project(":pde-resolver-cli"))
