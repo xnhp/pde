@@ -141,4 +141,45 @@ class LaunchConfigLoaderTest {
 
     assertEquals(listOf("GatewayDevServer", "AP"), launchNames)
   }
+
+  @Test
+  fun concatenatesBundlesPerRepoAcrossIncludes() {
+    val root: Path = tmp.root.toPath()
+    val baseFile = root.resolve("base.yaml").toFile()
+    val extraFile = root.resolve("extra.yaml").toFile()
+    val configFile = root.resolve("config.yaml").toFile()
+
+    baseFile.writeText(
+      """
+      bundlesPerRepo:
+        - repo: repo-a
+          bundles:
+            - bundle-one
+      """.trimIndent()
+    )
+    extraFile.writeText(
+      """
+      bundlesPerRepo:
+        - repo: repo-b
+          bundles:
+            - bundle-two
+      """.trimIndent()
+    )
+    configFile.writeText(
+      """
+      includes:
+        - base.yaml
+        - extra.yaml
+      bundlesPerRepo:
+        - repo: repo-c
+          bundles:
+            - bundle-three
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val repos = loaded.config.bundlesPerRepo.map { it.repo }
+
+    assertEquals(listOf("repo-a", "repo-b", "repo-c"), repos)
+  }
 }

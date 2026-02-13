@@ -178,6 +178,7 @@ object LaunchConfigLoader {
       val baseValue = merged.get(key)
       val nextValue: JsonNode = when {
         key == "launches" || key == "tests" -> mergeListByName(baseValue as? ArrayNode, overrideValue as? ArrayNode)
+        key == "bundlesPerRepo" -> mergeArrayConcat(baseValue as? ArrayNode, overrideValue as? ArrayNode)
         baseValue is ObjectNode && overrideValue is ObjectNode -> mergeObjectNodes(baseValue, overrideValue)
         overrideValue is ArrayNode -> overrideValue.deepCopy() as ArrayNode
         else -> overrideValue.deepCopy()
@@ -225,6 +226,20 @@ object LaunchConfigLoader {
       merged.add(node.deepCopy())
     }
 
+    return merged
+  }
+
+  private fun mergeArrayConcat(base: ArrayNode?, override: ArrayNode?): ArrayNode {
+    if (override == null) return (base?.deepCopy() as? ArrayNode) ?: mapper.nodeFactory.arrayNode()
+    if (base == null) return override.deepCopy() as ArrayNode
+
+    val merged = mapper.nodeFactory.arrayNode()
+    for (node in base) {
+      merged.add(node.deepCopy())
+    }
+    for (node in override) {
+      merged.add(node.deepCopy())
+    }
     return merged
   }
 
