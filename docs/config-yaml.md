@@ -104,12 +104,15 @@ bundlesPerRepo:
         classes:
           - bin/eclipse
           - bin
+    nonPdeBundles:
+      - org.example.nonpde.bundle
 ```
 
 - `repo`: absolute or relative path to the repository root.
 - `bundles`: list of bundles. Each entry can be:
   - string: bundle name (uses default class root `bin`)
   - object: `{ name, classes }` where `classes` overrides the dev class roots.
+- `nonPdeBundles`: optional list of bundle directories that should be treated as non-PDE (used by `pde clone` / `pde fetch_jars`; ignored for workspace module resolution).
 
 Use the object form when the bundle’s resources live outside the default `bin` (e.g. `org.knime.core` needs `bin/eclipse` for `log4j` resources).
 

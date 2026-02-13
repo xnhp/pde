@@ -54,7 +54,8 @@ private fun cloneFromConfig(context: LaunchConfigContext) {
   val nonPdeBundles = config.nonPdeBundles.mapNotNull { it.trim().takeIf { it.isNotBlank() } }
 
   config.bundlesPerRepo.forEach { entry ->
-    cloneRepo(entry, baseDir, configuredBranch, nonPdeBundles)
+    val entryNonPdeBundles = entry.nonPdeBundles.mapNotNull { it.trim().takeIf { it.isNotBlank() } }
+    cloneRepo(entry, baseDir, configuredBranch, nonPdeBundles + entryNonPdeBundles)
   }
 }
 

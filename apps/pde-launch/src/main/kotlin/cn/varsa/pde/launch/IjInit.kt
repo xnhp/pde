@@ -146,7 +146,8 @@ object IjInit {
         fail("Repo directory does not exist: ${repoDir}")
       }
       vcsMappings.add(repoName.replace('\\', '/'))
-      val bundleNames = allBundles(repoEntry, repoDir, nonPdeBundles)
+      val entryNonPdeBundles = repoEntry.nonPdeBundles
+      val bundleNames = allBundles(repoEntry, repoDir, nonPdeBundles + entryNonPdeBundles)
       if (bundleNames.isEmpty()) fail("No bundles resolved for repo: ${repoName}")
       bundleNames.forEach { bundle ->
         val bundleDir = repoDir.resolve(bundle)

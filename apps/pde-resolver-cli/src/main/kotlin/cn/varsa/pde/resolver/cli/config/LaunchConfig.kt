@@ -82,7 +82,8 @@ data class WorkspaceModule(
 data class RepoBundles(
   val repo: String,
   @JsonDeserialize(contentUsing = BundleRefDeserializer::class)
-  val bundles: List<BundleRef> = emptyList()
+  val bundles: List<BundleRef> = emptyList(),
+  val nonPdeBundles: List<String> = emptyList()
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -258,9 +259,9 @@ object LaunchConfigLoader {
   }
 
   private fun buildWorkspaceModulesFromBundles(config: LaunchConfig, workingDir: Path): List<WorkspaceModule> {
-    val skipBundles = config.nonPdeBundles.toSet()
     val seen = linkedSetOf<String>()
     return config.bundlesPerRepo.flatMap { repoEntry ->
+      val skipBundles = (config.nonPdeBundles + repoEntry.nonPdeBundles).toSet()
       val repoPath = Paths.get(repoEntry.repo)
       val repoBase = if (repoPath.isAbsolute) repoPath else workingDir.resolve(repoEntry.repo)
       repoEntry.bundles.mapNotNull { bundle ->

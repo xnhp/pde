@@ -74,7 +74,8 @@ private fun findFetchJarsDirs(baseDir: Path, config: LaunchConfig): List<Path> {
       return@forEach
     }
 
-    val bundles = allBundles(entry, nonPdeBundles)
+    val entryNonPdeBundles = entry.nonPdeBundles.mapNotNull { it.trim().takeIf { name -> name.isNotBlank() } }
+    val bundles = allBundles(entry, nonPdeBundles + entryNonPdeBundles)
     bundles.forEach { bundle ->
       val bundleDir = repoDir.resolve(bundle)
       if (!Files.isDirectory(bundleDir)) {
