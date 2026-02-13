@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="BitbucketMajeraCodeReviewSettings">
+    <option name="popularEmojiShortcuts">
+      <list />
+    </option>
+    <option name="servers">
+      <list>
+        <DiscoveredCodeReviewServer>
+          <option name="serviceId" value="bitbucket-cloud" />
+          <option name="storedCodeReviewRepositories">
+            <list>
+              <StoredCodeReviewRepository>
+                <option name="name" value="knime-gateway" />
+                <option name="storedVcsRemote">
+                  <StoredVcsRemote>
+                    <option name="vcsRemoteUrl" value="https://bitbucket.org/KNIME/knime-gateway/" />
+                    <option name="vcsRootUrl" value="file://$USER_HOME$/git-repositories/knime-gateway" />
+                  </StoredVcsRemote>
+                </option>
+                <option name="workspace" value="KNIME" />
+              </StoredCodeReviewRepository>
+            </list>
+          </option>
+          <option name="url" value="https://bitbucket.org" />
+        </DiscoveredCodeReviewServer>
+      </list>
+    </option>
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="13214a40-4379-4e35-9452-5913c394762b" name="Changes" comment="">
+      <change afterPath="$USER_HOME$/git-repositories/knime-gateway/.serena/.gitignore" afterDir="false" />
+      <change afterPath="$USER_HOME$/git-repositories/knime-gateway/.serena/project.yml" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$USER_HOME$/git-repositories/knime-gateway" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "xnhp"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "git@github.com:knime/knime-gateway.git",
+    "accountId": "f91dfae4-b817-47c8-a094-a1628cdef793"
+  }
+}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3
+}</component>
+  <component name="ProjectId" id="38Tq35xPhIEhvDmd3bUjhz9aTNo" />
+  <component name="ProjectViewState">
+    <option name="abbreviatePackageNames" value="true" />
+    <option name="autoscrollToSource" value="true" />
+    <option name="flattenModules" value="true" />
+    <option name="flattenPackages" value="true" />
+    <option name="foldersAlwaysOnTop" value="false" />
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="openDirectoriesWithSingleClick" value="true" />
+    <option name="showLibraryContents" value="true" />
+    <option name="showVisibilityIcons" value="true" />
+    <option name="sortKey" value="BY_TIME_ASCENDING" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "#4 on enh/NXT-4296-call-search-service",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "/home/ben/git-repositories/knime-gateway/org.knime.gateway.impl",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "project.structure.last.edited": "Modules",
+    "project.structure.proportion": "0.0",
+    "project.structure.side.proportion": "0.0",
+    "settings.editor.selected.configurable": "cn.varsa.idea.pde.partial.plugin.config.TargetConfigurable",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/ij-module-files" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-9823dce3aa75-bf35d07a577b-intellij.indexing.shared.core-IU-252.27397.103" />
+        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-IU-252.27397.103" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="13214a40-4379-4e35-9452-5913c394762b" name="Changes" comment="" />
+      <created>1768833706175</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1768833706175</updated>
+      <workItem from="1768833707500" duration="434000" />
+      <workItem from="1768834261022" duration="91000" />
+      <workItem from="1768834372101" duration="38000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
