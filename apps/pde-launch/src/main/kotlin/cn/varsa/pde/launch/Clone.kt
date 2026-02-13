@@ -127,11 +127,15 @@ private fun cloneRepo(
   }
 
   if (repoExisted) {
-    runGitWithOutput(
-      baseDir,
-      listOf("-C", repoDir.toString(), "pull", "--ff-only"),
-      "Git pull failed for $repoName"
-    )
+    if (hasUpstream(baseDir, repoDir)) {
+      runGitWithOutput(
+        baseDir,
+        listOf("-C", repoDir.toString(), "pull", "--ff-only"),
+        "Git pull failed for $repoName"
+      )
+    } else {
+      System.err.println("Skipping git pull for $repoName: current branch has no upstream.")
+    }
   }
 
   val missingBundles = desiredBundles.filterNot { Files.isDirectory(repoDir.resolve(it)) }
@@ -250,6 +254,16 @@ private fun runGitCapture(workingDir: Path, args: List<String>, errorMessage: St
     fail("$errorMessage.$details")
   }
   return output
+}
+
+private fun hasUpstream(workingDir: Path, repoDir: Path): Boolean {
+  val command = listOf("git", "-C", repoDir.toString(), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+  val process = ProcessBuilder(command)
+    .directory(workingDir.toFile())
+    .redirectErrorStream(true)
+    .start()
+  process.inputStream.bufferedReader().readText()
+  return process.waitFor() == 0
 }
 
 private fun parseSparseCheckoutList(output: String): List<String> = output
