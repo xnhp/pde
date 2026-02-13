@@ -20,7 +20,7 @@ This repository contains:
 - Build/install the launch tool: `./gradlew :pde-launch:installDist`
   - Binary: `apps/pde-launch/build/install/pde/bin/pde`
 - Emacs/JDT LS workspace setup: `pde emacs-init`
-  - Default mode is symlinked workspace under `.pde-jdtls`
+  - Runs in-place against the current workspace
   - Example:
     - `apps/pde-launch/build/install/pde/bin/pde emacs-init --issue-dir /path/to/issue --config config.yaml --sources-root /path/to/knime-core`
 - IntelliJ/PDE project setup: `pde ij-init`
