@@ -558,7 +558,7 @@ object EmacsInit {
       ((nil . ((eval . (progn
         (require 'project)
         (require 'cl-lib)
-        (defconst pde--emacs-init-root (file-name-as-directory \"$rootLiteral\"))
+        (defconst pde--emacs-init-root (file-name-as-directory "$rootLiteral"))
         (defun pde--emacs-init-project (dir)
           (let ((tru-root (file-truename pde--emacs-init-root))
                 (tru-dir (file-truename dir)))
@@ -575,7 +575,7 @@ object EmacsInit {
         logger.info("Skipping ${dirLocals.fileName}: up to date.")
         return
       }
-      if (existing == legacyContent.trim()) {
+      if (existing == legacyContent.trim() || existing.contains("pde--emacs-init-root")) {
         Files.writeString(dirLocals, content)
         logger.info("Updated ${dirLocals.fileName} to force Emacs project root at ${workspaceRoot}.")
         return
