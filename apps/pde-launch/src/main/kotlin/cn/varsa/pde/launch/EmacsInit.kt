@@ -161,6 +161,7 @@ object EmacsInit {
         )
         ensureOutputDirectory(classpathFile, moduleDir)
       }
+      ensureDirLocals(workspaceRoot, configPath)
     }
 
     if (workspaceMode == WorkspaceMode.SYMLINK) {
@@ -532,6 +533,31 @@ object EmacsInit {
       .firstOrNull { it.getAttribute("kind") == "output" }
     val outputPath = outputEntry?.getAttribute("path")?.takeIf { it.isNotBlank() } ?: "bin"
     Files.createDirectories(moduleDir.resolve(outputPath))
+  }
+
+  private fun ensureDirLocals(workspaceRoot: Path, configPath: Path) {
+    val dirLocals = workspaceRoot.resolve(".dir-locals.el")
+    if (Files.exists(dirLocals)) {
+      logger.info("Skipping ${dirLocals.fileName}: already exists.")
+      return
+    }
+    val markers = linkedSetOf(
+      configPath.fileName.toString(),
+      "config.yaml",
+      "config.yml",
+      "launch.yaml",
+      "launch.yml",
+      "pde.yaml",
+      "pde.yml",
+      "pde-launch.yaml",
+      "pde-launch.yml"
+    ).filter { it.isNotBlank() }
+    val markersLiteral = markers.joinToString(" ") { "\"$it\"" }
+    val content = """
+      ((nil . ((project-vc-extra-root-markers . ($markersLiteral)))))
+    """.trimIndent() + "\n"
+    Files.writeString(dirLocals, content)
+    logger.info("Wrote ${dirLocals.fileName} to keep Emacs project root at ${workspaceRoot}.")
   }
 
   private fun buildSourceZips(sourcesRoots: List<String>, outputDir: Path): Map<String, Path> {
