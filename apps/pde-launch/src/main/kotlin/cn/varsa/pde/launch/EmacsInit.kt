@@ -128,7 +128,7 @@ object EmacsInit {
       ensureOutputDirectory(classpathFile, moduleDir)
     }
     ensureDirLocals(workspaceRoot, configPath)
-
+    ensureProjectileFile(workspaceRoot)
     logger.info("Emacs/JDT LS setup complete for ${workspaceEntries.size} workspace bundles.")
     return 0
   }
@@ -372,6 +372,26 @@ object EmacsInit {
     }
     Files.writeString(dirLocals, content)
     logger.info("Wrote ${dirLocals.fileName} to force Emacs project root at ${workspaceRoot}.")
+  }
+
+  private fun ensureProjectileFile(workspaceRoot: Path) {
+    val projectileFile = workspaceRoot.resolve(".projectile")
+    val requiredEntries = listOf("- target", "- node_modules")
+    if (Files.exists(projectileFile)) {
+      val existing = Files.readAllLines(projectileFile)
+      val existingSet = existing.map { it.trim() }.toSet()
+      val missing = requiredEntries.filter { !existingSet.contains(it) }
+      if (missing.isEmpty()) {
+        logger.info("Skipping ${projectileFile.fileName}: already contains ignores.")
+        return
+      }
+      val updated = existing + missing
+      Files.writeString(projectileFile, updated.joinToString("\n") + "\n")
+      logger.info("Updated ${projectileFile.fileName} with missing ignores.")
+      return
+    }
+    Files.writeString(projectileFile, requiredEntries.joinToString("\n") + "\n")
+    logger.info("Wrote ${projectileFile.fileName} with default ignores.")
   }
 
   private fun buildSourceZips(sourcesRoots: List<String>, outputDir: Path): Map<String, Path> {
