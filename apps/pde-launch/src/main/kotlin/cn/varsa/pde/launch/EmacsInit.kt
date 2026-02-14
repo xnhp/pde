@@ -59,14 +59,14 @@ object EmacsInit {
     val workingDir = Paths.get("").toAbsolutePath()
     val configPath = resolveConfigPath(workingDir, configOpt, configPos)
     if (configPath == null) {
-      logger.severe("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config.")
+      logger.severe("No launch config found.")
       return 1
     }
     val baseDir = configPath.parent ?: workingDir
     val context = LaunchConfigLoader.load(configPath, baseDir)
     val profilePath = resolveProfilePath(context)
     if (profilePath == null || !Files.exists(profilePath)) {
-      logger.severe("Target profile registry missing; run pde target-install first.")
+      logger.severe("Target profile registry missing.")
       return 1
     }
 
