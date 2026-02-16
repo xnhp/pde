@@ -14,7 +14,7 @@ resolving Eclipse target platforms, planning launches, and running remote tests.
 - `apps/`: headless CLI tools built on `core/`:
   - `pde`: launch planning/runtime assembly for PDE-style runs.
   - `pde-resolver-cli`: target platform resolver and config-driven inputs.
-  - `pde-remote-runner`: remote test runner (protocol in `core`).
+  - `pde-test-runner`: remote test runner (protocol in `core`).
 - `docs/`: documentation, including `config-yaml.md` for resolver configuration.
 - Gradle build: root `build.gradle.kts`, `settings.gradle.kts`.
 
@@ -34,7 +34,7 @@ resolving Eclipse target platforms, planning launches, and running remote tests.
 - Install headless tools:
   - `./gradlew :pde-launch:installDist`
   - `./gradlew :pde-resolver-cli:installDist`
-  - `./gradlew :pde-remote-runner:installDist`
+  - `./gradlew :pde-test-runner:installDist`
 
 ## Key configs and docs
 

@@ -23,7 +23,7 @@ class RemoteRunnerApp {
   private val mapper: ObjectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
   fun run(args: Array<String>): Int {
-    val parser = ArgParser("pde-remote-runner")
+    val parser = ArgParser("pde-test-runner")
     val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
     val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
     val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
