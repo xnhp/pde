@@ -105,12 +105,6 @@ object EmacsInit {
     val workspaceProjectsByBsn = workspaceEntries
       .mapNotNull { entry -> entry.manifest.bundleSymbolicName?.key?.let { it to entry.path.fileName.toString() } }
       .toMap()
-    val fragmentHostsByBsn = workspaceEntries.mapNotNull { entry ->
-      val fragmentHost = entry.fragmentHost?.symbolicName ?: return@mapNotNull null
-      val fragmentBsn = entry.manifest.bundleSymbolicName?.key ?: return@mapNotNull null
-      fragmentBsn to fragmentHost
-    }.toMap()
-    val fragmentBsns = fragmentHostsByBsn.keys
 
     workspaceEntries.forEach { descriptor ->
       val moduleDir = descriptor.path.toAbsolutePath().normalize()
@@ -126,9 +120,7 @@ object EmacsInit {
       }
       val workspaceProjects = resolveWorkspaceProjectDeps(
         descriptor = descriptor,
-        workspaceProjectsByBsn = workspaceProjectsByBsn,
-        workspaceDependencies = planResult.workspaceDependencies,
-        fragmentHostsByBsn = fragmentHostsByBsn
+        workspaceProjectsByBsn = workspaceProjectsByBsn
       )
       updateClasspath(
         classpathFile = classpathFile,
@@ -290,14 +282,21 @@ object EmacsInit {
     }
 
     // Add workspace project refs
+    val projectName = moduleDir.fileName.toString()
+    val desiredProjectPaths = workspaceProjects
+      .filter { it != projectName }
+      .map { "/$it" }
+      .toSet()
+    classpathEntries(root)
+      .filter { it.getAttribute("kind") == "src" }
+      .filter { it.getAttribute("path")?.startsWith("/") == true }
+      .filterNot { desiredProjectPaths.contains(it.getAttribute("path")) }
+      .forEach { root.removeChild(it) }
     val existingSrc = classpathEntries(root)
       .filter { it.getAttribute("kind") == "src" }
       .mapNotNull { it.getAttribute("path") }
       .toSet()
-    val projectName = moduleDir.fileName.toString()
-    val newProjectEntries = workspaceProjects
-      .filter { it != projectName }
-      .map { "/$it" }
+    val newProjectEntries = desiredProjectPaths
       .filter { !existingSrc.contains(it) }
       .map { path ->
         doc.createElement("classpathentry").apply {
@@ -330,29 +329,17 @@ object EmacsInit {
 
   private fun resolveWorkspaceProjectDeps(
     descriptor: WorkspaceBundleDescriptor,
-    workspaceProjectsByBsn: Map<String, String>,
-    workspaceDependencies: Map<String, Set<String>>,
-    fragmentHostsByBsn: Map<String, String>
+    workspaceProjectsByBsn: Map<String, String>
   ): List<String> {
     val bsn = descriptor.manifest.bundleSymbolicName?.key
     if (bsn == null) {
       logger.warning("Skipping workspace refs for ${descriptor.path.fileName}: missing Bundle-SymbolicName")
       return emptyList()
     }
-    val fragmentHost = fragmentHostsByBsn[bsn]
-    val deps = if (fragmentHost != null) {
-      val hostDeps = workspaceDependencies[fragmentHost].orEmpty()
-      val ownDeps = workspaceDependencies[bsn].orEmpty()
-      (hostDeps + ownDeps + fragmentHost).toSet()
-    } else {
-      workspaceDependencies[bsn].orEmpty()
-    }
-    val filteredDeps = if (fragmentHost == null) {
-      deps.filterNot { fragmentHostsByBsn.containsKey(it) }
-    } else {
-      deps
-    }
-    return filteredDeps.mapNotNull { dep -> workspaceProjectsByBsn[dep] }.sorted()
+    val requireBundles = descriptor.manifest.requireBundle?.keys.orEmpty()
+    val fragmentHost = descriptor.fragmentHost?.symbolicName
+    val deps = (requireBundles + listOfNotNull(fragmentHost)).toSet()
+    return deps.mapNotNull { dep -> workspaceProjectsByBsn[dep] }.sorted()
   }
 
   private fun ensureOutputDirectory(classpathFile: Path, moduleDir: Path) {
