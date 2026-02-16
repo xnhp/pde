@@ -10,6 +10,7 @@ import cn.varsa.pde.resolver.launch.LaunchPlanner
 import cn.varsa.pde.resolver.launch.LauncherOptions
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
+import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.optional
@@ -105,6 +106,11 @@ object EmacsInit {
     val workspaceProjectsByBsn = workspaceEntries
       .mapNotNull { entry -> entry.manifest.bundleSymbolicName?.key?.let { it to entry.path.fileName.toString() } }
       .toMap()
+    val fragmentBsns = workspaceEntries.mapNotNull { entry ->
+      entry.manifest.fragmentHostAndVersionRange()?.let {
+        entry.manifest.bundleSymbolicName?.key
+      }
+    }.toSet()
 
     workspaceEntries.forEach { descriptor ->
       val moduleDir = descriptor.path.toAbsolutePath().normalize()
@@ -121,7 +127,8 @@ object EmacsInit {
       val workspaceProjects = resolveWorkspaceProjectDeps(
         descriptor = descriptor,
         workspaceProjectsByBsn = workspaceProjectsByBsn,
-        workspaceDependencies = planResult.workspaceDependencies
+        workspaceDependencies = planResult.workspaceDependencies,
+        fragmentBsns = fragmentBsns
       )
       updateClasspath(
         classpathFile = classpathFile,
@@ -324,7 +331,8 @@ object EmacsInit {
   private fun resolveWorkspaceProjectDeps(
     descriptor: WorkspaceBundleDescriptor,
     workspaceProjectsByBsn: Map<String, String>,
-    workspaceDependencies: Map<String, Set<String>>
+    workspaceDependencies: Map<String, Set<String>>,
+    fragmentBsns: Set<String>
   ): List<String> {
     val bsn = descriptor.manifest.bundleSymbolicName?.key
     if (bsn == null) {
@@ -332,7 +340,13 @@ object EmacsInit {
       return emptyList()
     }
     val deps = workspaceDependencies[bsn].orEmpty()
-    return deps.mapNotNull { dep -> workspaceProjectsByBsn[dep] }.sorted()
+    val isFragment = descriptor.manifest.fragmentHostAndVersionRange() != null
+    val filteredDeps = if (isFragment) {
+      deps
+    } else {
+      deps.filterNot { fragmentBsns.contains(it) }
+    }
+    return filteredDeps.mapNotNull { dep -> workspaceProjectsByBsn[dep] }.sorted()
   }
 
   private fun ensureOutputDirectory(classpathFile: Path, moduleDir: Path) {
