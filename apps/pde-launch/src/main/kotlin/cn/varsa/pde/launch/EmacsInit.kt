@@ -16,6 +16,7 @@ import kotlinx.cli.optional
 import cn.varsa.pde.remoterunner.ConsoleTags
 import org.w3c.dom.Document
 import org.w3c.dom.Element
+import org.w3c.dom.Node
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.PrintWriter
@@ -131,6 +132,7 @@ object EmacsInit {
         pluginPool = pluginPool,
         localSourceZips = sourceZips
       )
+      updateProjectFile(moduleDir.resolve(".project"))
       ensureOutputDirectory(classpathFile, moduleDir)
     }
     ensureDirLocals(workspaceRoot, configPath)
@@ -348,6 +350,50 @@ object EmacsInit {
       .firstOrNull { it.getAttribute("kind") == "output" }
     val outputPath = outputEntry?.getAttribute("path")?.takeIf { it.isNotBlank() } ?: "bin"
     Files.createDirectories(moduleDir.resolve(outputPath))
+  }
+
+  private fun updateProjectFile(projectFile: Path) {
+    if (!Files.exists(projectFile)) return
+    val doc = parseXml(projectFile)
+    val root = doc.documentElement
+    val buildSpec = root.getElementsByTagName("buildSpec").item(0) ?: return
+    fun childText(node: Node, tagName: String): String? {
+      val children = node.childNodes
+      for (i in 0 until children.length) {
+        val child = children.item(i)
+        if (child.nodeName == tagName) {
+          return child.textContent?.trim()
+        }
+      }
+      return null
+    }
+    val commands = buildSpec.childNodes
+    val toRemove = mutableListOf<Node>()
+    for (i in 0 until commands.length) {
+      val node = commands.item(i)
+      if (node.nodeName != "buildCommand") continue
+      val name = childText(node, "name")
+      if (name == "org.eclipse.m2e.core.maven2Builder") {
+        toRemove.add(node)
+      }
+    }
+    toRemove.forEach { buildSpec.removeChild(it) }
+
+    val natures = root.getElementsByTagName("natures").item(0)
+    if (natures != null) {
+      val natureNodes = natures.childNodes
+      val naturesToRemove = mutableListOf<Node>()
+      for (i in 0 until natureNodes.length) {
+        val node = natureNodes.item(i)
+        if (node.nodeName != "nature") continue
+        val value = node.textContent?.trim()
+        if (value == "org.eclipse.m2e.core.maven2Nature") {
+          naturesToRemove.add(node)
+        }
+      }
+      naturesToRemove.forEach { natures.removeChild(it) }
+    }
+    writeXml(doc, projectFile)
   }
 
   private fun ensureDirLocals(workspaceRoot: Path, configPath: Path) {
