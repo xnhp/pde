@@ -62,8 +62,8 @@ object EmacsInit {
       logger.severe("No launch config found.")
       return 1
     }
-    val baseDir = configPath.parent ?: workingDir
-    val context = LaunchConfigLoader.load(configPath, baseDir)
+    val context = LaunchConfigLoader.load(configPath)
+    val baseDir = context.baseDir
     val profilePath = resolveProfilePath(context)
     if (profilePath == null || !Files.exists(profilePath)) {
       logger.severe("Target profile registry missing.")
