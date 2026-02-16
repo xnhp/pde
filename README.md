@@ -19,7 +19,6 @@ This repository contains:
 
 - Build/install the launch tool: `./gradlew :pde-launch:installDist`
   - Binary: `apps/pde-launch/build/install/pde/bin/pde`
-- Emacs/JDT LS workspace setup: `pde emacs-init`
 - IntelliJ/PDE project setup: `pde ij-init`
 - Build/install the remote runner: `./gradlew :pde-test-runner:installDist`
 - Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`
