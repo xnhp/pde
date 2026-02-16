@@ -10,7 +10,6 @@ import cn.varsa.pde.resolver.launch.LaunchPlanner
 import cn.varsa.pde.resolver.launch.LauncherOptions
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
-import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.optional
@@ -106,11 +105,12 @@ object EmacsInit {
     val workspaceProjectsByBsn = workspaceEntries
       .mapNotNull { entry -> entry.manifest.bundleSymbolicName?.key?.let { it to entry.path.fileName.toString() } }
       .toMap()
-    val fragmentBsns = workspaceEntries.mapNotNull { entry ->
-      entry.manifest.fragmentHostAndVersionRange()?.let {
-        entry.manifest.bundleSymbolicName?.key
-      }
-    }.toSet()
+    val fragmentHostsByBsn = workspaceEntries.mapNotNull { entry ->
+      val fragmentHost = entry.fragmentHost?.symbolicName ?: return@mapNotNull null
+      val fragmentBsn = entry.manifest.bundleSymbolicName?.key ?: return@mapNotNull null
+      fragmentBsn to fragmentHost
+    }.toMap()
+    val fragmentBsns = fragmentHostsByBsn.keys
 
     workspaceEntries.forEach { descriptor ->
       val moduleDir = descriptor.path.toAbsolutePath().normalize()
@@ -128,7 +128,7 @@ object EmacsInit {
         descriptor = descriptor,
         workspaceProjectsByBsn = workspaceProjectsByBsn,
         workspaceDependencies = planResult.workspaceDependencies,
-        fragmentBsns = fragmentBsns
+        fragmentHostsByBsn = fragmentHostsByBsn
       )
       updateClasspath(
         classpathFile = classpathFile,
@@ -332,19 +332,25 @@ object EmacsInit {
     descriptor: WorkspaceBundleDescriptor,
     workspaceProjectsByBsn: Map<String, String>,
     workspaceDependencies: Map<String, Set<String>>,
-    fragmentBsns: Set<String>
+    fragmentHostsByBsn: Map<String, String>
   ): List<String> {
     val bsn = descriptor.manifest.bundleSymbolicName?.key
     if (bsn == null) {
       logger.warning("Skipping workspace refs for ${descriptor.path.fileName}: missing Bundle-SymbolicName")
       return emptyList()
     }
-    val deps = workspaceDependencies[bsn].orEmpty()
-    val isFragment = descriptor.manifest.fragmentHostAndVersionRange() != null
-    val filteredDeps = if (isFragment) {
-      deps
+    val fragmentHost = fragmentHostsByBsn[bsn]
+    val deps = if (fragmentHost != null) {
+      val hostDeps = workspaceDependencies[fragmentHost].orEmpty()
+      val ownDeps = workspaceDependencies[bsn].orEmpty()
+      (hostDeps + ownDeps + fragmentHost).toSet()
     } else {
-      deps.filterNot { fragmentBsns.contains(it) }
+      workspaceDependencies[bsn].orEmpty()
+    }
+    val filteredDeps = if (fragmentHost == null) {
+      deps.filterNot { fragmentHostsByBsn.containsKey(it) }
+    } else {
+      deps
     }
     return filteredDeps.mapNotNull { dep -> workspaceProjectsByBsn[dep] }.sorted()
   }
