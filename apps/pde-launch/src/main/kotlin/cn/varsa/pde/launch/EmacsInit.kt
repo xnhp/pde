@@ -3,8 +3,6 @@ package cn.varsa.pde.launch
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
-import cn.varsa.pde.resolver.cli.config.RepoBundles
-import cn.varsa.pde.resolver.cli.config.WorkspaceModule
 import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
 import cn.varsa.pde.resolver.compile.CompileService
 import cn.varsa.pde.resolver.launch.LaunchEnvironment
@@ -14,7 +12,6 @@ import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
-import kotlinx.cli.default
 import kotlinx.cli.optional
 import cn.varsa.pde.remoterunner.ConsoleTags
 import org.w3c.dom.Document
@@ -55,11 +52,6 @@ object EmacsInit {
       ArgType.String,
       description = "YAML launch configuration (positional)"
     ).optional()
-    val includeRepoBundles by parser.option(
-      ArgType.Boolean,
-      fullName = "include-repo-bundles",
-      description = "Include all PDE bundles found under repos listed in bundlesPerRepo"
-    ).default(true)
     parser.parse(args)
 
     logger.level = Level.INFO
@@ -72,15 +64,14 @@ object EmacsInit {
     }
     val baseDir = configPath.parent ?: workingDir
     val context = LaunchConfigLoader.load(configPath, baseDir)
-    val expandedContext = expandWorkspaceModules(context, includeRepoBundles)
-    val profilePath = resolveProfilePath(expandedContext)
+    val profilePath = resolveProfilePath(context)
     if (profilePath == null || !Files.exists(profilePath)) {
       logger.severe("Target profile registry missing.")
       return 1
     }
 
     val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
-    val workspaceInputs = WorkspaceModuleResolver.resolve(expandedContext, allowMissingClasses = true)
+    val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
     val workspaceEntries = workspaceInputs.descriptors
     if (workspaceEntries.isEmpty()) {
       logger.severe("No workspace modules found in config.")
@@ -106,7 +97,7 @@ object EmacsInit {
     val workspaceRoot = baseDir.toAbsolutePath().normalize()
     val sourceZips = emptyMap<String, Path>()
 
-    val bundlePool = resolveBundlePool(expandedContext)
+    val bundlePool = resolveBundlePool(context)
     val pluginPool = bundlePool?.resolve("plugins")
 
     val specsByPath = specs.filter { it.isWorkspace }
@@ -236,62 +227,6 @@ object EmacsInit {
     val targetConfig = context.config.target ?: return null
     val raw = targetConfig.bundlePool?.takeUnless { it.isBlank() } ?: return null
     return resolvePath(baseDir, raw)
-  }
-
-  private fun expandWorkspaceModules(
-    context: LaunchConfigContext,
-    includeRepoBundles: Boolean
-  ): LaunchConfigContext {
-    if (!includeRepoBundles) return context
-    val config = context.config
-    if (config.bundlesPerRepo.isEmpty()) return context
-
-    val existingPaths = config.workspaceModules
-      .map { Paths.get(it.path).toAbsolutePath().normalize().toString() }
-      .toMutableSet()
-    val extraModules = mutableListOf<WorkspaceModule>()
-    val globalSkip = config.nonPdeBundles.toSet()
-
-    config.bundlesPerRepo.forEach { repo ->
-      val repoRoot = resolveRepoRoot(repo, context.baseDir)
-      if (repoRoot == null) {
-        logger.warning("Repo root not found for ${repo.repo}; skipping bundle discovery.")
-        return@forEach
-      }
-      val skip = globalSkip + repo.nonPdeBundles
-      Files.list(repoRoot).use { stream ->
-        stream.filter { Files.isDirectory(it) }.forEach { candidate ->
-          val name = candidate.fileName.toString()
-          if (skip.contains(name)) return@forEach
-          val manifest = candidate.resolve("META-INF").resolve("MANIFEST.MF")
-          if (!Files.isRegularFile(manifest)) return@forEach
-          val modulePath = candidate.toAbsolutePath().normalize().toString()
-          if (!existingPaths.add(modulePath)) return@forEach
-          extraModules.add(WorkspaceModule(path = modulePath))
-        }
-      }
-    }
-
-    if (extraModules.isEmpty()) return context
-    val mergedModules = config.workspaceModules + extraModules
-    logger.info("Added ${extraModules.size} workspace bundles discovered under repo roots.")
-    return context.copy(config = config.copy(workspaceModules = mergedModules))
-  }
-
-  private fun resolveRepoRoot(repo: RepoBundles, baseDir: Path): Path? {
-    val raw = repo.repo
-    val path = Paths.get(raw)
-    val candidates = if (path.isAbsolute) {
-      listOf(path)
-    } else {
-      buildList {
-        add(baseDir.resolve(path))
-        baseDir.parent?.let { add(it.resolve(path)) }
-      }
-    }
-    return candidates
-      .map { it.toAbsolutePath().normalize() }
-      .firstOrNull { Files.exists(it) && Files.isDirectory(it) }
   }
 
 
