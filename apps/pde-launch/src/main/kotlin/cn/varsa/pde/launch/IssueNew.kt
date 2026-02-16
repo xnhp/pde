@@ -180,7 +180,37 @@ private fun buildBranchName(issueId: String, issueType: String?, summary: String
   val prefix = branchPrefixForIssueType(issueType)
   val summarySlug = summary?.let { slugify(it) }
   val base = if (summarySlug.isNullOrBlank()) issueId else "${issueId}-${summarySlug}"
-  return "${prefix}/${base}"
+  return formatBranchName(prefix, issueId, base)
+}
+
+private fun formatBranchName(prefix: String, issueId: String, base: String): String {
+  val maxLength = 50
+  val rawPrefix = "${prefix}/"
+  val prefixPart = if (rawPrefix.length > maxLength) rawPrefix.take(maxLength) else rawPrefix
+  val remaining = maxLength - prefixPart.length
+  if (remaining <= 0) {
+    return prefixPart
+  }
+  if (prefixPart.length + base.length <= maxLength) {
+    return "${prefixPart}${base}"
+  }
+
+  val trimmedIssueId = issueId.take(remaining)
+  if (trimmedIssueId.length >= remaining) {
+    return "${prefixPart}${trimmedIssueId}"
+  }
+
+  val summaryLimit = remaining - trimmedIssueId.length - 1
+  val truncatedSummary = if (summaryLimit > 0) {
+    base.removePrefix(issueId).removePrefix("-").take(summaryLimit).trimEnd('-')
+  } else {
+    ""
+  }
+  return if (truncatedSummary.isBlank()) {
+    "${prefixPart}${trimmedIssueId}"
+  } else {
+    "${prefixPart}${trimmedIssueId}-${truncatedSummary}"
+  }
 }
 
 private fun branchPrefixForIssueType(issueType: String?): String {
