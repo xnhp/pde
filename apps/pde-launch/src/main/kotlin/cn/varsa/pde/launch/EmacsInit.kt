@@ -102,7 +102,9 @@ object EmacsInit {
 
     val specsByPath = specs.filter { it.isWorkspace }
       .associateBy { Paths.get(it.bundlePath).toAbsolutePath().normalize() }
-    val workspaceProjects = workspaceEntries.map { it.path.fileName.toString() }.sorted()
+    val workspaceProjectsByBsn = workspaceEntries
+      .mapNotNull { entry -> entry.manifest.bundleSymbolicName?.key?.let { it to entry.path.fileName.toString() } }
+      .toMap()
 
     workspaceEntries.forEach { descriptor ->
       val moduleDir = descriptor.path.toAbsolutePath().normalize()
@@ -116,6 +118,11 @@ object EmacsInit {
         logger.warning("Skipping ${moduleDir.fileName}: missing compile spec")
         return@forEach
       }
+      val workspaceProjects = resolveWorkspaceProjectDeps(
+        descriptor = descriptor,
+        workspaceProjectsByBsn = workspaceProjectsByBsn,
+        workspaceDependencies = planResult.workspaceDependencies
+      )
       updateClasspath(
         classpathFile = classpathFile,
         moduleDir = moduleDir,
@@ -312,6 +319,20 @@ object EmacsInit {
     attachSourcesToLibEntries(root, moduleDir, pluginPool, localSourceZips)
 
     writeXml(doc, classpathFile)
+  }
+
+  private fun resolveWorkspaceProjectDeps(
+    descriptor: WorkspaceBundleDescriptor,
+    workspaceProjectsByBsn: Map<String, String>,
+    workspaceDependencies: Map<String, Set<String>>
+  ): List<String> {
+    val bsn = descriptor.manifest.bundleSymbolicName?.key
+    if (bsn == null) {
+      logger.warning("Skipping workspace refs for ${descriptor.path.fileName}: missing Bundle-SymbolicName")
+      return emptyList()
+    }
+    val deps = workspaceDependencies[bsn].orEmpty()
+    return deps.mapNotNull { dep -> workspaceProjectsByBsn[dep] }.sorted()
   }
 
   private fun ensureOutputDirectory(classpathFile: Path, moduleDir: Path) {
