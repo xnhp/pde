@@ -258,6 +258,7 @@ object EmacsInit {
       Files.find(repoRoot, 2, { path, _ -> path.fileName?.toString() == ".project" }).use { stream ->
         stream.forEach { projectFile ->
           val projectDir = projectFile.parent?.toAbsolutePath()?.normalize() ?: return@forEach
+          if (projectDir == repoRoot) return@forEach
           if (allowedProjects.contains(projectDir)) return@forEach
           if (!projectDir.startsWith(workspaceRoot)) return@forEach
           val rel = workspaceRoot.relativize(projectDir).toString().replace('\\', '/')
