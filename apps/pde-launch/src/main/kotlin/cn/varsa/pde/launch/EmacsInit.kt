@@ -40,6 +40,10 @@ import javax.xml.transform.stream.StreamResult
 object EmacsInit {
   private val logger = Logger.getLogger(EmacsInit::class.java.name)
   private const val defaultExecutionEnvironment = "JavaSE-21"
+  private enum class WorkspaceDepsMode {
+    DIRECT,
+    ALL_NONFRAGMENTS
+  }
 
   fun main(args: Array<String>): Int {
     configureLogging(Level.INFO, shouldUseColor())
@@ -53,6 +57,11 @@ object EmacsInit {
       ArgType.String,
       description = "YAML launch configuration (positional)"
     ).optional()
+    val workspaceDepsOpt by parser.option(
+      ArgType.String,
+      fullName = "workspace-deps",
+      description = "Workspace project refs: direct or all-nonfragments"
+    )
     parser.parse(args)
 
     logger.level = Level.INFO
@@ -103,9 +112,21 @@ object EmacsInit {
 
     val specsByPath = specs.filter { it.isWorkspace }
       .associateBy { Paths.get(it.bundlePath).toAbsolutePath().normalize() }
+    val depsMode = when (workspaceDepsOpt?.lowercase()) {
+      "direct" -> WorkspaceDepsMode.DIRECT
+      "all-nonfragments", null -> WorkspaceDepsMode.ALL_NONFRAGMENTS
+      else -> {
+        logger.warning("Unknown --workspace-deps '${workspaceDepsOpt}', using all-nonfragments")
+        WorkspaceDepsMode.ALL_NONFRAGMENTS
+      }
+    }
     val workspaceProjectsByBsn = workspaceEntries
       .mapNotNull { entry -> entry.manifest.bundleSymbolicName?.key?.let { it to entry.path.fileName.toString() } }
       .toMap()
+    val nonFragmentProjects = workspaceEntries
+      .filter { it.fragmentHost == null }
+      .map { it.path.fileName.toString() }
+      .sorted()
 
     val resourceFilters = buildResourceFilters(context, workspaceRoot, workspaceEntries)
     workspaceEntries.forEach { descriptor ->
@@ -122,7 +143,9 @@ object EmacsInit {
       }
       val workspaceProjects = resolveWorkspaceProjectDeps(
         descriptor = descriptor,
-        workspaceProjectsByBsn = workspaceProjectsByBsn
+        workspaceProjectsByBsn = workspaceProjectsByBsn,
+        nonFragmentProjects = nonFragmentProjects,
+        depsMode = depsMode
       )
       updateClasspath(
         classpathFile = classpathFile,
@@ -375,8 +398,13 @@ object EmacsInit {
 
   private fun resolveWorkspaceProjectDeps(
     descriptor: WorkspaceBundleDescriptor,
-    workspaceProjectsByBsn: Map<String, String>
+    workspaceProjectsByBsn: Map<String, String>,
+    nonFragmentProjects: List<String>,
+    depsMode: WorkspaceDepsMode
   ): List<String> {
+    if (depsMode == WorkspaceDepsMode.ALL_NONFRAGMENTS) {
+      return nonFragmentProjects
+    }
     val bsn = descriptor.manifest.bundleSymbolicName?.key
     if (bsn == null) {
       logger.warning("Skipping workspace refs for ${descriptor.path.fileName}: missing Bundle-SymbolicName")
