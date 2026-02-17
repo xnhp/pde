@@ -38,7 +38,7 @@ object IjInit {
     TemplateFile("ij-project/ij-project.iml", "ij-project.iml")
   )
 
-  private val eclipseTargetLocationRegex = Regex("""(<location[^>]*?\\slocation=\")([^\"]+)(\")""")
+  private val eclipseTargetLocationRegex = Regex("""(<location[^>]*?\slocation=\")([^\"]+)(\")""")
 
   fun main(args: Array<String>): Int {
     configureLogging(Level.INFO, shouldUseColor())
