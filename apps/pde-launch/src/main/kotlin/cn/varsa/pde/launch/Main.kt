@@ -33,6 +33,10 @@ fun main(args: Array<String>) {
     val exitCode = IssueNewCommand.main(args.drop(1).toTypedArray())
     exitProcess(exitCode)
   }
+  if (args.isNotEmpty() && args[0] == "foreach-repo") {
+    val exitCode = ForeachRepoCommand.main(args.drop(1).toTypedArray())
+    exitProcess(exitCode)
+  }
   if (args.isNotEmpty() && (args[0] == "run" || args[0] == "launch")) {
     launchMain(args.drop(1).toTypedArray())
     return
@@ -50,6 +54,7 @@ private fun printHelp() {
   println("  clone        Clone repos and sparse-checkout bundles")
   println("  fetch_jars   Run mvn clean package in lib/fetch_jars")
   println("  issue-new    Create issue config from template")
+  println("  foreach-repo Run a shell command in each configured repo")
   println("  run          Run a launch config")
   println("  compile      Compile PDE Java bundles")
   println("  target-install  Resolve/prepare target platform")

@@ -99,4 +99,19 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("pde issue-new"))
   }
+
+  @Test
+  fun `foreach-repo subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("foreach-repo", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde foreach-repo"))
+  }
 }
