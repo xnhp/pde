@@ -38,9 +38,9 @@ object JdtlsInitCommand {
     ).optional()
     parser.parse(args)
 
-    val baseDir = issueDirOpt?.let { Paths.get(it) } ?: Paths.get("").toAbsolutePath()
-    val explicitConfig = resolveConfigPath(baseDir, configOpt, configPos)
-    val configPath = explicitConfig ?: findConfigPath(baseDir)
+    val issueDir = issueDirOpt?.let { Paths.get(it) } ?: Paths.get("").toAbsolutePath()
+    val explicitConfig = resolveConfigPath(issueDir, configOpt, configPos)
+    val configPath = explicitConfig ?: findConfigPath(issueDir)
     if (explicitConfig != null && (configPath == null || !Files.exists(configPath))) {
       System.err.println("Config file not found: ${explicitConfig.toAbsolutePath().normalize()}")
       return 1
@@ -51,7 +51,10 @@ object JdtlsInitCommand {
     }
 
     return try {
-      val context = LaunchConfigLoader.load(configPath, baseDir)
+      val workingDir = issueDirOpt?.let { Paths.get(it) }
+        ?: configPath.parent
+        ?: issueDir
+      val context = LaunchConfigLoader.load(configPath, workingDir)
       val written = writeWorkspaceConfigs(context, force)
       println("Generated .project/.classpath for ${written} workspace bundles.")
       0
@@ -218,7 +221,7 @@ private fun isTestBundle(symbolicName: String, moduleDir: Path, hasFragmentHost:
   val dirName = moduleDir.fileName.toString().lowercase()
   val testHint = name.contains(".test") || name.contains(".tests") || name.contains(".testing") ||
     dirName.contains("test") || dirName.contains("tests")
-  return hasFragmentHost && testHint
+  return testHint
 }
 
 private fun relativizeOrDefault(baseDir: Path, path: Path, fallback: String): String {
