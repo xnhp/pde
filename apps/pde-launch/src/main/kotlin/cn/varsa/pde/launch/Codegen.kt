@@ -116,8 +116,10 @@ private fun findRepoEntry(config: LaunchConfig, baseDir: Path, repoName: String)
   }
 }
 
-private fun hasBundle(entry: RepoBundles, bundleName: String): Boolean =
-  entry.bundles.any { it.name.trim() == bundleName }
+private fun hasBundle(entry: RepoBundles, bundleName: String): Boolean {
+  if (entry.bundles.any { it.name.trim() == bundleName }) return true
+  return entry.nonPdeBundles.any { it.trim() == bundleName }
+}
 
 private fun deleteRecursively(path: Path) {
   if (!Files.exists(path)) return
