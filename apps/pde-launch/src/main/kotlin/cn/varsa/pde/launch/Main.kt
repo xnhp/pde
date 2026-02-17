@@ -29,6 +29,10 @@ fun main(args: Array<String>) {
     val exitCode = FetchJarsCommand.main(args.drop(1).toTypedArray())
     exitProcess(exitCode)
   }
+  if (args.isNotEmpty() && args[0] == "codegen") {
+    val exitCode = CodegenCommand.main(args.drop(1).toTypedArray())
+    exitProcess(exitCode)
+  }
   if (args.isNotEmpty() && args[0] == "issue-new") {
     val exitCode = IssueNewCommand.main(args.drop(1).toTypedArray())
     exitProcess(exitCode)
@@ -53,6 +57,7 @@ private fun printHelp() {
   println("Commands:")
   println("  clone        Clone repos and sparse-checkout bundles")
   println("  fetch_jars   Run mvn clean package in lib/fetch_jars")
+  println("  codegen      Run gateway code generation")
   println("  issue-new    Create issue config from template")
   println("  foreach-repo Run a shell command in each configured repo")
   println("  run          Run a launch config")
