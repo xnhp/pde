@@ -76,6 +76,26 @@ object JdtlsSmokeCommand {
       fullName = "definition-expected",
       description = "Expected definition target (file name or identifier; repeatable)"
     ).multiple()
+    val referencesFile by parser.option(
+      ArgType.String,
+      fullName = "references-file",
+      description = "Java file to request references for"
+    )
+    val referencesSymbol by parser.option(
+      ArgType.String,
+      fullName = "references-symbol",
+      description = "Symbol name within references-file to query"
+    )
+    val referencesExpected by parser.option(
+      ArgType.String,
+      fullName = "references-expected",
+      description = "Expected reference target (file name or identifier; repeatable)"
+    ).multiple()
+    val referencesIncludeDeclaration by parser.option(
+      ArgType.Boolean,
+      fullName = "references-include-declaration",
+      description = "Include declaration in references results"
+    ).default(false)
     val sourceAttachmentClassFile by parser.option(
       ArgType.String,
       fullName = "source-attachment-classfile",
@@ -398,6 +418,62 @@ object JdtlsSmokeCommand {
       definitionExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected definition '$expected' not found in response: $finalResponse")
+        }
+      }
+    }
+
+    val refFileValue = referencesFile
+    val refSymbolValue = referencesSymbol
+    if (refFileValue != null && refSymbolValue != null && referencesExpected.isNotEmpty()) {
+      val refPath = Paths.get(refFileValue)
+      if (!Files.isRegularFile(refPath)) {
+        fail("References file not found: $refPath")
+      }
+      val refText = Files.readString(refPath)
+      val position = findPosition(refText, refSymbolValue)
+        ?: fail("Symbol '$refSymbolValue' not found in ${refPath}")
+      val docUri = refPath.toAbsolutePath().normalize().toUri().toString()
+      val didOpen = """
+        {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(docUri)}","languageId":"java","version":1,"text":${jsonString(refText)}}}}
+      """.trimIndent()
+      sendMessage(output, didOpen)
+
+      val expectedFiles = referencesExpected.mapNotNull { expected ->
+        findFileByName(rootPath, expected)
+      }
+      expectedFiles.forEach { expectedPath ->
+        val expectedText = Files.readString(expectedPath)
+        val expectedUri = expectedPath.toAbsolutePath().normalize().toUri().toString()
+        val openExpected = """
+          {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(expectedUri)}","languageId":"java","version":1,"text":${jsonString(expectedText)}}}}
+        """.trimIndent()
+        sendMessage(output, openExpected)
+      }
+
+      val includeDeclaration = if (referencesIncludeDeclaration) "true" else "false"
+      val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
+      var lastResponse: String? = null
+      while (System.nanoTime() < deadline) {
+        val request = """
+          {"jsonrpc":"2.0","id":${requestId},"method":"textDocument/references","params":{"textDocument":{"uri":"${escapeJson(docUri)}"},"position":{"line":${position.first},"character":${position.second}},"context":{"includeDeclaration":${includeDeclaration}}}}
+        """.trimIndent()
+        sendMessage(output, request)
+        val response = waitForResponse(queue, requestId, timeoutMs)
+        lastResponse = response
+        val normalized = response.lowercase()
+        val allMatched = referencesExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        if (allMatched) break
+        requestId += 1
+        Thread.sleep(1000)
+      }
+      val finalResponse = lastResponse
+      if (finalResponse == null) {
+        fail("No references response received")
+      }
+      val normalized = finalResponse.lowercase()
+      referencesExpected.forEach { expected ->
+        if (!normalized.contains(expected.lowercase())) {
+          fail("Expected reference '$expected' not found in response: $finalResponse")
         }
       }
     }

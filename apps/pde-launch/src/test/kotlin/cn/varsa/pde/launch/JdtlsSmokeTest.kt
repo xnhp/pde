@@ -116,6 +116,30 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke references across project dependency`() {
+    val root = createWorkspaceWithDependency()
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val refFile = root.resolve("bundle-a/src/MyApi.java")
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--references-file", refFile.toString(),
+        "--references-symbol", "MyApi",
+        "--references-expected", "Consumer.java"
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke definition into target bundle uses sources`() {
     val bundlePool = Paths.get("/home/ben/Desktop/issues/bundle-pool/plugins")
     val targetJar = bundlePool.resolve("org.osgi.util.function_1.2.0.202109301733.jar")
