@@ -140,6 +140,30 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke type hierarchy shows subtype`() {
+    val root = createWorkspaceWithHierarchy()
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val baseFile = root.resolve("bundle-hierarchy/src/Base.java")
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--hierarchy-file", baseFile.toString(),
+        "--hierarchy-symbol", "Base",
+        "--hierarchy-expected", "Derived"
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke definition into target bundle uses sources`() {
     val bundlePool = Paths.get("/home/ben/Desktop/issues/bundle-pool/plugins")
     val targetJar = bundlePool.resolve("org.osgi.util.function_1.2.0.202109301733.jar")
@@ -527,6 +551,64 @@ private fun createWorkspaceWithDependency(): Path {
         public String read() {
           return api.value();
         }
+      }
+    """.trimIndent()
+  )
+  return workspace
+}
+
+private fun createWorkspaceWithHierarchy(): Path {
+  val workspace = Files.createTempDirectory("jdtls-hierarchy-workspace")
+  Files.createDirectories(workspace.resolve(".metadata"))
+
+  val projectDir = workspace.resolve("bundle-hierarchy")
+  Files.createDirectories(projectDir.resolve("src"))
+
+  Files.writeString(
+    projectDir.resolve(".project"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <projectDescription>
+        <name>bundle-hierarchy</name>
+        <comment></comment>
+        <projects></projects>
+        <buildSpec>
+          <buildCommand>
+            <name>org.eclipse.jdt.core.javabuilder</name>
+            <arguments></arguments>
+          </buildCommand>
+        </buildSpec>
+        <natures>
+          <nature>org.eclipse.jdt.core.javanature</nature>
+        </natures>
+      </projectDescription>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve(".classpath"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <classpath>
+        <classpathentry kind="src" path="src"/>
+        <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+        <classpathentry kind="output" path="bin"/>
+      </classpath>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve("src/Base.java"),
+    """
+      public abstract class Base {
+        public abstract String id();
+      }
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve("src/Derived.java"),
+    """
+      public class Derived extends Base {
+        @Override
+        public String id() { return "derived"; }
       }
     """.trimIndent()
   )

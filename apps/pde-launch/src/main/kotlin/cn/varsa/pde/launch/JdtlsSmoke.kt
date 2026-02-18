@@ -96,6 +96,31 @@ object JdtlsSmokeCommand {
       fullName = "references-include-declaration",
       description = "Include declaration in references results"
     ).default(false)
+    val hierarchyFile by parser.option(
+      ArgType.String,
+      fullName = "hierarchy-file",
+      description = "Java file to request type hierarchy for"
+    )
+    val hierarchySymbol by parser.option(
+      ArgType.String,
+      fullName = "hierarchy-symbol",
+      description = "Symbol name within hierarchy-file to query"
+    )
+    val hierarchyExpected by parser.option(
+      ArgType.String,
+      fullName = "hierarchy-expected",
+      description = "Expected type hierarchy entry (repeatable)"
+    ).multiple()
+    val hierarchyDirection by parser.option(
+      ArgType.Int,
+      fullName = "hierarchy-direction",
+      description = "Type hierarchy direction (0=children,1=parents,2=both)"
+    ).default(0)
+    val hierarchyResolve by parser.option(
+      ArgType.Int,
+      fullName = "hierarchy-resolve",
+      description = "Type hierarchy resolve depth"
+    ).default(1)
     val sourceAttachmentClassFile by parser.option(
       ArgType.String,
       fullName = "source-attachment-classfile",
@@ -474,6 +499,39 @@ object JdtlsSmokeCommand {
       referencesExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected reference '$expected' not found in response: $finalResponse")
+        }
+      }
+    }
+
+    val hierarchyFileValue = hierarchyFile
+    val hierarchySymbolValue = hierarchySymbol
+    if (hierarchyFileValue != null && hierarchySymbolValue != null && hierarchyExpected.isNotEmpty()) {
+      val hierarchyPath = Paths.get(hierarchyFileValue)
+      if (!Files.isRegularFile(hierarchyPath)) {
+        fail("Hierarchy file not found: $hierarchyPath")
+      }
+      val hierarchyText = Files.readString(hierarchyPath)
+      val position = findPosition(hierarchyText, hierarchySymbolValue)
+        ?: fail("Symbol '$hierarchySymbolValue' not found in ${hierarchyPath}")
+      val docUri = hierarchyPath.toAbsolutePath().normalize().toUri().toString()
+      val didOpen = """
+        {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(docUri)}","languageId":"java","version":1,"text":${jsonString(hierarchyText)}}}}
+      """.trimIndent()
+      sendMessage(output, didOpen)
+
+      val paramsJson = "{\"textDocument\":{\"uri\":\"${escapeJson(docUri)}\"},\"position\":{\"line\":${position.first},\"character\":${position.second}}}"
+      val directionJson = hierarchyDirection.toString()
+      val resolveJson = hierarchyResolve.toString()
+      val exec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.navigate.openTypeHierarchy","arguments":["${escapeJson(paramsJson)}","${escapeJson(directionJson)}","${escapeJson(resolveJson)}"]}}
+      """.trimIndent()
+      sendMessage(output, exec)
+      val response = waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
+      val normalized = response.lowercase()
+      hierarchyExpected.forEach { expected ->
+        if (!normalized.contains(expected.lowercase())) {
+          fail("Expected hierarchy entry '$expected' not found in response: $response")
         }
       }
     }
