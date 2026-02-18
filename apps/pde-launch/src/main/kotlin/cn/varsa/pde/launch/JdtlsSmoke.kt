@@ -71,6 +71,11 @@ object JdtlsSmokeCommand {
       fullName = "import-projects",
       description = "Run java.project.import before other checks"
     ).default(false)
+    val refreshDiagnostics by parser.option(
+      ArgType.Boolean,
+      fullName = "refresh-diagnostics",
+      description = "Run java.project.refreshDiagnostics after import"
+    ).default(false)
     val vmArgs by parser.option(
       ArgType.String,
       fullName = "vm-arg",
@@ -136,7 +141,7 @@ object JdtlsSmokeCommand {
 
     val rootUri = rootPath.toAbsolutePath().normalize().toUri().toString()
     val initialize = """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":${process.pid()},"rootUri":"${escapeJson(rootUri)}","capabilities":{},"workspaceFolders":[{"uri":"${escapeJson(rootUri)}","name":"workspace"}]}}
+      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":${process.pid()},"rootUri":"${escapeJson(rootUri)}","capabilities":{"textDocument":{"implementation":{"dynamicRegistration":false}}},"workspaceFolders":[{"uri":"${escapeJson(rootUri)}","name":"workspace"}]}}
     """.trimIndent()
     sendMessage(output, initialize)
 
@@ -172,6 +177,16 @@ object JdtlsSmokeCommand {
     if (importProjects) {
       val exec = """
         {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.import","arguments":[]}}
+      """.trimIndent()
+      sendMessage(output, exec)
+      waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
+      Thread.sleep(2000)
+    }
+
+    if (refreshDiagnostics) {
+      val exec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.refreshDiagnostics","arguments":["${escapeJson(rootUri)}"]}}
       """.trimIndent()
       sendMessage(output, exec)
       waitForResponse(queue, requestId, timeoutMs)
