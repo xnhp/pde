@@ -68,6 +68,30 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke definition across project dependency`() {
+    val root = createWorkspaceWithDependency()
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val refFile = root.resolve("bundle-b/src/Consumer.java")
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--definition-file", refFile.toString(),
+        "--definition-symbol", "MyApi",
+        "--definition-expected", "MyApi.java"
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke implementation request in knime-gateway`() {
     val root = resolveKnimeGatewayRoot() ?: return
     val dataDir = root.resolve(".jdtls-data-test")
@@ -323,6 +347,101 @@ private fun createWorkspaceWithImplementation(): Path {
     """
       public class MyImplementation implements MyInterface {
         public String id() { return \"demo\"; }
+      }
+    """.trimIndent()
+  )
+  return workspace
+}
+
+private fun createWorkspaceWithDependency(): Path {
+  val workspace = Files.createTempDirectory("jdtls-dep-workspace")
+  Files.createDirectories(workspace.resolve(".metadata"))
+
+  val bundleA = workspace.resolve("bundle-a")
+  val bundleB = workspace.resolve("bundle-b")
+  Files.createDirectories(bundleA.resolve("src"))
+  Files.createDirectories(bundleB.resolve("src"))
+
+  Files.writeString(
+    bundleA.resolve(".project"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <projectDescription>
+        <name>bundle-a</name>
+        <comment></comment>
+        <projects></projects>
+        <buildSpec>
+          <buildCommand>
+            <name>org.eclipse.jdt.core.javabuilder</name>
+            <arguments></arguments>
+          </buildCommand>
+        </buildSpec>
+        <natures>
+          <nature>org.eclipse.jdt.core.javanature</nature>
+        </natures>
+      </projectDescription>
+    """.trimIndent()
+  )
+  Files.writeString(
+    bundleA.resolve(".classpath"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <classpath>
+        <classpathentry kind="src" path="src"/>
+        <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+        <classpathentry kind="output" path="bin"/>
+      </classpath>
+    """.trimIndent()
+  )
+  Files.writeString(
+    bundleA.resolve("src/MyApi.java"),
+    """
+      public interface MyApi {
+        String value();
+      }
+    """.trimIndent()
+  )
+
+  Files.writeString(
+    bundleB.resolve(".project"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <projectDescription>
+        <name>bundle-b</name>
+        <comment></comment>
+        <projects></projects>
+        <buildSpec>
+          <buildCommand>
+            <name>org.eclipse.jdt.core.javabuilder</name>
+            <arguments></arguments>
+          </buildCommand>
+        </buildSpec>
+        <natures>
+          <nature>org.eclipse.jdt.core.javanature</nature>
+        </natures>
+      </projectDescription>
+    """.trimIndent()
+  )
+  Files.writeString(
+    bundleB.resolve(".classpath"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <classpath>
+        <classpathentry kind="src" path="src"/>
+        <classpathentry kind="src" path="/bundle-a"/>
+        <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+        <classpathentry kind="output" path="bin"/>
+      </classpath>
+    """.trimIndent()
+  )
+  Files.writeString(
+    bundleB.resolve("src/Consumer.java"),
+    """
+      public class Consumer {
+        private final MyApi api;
+        public Consumer(MyApi api) {
+          this.api = api;
+        }
       }
     """.trimIndent()
   )

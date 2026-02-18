@@ -61,6 +61,21 @@ object JdtlsSmokeCommand {
       fullName = "impl-expected",
       description = "Expected implementation (file name or identifier; repeatable)"
     ).multiple()
+    val definitionFile by parser.option(
+      ArgType.String,
+      fullName = "definition-file",
+      description = "Java file to request definition for"
+    )
+    val definitionSymbol by parser.option(
+      ArgType.String,
+      fullName = "definition-symbol",
+      description = "Symbol name within definition-file to query"
+    )
+    val definitionExpected by parser.option(
+      ArgType.String,
+      fullName = "definition-expected",
+      description = "Expected definition target (file name or identifier; repeatable)"
+    ).multiple()
     val symbolQueries by parser.option(
       ArgType.String,
       fullName = "symbol-query",
@@ -274,6 +289,61 @@ object JdtlsSmokeCommand {
       implExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected implementation '$expected' not found in response: $finalResponse")
+        }
+      }
+    }
+
+    val defFileValue = definitionFile
+    val defSymbolValue = definitionSymbol
+    if (defFileValue != null && defSymbolValue != null && definitionExpected.isNotEmpty()) {
+      val defPath = Paths.get(defFileValue)
+      if (!Files.isRegularFile(defPath)) {
+        fail("Definition file not found: $defPath")
+      }
+      val defText = Files.readString(defPath)
+      val position = findPosition(defText, defSymbolValue)
+        ?: fail("Symbol '$defSymbolValue' not found in ${defPath}")
+      val docUri = defPath.toAbsolutePath().normalize().toUri().toString()
+      val didOpen = """
+        {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(docUri)}","languageId":"java","version":1,"text":${jsonString(defText)}}}}
+      """.trimIndent()
+      sendMessage(output, didOpen)
+
+      val expectedFiles = definitionExpected.mapNotNull { expected ->
+        findFileByName(rootPath, expected)
+      }
+      expectedFiles.forEach { expectedPath ->
+        val expectedText = Files.readString(expectedPath)
+        val expectedUri = expectedPath.toAbsolutePath().normalize().toUri().toString()
+        val openExpected = """
+          {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(expectedUri)}","languageId":"java","version":1,"text":${jsonString(expectedText)}}}}
+        """.trimIndent()
+        sendMessage(output, openExpected)
+      }
+
+      val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
+      var lastResponse: String? = null
+      while (System.nanoTime() < deadline) {
+        val request = """
+          {"jsonrpc":"2.0","id":${requestId},"method":"textDocument/definition","params":{"textDocument":{"uri":"${escapeJson(docUri)}"},"position":{"line":${position.first},"character":${position.second}}}}
+        """.trimIndent()
+        sendMessage(output, request)
+        val response = waitForResponse(queue, requestId, timeoutMs)
+        lastResponse = response
+        val normalized = response.lowercase()
+        val allMatched = definitionExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        if (allMatched) break
+        requestId += 1
+        Thread.sleep(1000)
+      }
+      val finalResponse = lastResponse
+      if (finalResponse == null) {
+        fail("No definition response received")
+      }
+      val normalized = finalResponse.lowercase()
+      definitionExpected.forEach { expected ->
+        if (!normalized.contains(expected.lowercase())) {
+          fail("Expected definition '$expected' not found in response: $finalResponse")
         }
       }
     }
