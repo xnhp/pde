@@ -46,18 +46,16 @@ private fun envPath(name: String): Path? {
 }
 
 private fun ensureJdtlsCached(): Path {
-  val cacheRoot = Paths.get(System.getProperty("user.home"), ".cache", "jdtls-smoke")
+  val artifact = resolveJdtlsArtifact()
+  val cacheRoot = Paths.get(System.getProperty("user.home"), ".cache", "jdtls-smoke", artifact.label)
   val marker = cacheRoot.resolve("plugins")
   val configDir = cacheRoot.resolve(selectConfigDir())
   val launcher = findLauncherJarOrNull(cacheRoot)
   if (Files.isDirectory(marker) && Files.isDirectory(configDir) && launcher != null) return cacheRoot
   Files.createDirectories(cacheRoot)
-  val archive = cacheRoot.resolve("jdt-language-server.tar.gz")
+  val archive = cacheRoot.resolve(artifact.fileName)
   if (!Files.exists(archive)) {
-    download(
-      "https://download.eclipse.org/jdtls/milestones/1.56.0/jdt-language-server-1.56.0-202601291528.tar.gz",
-      archive
-    )
+    download(artifact.url, archive)
   }
   extractTarGz(archive, cacheRoot)
   return cacheRoot
@@ -69,6 +67,28 @@ private fun download(url: String, target: Path) {
       input.copyTo(output)
     }
   }
+}
+
+private data class JdtlsArtifact(val url: String, val label: String, val fileName: String)
+
+private fun resolveJdtlsArtifact(): JdtlsArtifact {
+  val urlOverride = System.getProperty("jdtls.url")?.trim().orEmpty()
+    .ifBlank { System.getenv("JDTLS_URL")?.trim().orEmpty() }
+  if (urlOverride.isNotBlank()) {
+    val fileName = urlOverride.substringAfterLast('/')
+    val label = fileName.removeSuffix(".tar.gz")
+    return JdtlsArtifact(urlOverride, label, fileName)
+  }
+  val version = System.getProperty("jdtls.version")?.trim().orEmpty()
+    .ifBlank { System.getenv("JDTLS_VERSION")?.trim().orEmpty() }
+    .ifBlank { "1.56.0" }
+  val build = System.getProperty("jdtls.build")?.trim().orEmpty()
+    .ifBlank { System.getenv("JDTLS_BUILD")?.trim().orEmpty() }
+    .ifBlank { "202601291528" }
+  val fileName = "jdt-language-server-${version}-${build}.tar.gz"
+  val url = "https://download.eclipse.org/jdtls/milestones/${version}/${fileName}"
+  val label = "jdtls-${version}-${build}"
+  return JdtlsArtifact(url, label, fileName)
 }
 
 private fun findLauncherJar(home: Path): Path {
