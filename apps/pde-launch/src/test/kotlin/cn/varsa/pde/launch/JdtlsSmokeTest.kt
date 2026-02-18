@@ -188,6 +188,29 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke diagnostics reports error`() {
+    val root = createWorkspaceWithDiagnostics()
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val diagnosticsFile = root.resolve("bundle-diagnostics/src/DiagnosticsUser.java")
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--diagnostics-file", diagnosticsFile.toString(),
+        "--diagnostics-min", "1"
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke definition into target bundle uses sources`() {
     val bundlePool = Paths.get("/home/ben/Desktop/issues/bundle-pool/plugins")
     val targetJar = bundlePool.resolve("org.osgi.util.function_1.2.0.202109301733.jar")
@@ -700,6 +723,57 @@ private fun createWorkspaceWithCompletion(): Path {
       public class CompletionUser {
         public Base create() {
           return new Ba
+        }
+      }
+    """.trimIndent()
+  )
+  return workspace
+}
+
+private fun createWorkspaceWithDiagnostics(): Path {
+  val workspace = Files.createTempDirectory("jdtls-diagnostics-workspace")
+  Files.createDirectories(workspace.resolve(".metadata"))
+
+  val projectDir = workspace.resolve("bundle-diagnostics")
+  Files.createDirectories(projectDir.resolve("src"))
+
+  Files.writeString(
+    projectDir.resolve(".project"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <projectDescription>
+        <name>bundle-diagnostics</name>
+        <comment></comment>
+        <projects></projects>
+        <buildSpec>
+          <buildCommand>
+            <name>org.eclipse.jdt.core.javabuilder</name>
+            <arguments></arguments>
+          </buildCommand>
+        </buildSpec>
+        <natures>
+          <nature>org.eclipse.jdt.core.javanature</nature>
+        </natures>
+      </projectDescription>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve(".classpath"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <classpath>
+        <classpathentry kind="src" path="src"/>
+        <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+        <classpathentry kind="output" path="bin"/>
+      </classpath>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve("src/DiagnosticsUser.java"),
+    """
+      public class DiagnosticsUser {
+        public void run() {
+          MissingType value = null;
         }
       }
     """.trimIndent()

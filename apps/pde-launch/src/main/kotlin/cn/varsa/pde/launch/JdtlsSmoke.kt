@@ -136,6 +136,16 @@ object JdtlsSmokeCommand {
       fullName = "completion-expected",
       description = "Expected completion item label (repeatable)"
     ).multiple()
+    val diagnosticsFile by parser.option(
+      ArgType.String,
+      fullName = "diagnostics-file",
+      description = "Java file to wait for diagnostics"
+    )
+    val diagnosticsMin by parser.option(
+      ArgType.Int,
+      fullName = "diagnostics-min",
+      description = "Minimum diagnostics count to assert"
+    ).default(1)
     val sourceAttachmentClassFile by parser.option(
       ArgType.String,
       fullName = "source-attachment-classfile",
@@ -594,6 +604,25 @@ object JdtlsSmokeCommand {
       }
     }
 
+    val diagnosticsFileValue = diagnosticsFile
+    if (diagnosticsFileValue != null) {
+      val diagnosticsPath = Paths.get(diagnosticsFileValue)
+      if (!Files.isRegularFile(diagnosticsPath)) {
+        fail("Diagnostics file not found: $diagnosticsPath")
+      }
+      val diagnosticsText = Files.readString(diagnosticsPath)
+      val docUri = diagnosticsPath.toAbsolutePath().normalize().toUri().toString()
+      val didOpen = """
+        {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(docUri)}","languageId":"java","version":1,"text":${jsonString(diagnosticsText)}}}}
+      """.trimIndent()
+      sendMessage(output, didOpen)
+
+      val result = waitForDiagnostics(queue, docUri, diagnosticsMin, timeoutMs)
+      if (!result) {
+        fail("Expected at least ${diagnosticsMin} diagnostics for $docUri")
+      }
+    }
+
     val resolveQuery = symbolResolveQuery
     val resolveExpected = symbolResolveExpected
     var resolvedLocation: String? = null
@@ -716,6 +745,21 @@ private fun waitForResponse(queue: ArrayBlockingQueue<String>, id: Int, timeoutM
     }
   }
   fail("No response for request $id within ${timeoutMs}ms")
+}
+
+private fun waitForDiagnostics(queue: ArrayBlockingQueue<String>, uri: String, minCount: Int, timeoutMs: Int): Boolean {
+  val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
+  while (System.nanoTime() < deadline) {
+    val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
+    val message = queue.poll(remaining.coerceAtMost(1000), TimeUnit.MILLISECONDS)
+    if (message == null) continue
+    if (!message.contains("\"method\":\"textDocument/publishDiagnostics\"")) continue
+    if (!message.contains(uri)) continue
+    if (minCount <= 0) return true
+    if (message.contains("\"diagnostics\":[]")) return false
+    return true
+  }
+  return false
 }
 
 private fun findPosition(text: String, symbol: String): Pair<Int, Int>? {
