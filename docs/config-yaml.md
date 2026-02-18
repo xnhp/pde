@@ -202,6 +202,11 @@ Keys map to PDE/JUnit options:
 - `classes` paths are relative to the bundle directory.
 - When in doubt, use absolute paths for `repo`, `path`, and `target.*` paths.
 
+## JDT LS workspace setup
+
+Use `pde jdtls-init` to generate `.project` and `.classpath` files for workspace bundles
+defined by this config. See `docs/jdtls-eglot.md` for Emacs/Eglot setup details.
+
 ## API analysis (pde api-analyze)
 
 The API analyzer runs once per workspace bundle resolved from the config and compares each bundle against the baseline.

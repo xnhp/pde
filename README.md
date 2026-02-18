@@ -20,6 +20,7 @@ This repository contains:
 - Build/install the launch tool: `./gradlew :pde-launch:installDist`
   - Binary: `apps/pde-launch/build/install/pde/bin/pde`
 - IntelliJ/PDE project setup: `pde ij-init`
+- JDT LS project setup: `pde jdtls-init` (Emacs/Eglot guide: `docs/jdtls-eglot.md`)
 - Build/install the remote runner: `./gradlew :pde-test-runner:installDist`
 - Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`
 

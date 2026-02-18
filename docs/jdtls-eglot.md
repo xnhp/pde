@@ -1,0 +1,55 @@
+# JDT LS with Emacs (eglot)
+
+This repo can generate PDE-friendly `.project`/`.classpath` files for JDT LS via `pde jdtls-init`.
+Eglot can use those directly; no extra protocol integration is required.
+
+## Generate workspace metadata
+
+1. Build the `pde` CLI if needed:
+
+```bash
+./gradlew :pde-launch:installDist
+```
+
+The binary lives at `apps/pde-launch/build/install/pde/bin/pde`.
+
+2. Run `jdtls-init` from the workspace root or point at a config:
+
+```bash
+pde jdtls-init --issue-dir /path/to/workspace
+pde jdtls-init --config /path/to/config.yaml
+```
+
+`jdtls-init` discovers `config.yaml`, `launch.yaml`, or `pde.yaml` if you omit `--config`.
+
+Notes:
+- Re-run `jdtls-init` when workspace modules change.
+- Files are written per bundle directory.
+
+## Eglot setup
+
+Add a JDT LS entry with a stable workspace data directory:
+
+```elisp
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs
+               `(java-mode . ("jdtls" "-data" ,(expand-file-name "~/.cache/jdtls/workspaces/your-workspace")))))
+```
+
+If Eglot chooses the wrong project root, make sure it points at the workspace root
+(the directory with your config). In multi-repo setups, you may need to add a local
+project marker or register the root with `project.el`.
+
+Optional per-workspace settings (via `.dir-locals.el`):
+
+```elisp
+((java-mode . ((eglot-workspace-configuration
+                . ((:java . (:configuration (:updateBuildConfiguration "automatic"))))))))
+```
+
+## Common JDT LS commands
+
+If imports or diagnostics look stale, run these via `M-x eglot-execute-command`:
+
+- `java.project.import`
+- `java.project.refreshDiagnostics`
