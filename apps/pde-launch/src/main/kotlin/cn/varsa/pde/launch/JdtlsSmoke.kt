@@ -121,6 +121,21 @@ object JdtlsSmokeCommand {
       fullName = "hierarchy-resolve",
       description = "Type hierarchy resolve depth"
     ).default(1)
+    val completionFile by parser.option(
+      ArgType.String,
+      fullName = "completion-file",
+      description = "Java file to request completion for"
+    )
+    val completionSymbol by parser.option(
+      ArgType.String,
+      fullName = "completion-symbol",
+      description = "Symbol prefix within completion-file to query"
+    )
+    val completionExpected by parser.option(
+      ArgType.String,
+      fullName = "completion-expected",
+      description = "Expected completion item label (repeatable)"
+    ).multiple()
     val sourceAttachmentClassFile by parser.option(
       ArgType.String,
       fullName = "source-attachment-classfile",
@@ -536,6 +551,49 @@ object JdtlsSmokeCommand {
       }
     }
 
+    val completionFileValue = completionFile
+    val completionSymbolValue = completionSymbol
+    if (completionFileValue != null && completionSymbolValue != null && completionExpected.isNotEmpty()) {
+      val completionPath = Paths.get(completionFileValue)
+      if (!Files.isRegularFile(completionPath)) {
+        fail("Completion file not found: $completionPath")
+      }
+      val completionText = Files.readString(completionPath)
+      val position = findPositionLast(completionText, completionSymbolValue)
+        ?: fail("Symbol '$completionSymbolValue' not found in ${completionPath}")
+      val docUri = completionPath.toAbsolutePath().normalize().toUri().toString()
+      val didOpen = """
+        {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(docUri)}","languageId":"java","version":1,"text":${jsonString(completionText)}}}}
+      """.trimIndent()
+      sendMessage(output, didOpen)
+
+      val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
+      var lastResponse: String? = null
+      while (System.nanoTime() < deadline) {
+        val request = """
+          {"jsonrpc":"2.0","id":${requestId},"method":"textDocument/completion","params":{"textDocument":{"uri":"${escapeJson(docUri)}"},"position":{"line":${position.first},"character":${position.second}}}}
+        """.trimIndent()
+        sendMessage(output, request)
+        val response = waitForResponse(queue, requestId, timeoutMs)
+        lastResponse = response
+        val normalized = response.lowercase()
+        val allMatched = completionExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        if (allMatched) break
+        requestId += 1
+        Thread.sleep(1000)
+      }
+      val finalResponse = lastResponse
+      if (finalResponse == null) {
+        fail("No completion response received")
+      }
+      val normalized = finalResponse.lowercase()
+      completionExpected.forEach { expected ->
+        if (!normalized.contains(expected.lowercase())) {
+          fail("Expected completion '$expected' not found in response: $finalResponse")
+        }
+      }
+    }
+
     val resolveQuery = symbolResolveQuery
     val resolveExpected = symbolResolveExpected
     var resolvedLocation: String? = null
@@ -662,6 +720,25 @@ private fun waitForResponse(queue: ArrayBlockingQueue<String>, id: Int, timeoutM
 
 private fun findPosition(text: String, symbol: String): Pair<Int, Int>? {
   val index = text.indexOf(symbol)
+  if (index < 0) return null
+  var line = 0
+  var column = 0
+  var i = 0
+  while (i < index) {
+    val ch = text[i]
+    if (ch == '\n') {
+      line += 1
+      column = 0
+    } else {
+      column += 1
+    }
+    i += 1
+  }
+  return line to column
+}
+
+private fun findPositionLast(text: String, symbol: String): Pair<Int, Int>? {
+  val index = text.lastIndexOf(symbol)
   if (index < 0) return null
   var line = 0
   var column = 0
