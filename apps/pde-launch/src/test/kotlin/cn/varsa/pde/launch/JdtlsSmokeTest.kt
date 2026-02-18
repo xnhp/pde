@@ -303,6 +303,9 @@ class JdtlsSmokeTest {
         "--import-projects",
         "--symbol-query", "SpaceProvider",
         "--symbol-query", "LocalSpaceProvider",
+        "--definition-file", implementationFile.toString(),
+        "--definition-symbol", "SpaceProvider",
+        "--definition-expected", root.resolve("org.knime.gateway.impl").toString(),
         "--impl-file", implementationFile.toString(),
         "--impl-symbol", "SpaceProvider",
         "--impl-expected", implementationFile.fileName.toString()
@@ -320,18 +323,18 @@ class JdtlsSmokeTest {
 
     val targetSpec = resolveExistingTargetSpec(
       root,
-      listOf(root.resolve("com.knime.enterprise.client.rest"))
+      listOf(
+        root.resolve("com.knime.enterprise.client.rest"),
+        root.resolve("com.knime.explorer.server")
+      )
     )
     val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
     assertEquals(0, initExit)
 
-    val interfaceFile = root.resolve(
-      "com.knime.enterprise.client.rest/src/com/knime/enterprise/client/filesystem/RemoteFileSystem.java"
-    )
     val implementationFile = root.resolve(
-      "com.knime.enterprise.client.rest/src/com/knime/enterprise/client/rest/RestServerContent.java"
+      "com.knime.explorer.server/src/com/knime/explorer/server/rest/RestServerExplorerFileStore.java"
     )
-    if (!Files.isRegularFile(interfaceFile) || !Files.isRegularFile(implementationFile)) return
+    if (!Files.isRegularFile(implementationFile)) return
 
     val exitCode = JdtlsSmokeCommand.main(
       arrayOf(
@@ -342,8 +345,8 @@ class JdtlsSmokeTest {
         "--timeout-ms", "120000",
         "--import-projects",
         "--definition-file", implementationFile.toString(),
-        "--definition-symbol", "RemoteFileSystem",
-        "--definition-expected", interfaceFile.fileName.toString()
+        "--definition-symbol", "RestServerContent",
+        "--definition-expected", root.resolve("com.knime.enterprise.client.rest").toString()
       )
     )
     assertEquals(0, exitCode)
