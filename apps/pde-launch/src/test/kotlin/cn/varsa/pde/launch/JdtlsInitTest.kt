@@ -3,6 +3,7 @@ import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class JdtlsInitTest {
@@ -64,7 +65,7 @@ class JdtlsInitTest {
     assertTrue(projectContents.contains("org.eclipse.pde.PluginNature"))
 
     val classpathContents = Files.readString(classpathFile)
-    assertTrue(classpathContents.contains("org.eclipse.pde.core.requiredPlugins"))
+    assertFalse(classpathContents.contains("org.eclipse.pde.core.requiredPlugins"))
     assertTrue(classpathContents.contains("JavaSE-17"))
     assertTrue(classpathContents.contains("attribute name=\"test\""))
   }

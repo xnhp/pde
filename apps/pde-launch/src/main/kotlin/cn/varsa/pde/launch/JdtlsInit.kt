@@ -1,7 +1,13 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.pde.resolver.algo.ResolveOptions
+import cn.varsa.pde.resolver.algo.Resolver
+import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
+import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
+import cn.varsa.pde.resolver.index.TargetPlatformCache
+import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import kotlinx.cli.ArgParser
@@ -55,7 +61,9 @@ object JdtlsInitCommand {
         ?: configPath.parent
         ?: issueDir
       val context = LaunchConfigLoader.load(configPath, workingDir)
-      val written = writeWorkspaceConfigs(context, force)
+      val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
+      val targetIndex = resolveTargetIndex(context)
+      val written = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, force)
       println("Generated .project/.classpath for ${written} workspace bundles.")
       0
     } catch (ex: Exception) {
@@ -65,10 +73,20 @@ object JdtlsInitCommand {
   }
 }
 
-private fun writeWorkspaceConfigs(context: LaunchConfigContext, force: Boolean): Int {
+private fun writeWorkspaceConfigs(
+  context: LaunchConfigContext,
+  workspaceDescriptors: List<WorkspaceBundleDescriptor>,
+  targetIndex: TargetPlatformIndex,
+  force: Boolean
+): Int {
   val modules = context.config.workspaceModules
   if (modules.isEmpty()) {
     fail("No workspaceModules configured; add bundlesPerRepo or workspaceModules to your config.")
+  }
+  val descriptorByPath = workspaceDescriptors.associateBy { it.path.toAbsolutePath().normalize() }
+  val projectNameByBsn = workspaceDescriptors.associate {
+    val bsn = it.manifest.bundleSymbolicName?.key ?: it.path.fileName.toString()
+    bsn to bsn
   }
   var written = 0
   modules.forEach { module ->
@@ -76,16 +94,35 @@ private fun writeWorkspaceConfigs(context: LaunchConfigContext, force: Boolean):
     if (!Files.exists(moduleDir) || !Files.isDirectory(moduleDir)) {
       fail("Workspace bundle directory does not exist: ${moduleDir}")
     }
-    val descriptor = WorkspaceBundleLoader.load(moduleDir)
+    val descriptor = descriptorByPath[moduleDir.toAbsolutePath().normalize()] ?: WorkspaceBundleLoader.load(moduleDir)
     val bundleName = descriptor.manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
     val isTestBundle = isTestBundle(bundleName, moduleDir, descriptor.fragmentHost != null)
     val sourceRoots = determineSourceRoots(moduleDir, descriptor.sourceRoots)
     val outputDir = descriptor.outputDirectory ?: moduleDir.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
     val outputPath = relativizeOrDefault(moduleDir, outputDir, WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
     val compliance = resolveJavaCompliance(descriptor.compilerPrefs)
+    val resolved = Resolver.resolve(
+      targetIndex,
+      workspaceDescriptors,
+      descriptor,
+      ResolveOptions(preferWorkspace = true, includeHostsForFragments = true)
+    )
+    val resolvedEntries = buildResolvedClasspathEntries(
+      bundleName,
+      resolved.bundles,
+      projectNameByBsn
+    )
 
     val projectWritten = writeProjectFile(moduleDir, bundleName, force)
-    val classpathWritten = writeClasspathFile(moduleDir, sourceRoots, outputPath, isTestBundle, compliance, force)
+    val classpathWritten = writeClasspathFile(
+      moduleDir,
+      sourceRoots,
+      resolvedEntries,
+      outputPath,
+      isTestBundle,
+      compliance,
+      force
+    )
     if (projectWritten || classpathWritten) {
       written += 1
     }
@@ -128,6 +165,7 @@ private fun writeProjectFile(moduleDir: Path, projectName: String, force: Boolea
 private fun writeClasspathFile(
   moduleDir: Path,
   sourceRoots: List<Path>,
+  resolvedEntries: List<ClasspathEntry>,
   outputPath: String,
   isTestBundle: Boolean,
   compliance: String,
@@ -151,11 +189,40 @@ private fun writeClasspathFile(
   val jreContainer = "org.eclipse.jdt.launching.JRE_CONTAINER/" +
     "org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-${compliance}"
   builder.appendLine("  <classpathentry kind=\"con\" path=\"${jreContainer}\"/>")
-  builder.appendLine("  <classpathentry kind=\"con\" path=\"org.eclipse.pde.core.requiredPlugins\"/>")
+  resolvedEntries.forEach { entry ->
+    builder.appendLine("  <classpathentry kind=\"${entry.kind}\" path=\"${xmlEscape(entry.path)}\"/>")
+  }
   builder.appendLine("  <classpathentry kind=\"output\" path=\"${xmlEscape(outputPath)}\"/>")
   builder.appendLine("</classpath>")
   Files.writeString(classpathFile, builder.toString(), StandardCharsets.UTF_8)
   return true
+}
+
+private data class ClasspathEntry(val kind: String, val path: String)
+
+private fun buildResolvedClasspathEntries(
+  bundleName: String,
+  resolvedBundles: List<cn.varsa.pde.resolver.algo.ResolvedBundle>,
+  projectNameByBsn: Map<String, String>
+): List<ClasspathEntry> {
+  val entries = LinkedHashMap<String, ClasspathEntry>()
+  resolvedBundles.forEach { bundle ->
+    if (bundle.bsn == bundleName) return@forEach
+    when (bundle.origin) {
+      cn.varsa.pde.resolver.algo.BundleOrigin.WORKSPACE -> {
+        val projectName = projectNameByBsn[bundle.bsn] ?: bundle.bsn
+        val path = "/${projectName}"
+        entries.putIfAbsent(path, ClasspathEntry("src", path))
+      }
+      cn.varsa.pde.resolver.algo.BundleOrigin.TARGET -> {
+        bundle.classPathEntries.forEach { classPathEntry ->
+          val path = classPathEntry.toAbsolutePath().normalize().toString()
+          entries.putIfAbsent(path, ClasspathEntry("lib", path))
+        }
+      }
+    }
+  }
+  return entries.values.toList()
 }
 
 private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
@@ -222,6 +289,32 @@ private fun isTestBundle(symbolicName: String, moduleDir: Path, hasFragmentHost:
   val testHint = name.contains(".test") || name.contains(".tests") || name.contains(".testing") ||
     dirName.contains("test") || dirName.contains("tests")
   return testHint
+}
+
+private fun resolveTargetIndex(context: LaunchConfigContext): TargetPlatformIndex {
+  val profilePath = resolveProfilePath(context)
+  if (profilePath == null || !Files.exists(profilePath)) {
+    return TargetPlatformIndex.build(emptyList())
+  }
+  return TargetPlatformCache.buildWithCache(listOf(profilePath))
+}
+
+private fun resolveProfilePath(context: LaunchConfigContext): Path? {
+  val baseDir = context.baseDir
+  val targetConfig = context.config.target
+  val legacyProfile = context.config.profilePath?.takeUnless { it.isBlank() }
+    ?.let { baseDir.resolve(it).normalize() }
+  if (targetConfig == null) return legacyProfile
+  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
+  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
+  val registryDir = baseDir.resolve(p2Path)
+    .resolve("org.eclipse.equinox.p2.engine/profileRegistry")
+    .normalize()
+  val preferred = registryDir.resolve("$profileId.Profile").normalize()
+  if (Files.exists(preferred)) return preferred
+  val lowercase = registryDir.resolve("$profileId.profile").normalize()
+  if (Files.exists(lowercase)) return lowercase
+  return preferred
 }
 
 private fun relativizeOrDefault(baseDir: Path, path: Path, fallback: String): String {
