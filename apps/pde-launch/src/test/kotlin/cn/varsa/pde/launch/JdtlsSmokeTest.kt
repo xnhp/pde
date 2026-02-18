@@ -92,6 +92,30 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke definition resolves method across project dependency`() {
+    val root = createWorkspaceWithDependency()
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val refFile = root.resolve("bundle-b/src/Consumer.java")
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--definition-file", refFile.toString(),
+        "--definition-symbol", "value",
+        "--definition-expected", "MyApi.java"
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke implementation request in knime-gateway`() {
     val root = resolveKnimeGatewayRoot() ?: return
     val dataDir = root.resolve(".jdtls-data-test")
@@ -441,6 +465,9 @@ private fun createWorkspaceWithDependency(): Path {
         private final MyApi api;
         public Consumer(MyApi api) {
           this.api = api;
+        }
+        public String read() {
+          return api.value();
         }
       }
     """.trimIndent()
