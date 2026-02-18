@@ -41,6 +41,11 @@ object JdtlsSmokeCommand {
       fullName = "timeout-ms",
       description = "Timeout for initialize response"
     ).default(60000)
+    val expectProjects by parser.option(
+      ArgType.String,
+      fullName = "expect-project",
+      description = "Project name expected from java.project.getAll (repeatable)"
+    ).multiple()
     val vmArgs by parser.option(
       ArgType.String,
       fullName = "vm-arg",
@@ -132,6 +137,20 @@ object JdtlsSmokeCommand {
     """.trimIndent()
     sendMessage(output, initialized)
 
+    if (expectProjects.isNotEmpty()) {
+      val exec = """
+        {"jsonrpc":"2.0","id":3,"method":"workspace/executeCommand","params":{"command":"java.project.getAll","arguments":[]}}
+      """.trimIndent()
+      sendMessage(output, exec)
+      val projectResponse = waitForResponse(queue, 3, timeoutMs)
+      val normalized = projectResponse.lowercase()
+      expectProjects.forEach { project ->
+        if (!normalized.contains(project.lowercase())) {
+          fail("Expected project '$project' not found in response: $projectResponse")
+        }
+      }
+    }
+
     val shutdown = """
       {"jsonrpc":"2.0","id":2,"method":"shutdown","params":{}}
     """.trimIndent()
@@ -190,6 +209,22 @@ private fun readMessages(input: BufferedInputStream, queue: ArrayBlockingQueue<S
     val message = String(body, StandardCharsets.UTF_8)
     queue.offer(message)
   }
+}
+
+private fun waitForResponse(queue: ArrayBlockingQueue<String>, id: Int, timeoutMs: Int): String {
+  val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
+  while (System.nanoTime() < deadline) {
+    val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
+    val message = queue.poll(remaining.coerceAtMost(1000), TimeUnit.MILLISECONDS)
+    if (message == null) continue
+    if (message.contains("\"id\":$id")) {
+      if (message.contains("\"error\"")) {
+        fail("Request $id failed: $message")
+      }
+      return message
+    }
+  }
+  fail("No response for request $id within ${timeoutMs}ms")
 }
 
 private fun readLine(input: BufferedInputStream): String? {

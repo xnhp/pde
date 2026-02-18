@@ -32,7 +32,8 @@ class JdtlsSmokeTest {
         "--config", resolvedConfig.toString(),
         "--root", root.toString(),
         "--data", dataDir.toString(),
-        "--timeout-ms", "60000"
+        "--timeout-ms", "60000",
+        "--expect-project", "demo-project"
       )
     )
     assertEquals(0, exitCode)
@@ -145,6 +146,49 @@ private fun selectConfigDir(): String {
 private fun createWorkspaceFixture(): Path {
   val workspace = Files.createTempDirectory("jdtls-workspace")
   Files.createDirectories(workspace.resolve(".metadata"))
+  val projectDir = workspace.resolve("demo-project")
+  Files.createDirectories(projectDir.resolve("src"))
+  Files.writeString(
+    projectDir.resolve(".project"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <projectDescription>
+        <name>demo-project</name>
+        <comment></comment>
+        <projects></projects>
+        <buildSpec>
+          <buildCommand>
+            <name>org.eclipse.jdt.core.javabuilder</name>
+            <arguments></arguments>
+          </buildCommand>
+        </buildSpec>
+        <natures>
+          <nature>org.eclipse.jdt.core.javanature</nature>
+        </natures>
+      </projectDescription>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve(".classpath"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <classpath>
+        <classpathentry kind="src" path="src"/>
+        <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+        <classpathentry kind="output" path="bin"/>
+      </classpath>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve("src/Hello.java"),
+    """
+      public class Hello {
+        public static void main(String[] args) {
+          System.out.println(\"hello\");
+        }
+      }
+    """.trimIndent()
+  )
   return workspace
 }
 
