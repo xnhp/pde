@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.name
 import kotlin.test.assertEquals
 
@@ -28,6 +29,7 @@ class JdtlsSmokeTest {
     }
     Files.createDirectories(dataDir)
 
+    val runStart = System.nanoTime()
     val exitCode = JdtlsSmokeCommand.main(
       arrayOf(
         "--launcher", resolvedLauncher.toString(),
@@ -38,6 +40,7 @@ class JdtlsSmokeTest {
         "--expect-project", "demo-project"
       )
     )
+    profileLog("JdtlsSmokeCommand.main", runStart)
     assertEquals(0, exitCode)
   }
 
@@ -277,7 +280,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke implementation request in knime-gateway`() {
     val root = resolveKnimeGatewayRoot() ?: return
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = resolveExternalDataDir(root, "gateway")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -304,8 +307,8 @@ class JdtlsSmokeTest {
         "--symbol-query", "SpaceProvider",
         "--symbol-query", "LocalSpaceProvider",
         "--definition-file", implementationFile.toString(),
-        "--definition-symbol", "SpaceProvider",
-        "--definition-expected", root.resolve("org.knime.gateway.impl").toString(),
+        "--definition-symbol", "EntityFactory",
+        "--definition-expected", root.resolve("org.knime.gateway.api").toString(),
         "--impl-file", implementationFile.toString(),
         "--impl-symbol", "SpaceProvider",
         "--impl-expected", implementationFile.fileName.toString()
@@ -317,7 +320,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke implementation request in knime-server-client`() {
     val root = resolveKnimeServerClientRoot() ?: return
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = resolveExternalDataDir(root, "server-client")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -346,7 +349,7 @@ class JdtlsSmokeTest {
         "--import-projects",
         "--definition-file", implementationFile.toString(),
         "--definition-symbol", "RestServerContent",
-        "--definition-expected", root.resolve("com.knime.enterprise.client.rest").toString()
+        "--definition-expected", "com.knime.enterprise.client.rest/src/"
       )
     )
     assertEquals(0, exitCode)
@@ -357,6 +360,19 @@ private fun envPath(name: String): Path? {
   val value = System.getenv(name)?.trim().orEmpty()
   if (value.isBlank()) return null
   return Paths.get(value)
+}
+
+private fun resolveExternalDataDir(root: Path, label: String): Path {
+  val override = System.getenv("JDTLS_DATA_ROOT")?.trim().orEmpty()
+  val baseDir = if (override.isNotBlank()) {
+    Paths.get(override)
+  } else {
+    Paths.get(System.getProperty("java.io.tmpdir"), "jdtls-smoke")
+  }
+  val rootName = root.fileName?.toString().orEmpty().ifBlank { "workspace" }
+  val dataDir = baseDir.resolve("${rootName}-${label}")
+  Files.createDirectories(dataDir)
+  return dataDir
 }
 
 private fun resolveKnimeGatewayRoot(): Path? {
@@ -388,18 +404,27 @@ private fun findFile(root: Path, fileName: String): Path? {
 }
 
 private fun ensureJdtlsCached(): Path {
+  val start = System.nanoTime()
   val artifact = resolveJdtlsArtifact()
   val cacheRoot = Paths.get(System.getProperty("user.home"), ".cache", "jdtls-smoke", artifact.label)
   val marker = cacheRoot.resolve("plugins")
   val configDir = cacheRoot.resolve(selectConfigDir())
   val launcher = findLauncherJarOrNull(cacheRoot)
-  if (Files.isDirectory(marker) && Files.isDirectory(configDir) && launcher != null) return cacheRoot
+  if (Files.isDirectory(marker) && Files.isDirectory(configDir) && launcher != null) {
+    profileLog("reuse cached JDT LS", start)
+    return cacheRoot
+  }
   Files.createDirectories(cacheRoot)
   val archive = cacheRoot.resolve(artifact.fileName)
   if (!Files.exists(archive)) {
+    val downloadStart = System.nanoTime()
     download(artifact.url, archive)
+    profileLog("download JDT LS archive", downloadStart)
   }
+  val extractStart = System.nanoTime()
   extractTarGz(archive, cacheRoot)
+  profileLog("extract JDT LS archive", extractStart)
+  profileLog("ensure JDT LS cached", start)
   return cacheRoot
 }
 
@@ -1043,4 +1068,14 @@ private fun skipFully(input: java.util.zip.GZIPInputStream, size: Long) {
       remaining -= skipped
     }
   }
+}
+
+private val PROFILE_ENABLED: Boolean = System.getenv("JDTLS_PROFILE")?.trim()?.let {
+  it == "1" || it.equals("true", ignoreCase = true)
+} ?: false
+
+private fun profileLog(label: String, startNs: Long) {
+  if (!PROFILE_ENABLED) return
+  val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs)
+  println("[jdtls-smoke] ${label} in ${elapsedMs}ms")
 }

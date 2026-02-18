@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit
 
 object JdtlsSmokeCommand {
   fun main(args: Array<String>): Int {
+    val overallStart = System.nanoTime()
+    var mark = overallStart
     val parser = ArgParser("pde jdtls-smoke")
     val launcherJar by parser.option(
       ArgType.String,
@@ -235,6 +237,7 @@ object JdtlsSmokeCommand {
       .directory(rootPath.toFile())
       .redirectErrorStream(false)
       .start()
+    mark = profileStep("start JDT LS process", mark)
 
     val stderrBuffer = StringBuilder()
     val stderrThread = Thread { drainStream(process.errorStream, stderrBuffer, 16384) }
@@ -282,6 +285,7 @@ object JdtlsSmokeCommand {
       val details = if (stderr.isNotBlank()) "\nJDT LS stderr:\n$stderr" else ""
       fail("No initialize response within ${timeoutMs}ms.$details")
     }
+    mark = profileStep("initialize response", mark)
 
     val initialized = """
       {"jsonrpc":"2.0","method":"initialized","params":{}}
@@ -297,6 +301,7 @@ object JdtlsSmokeCommand {
       waitForResponse(queue, requestId, timeoutMs)
       requestId += 1
       Thread.sleep(2000)
+      mark = profileStep("java.project.import", mark)
     }
 
     if (refreshDiagnostics) {
@@ -307,6 +312,7 @@ object JdtlsSmokeCommand {
       waitForResponse(queue, requestId, timeoutMs)
       requestId += 1
       Thread.sleep(2000)
+      mark = profileStep("java.project.refreshDiagnostics", mark)
     }
 
     if (expectProjects.isNotEmpty()) {
@@ -322,6 +328,7 @@ object JdtlsSmokeCommand {
           fail("Expected project '$project' not found in response: $projectResponse")
         }
       }
+      mark = profileStep("java.project.getAll", mark)
     }
 
     if (symbolQueries.isNotEmpty()) {
@@ -683,6 +690,7 @@ object JdtlsSmokeCommand {
         process.destroyForcibly()
       }
     }
+    profileTotal("total", overallStart)
     return 0
   }
 }
@@ -958,3 +966,21 @@ private fun escapeJson(value: String): String {
 }
 
 private fun fail(message: String): Nothing = throw IllegalArgumentException(message)
+
+private val PROFILE_ENABLED: Boolean = System.getenv("JDTLS_PROFILE")?.trim()?.let {
+  it == "1" || it.equals("true", ignoreCase = true)
+} ?: false
+
+private fun profileStep(label: String, startNs: Long): Long {
+  if (PROFILE_ENABLED) {
+    val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs)
+    println("[jdtls-smoke] ${label} in ${elapsedMs}ms")
+  }
+  return System.nanoTime()
+}
+
+private fun profileTotal(label: String, startNs: Long) {
+  if (!PROFILE_ENABLED) return
+  val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs)
+  println("[jdtls-smoke] ${label} in ${elapsedMs}ms")
+}
