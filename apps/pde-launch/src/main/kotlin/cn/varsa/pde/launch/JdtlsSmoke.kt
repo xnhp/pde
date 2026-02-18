@@ -61,6 +61,11 @@ object JdtlsSmokeCommand {
       fullName = "impl-expected",
       description = "Expected implementation (file name or identifier; repeatable)"
     ).multiple()
+    val symbolQueries by parser.option(
+      ArgType.String,
+      fullName = "symbol-query",
+      description = "Workspace symbol query to validate (repeatable)"
+    ).multiple()
     val importProjects by parser.option(
       ArgType.Boolean,
       fullName = "import-projects",
@@ -179,6 +184,20 @@ object JdtlsSmokeCommand {
       expectProjects.forEach { project ->
         if (!normalized.contains(project.lowercase())) {
           fail("Expected project '$project' not found in response: $projectResponse")
+        }
+      }
+    }
+
+    if (symbolQueries.isNotEmpty()) {
+      symbolQueries.forEach { query ->
+        val exec = """
+          {"jsonrpc":"2.0","id":${requestId},"method":"workspace/symbol","params":{"query":"${escapeJson(query)}"}}
+        """.trimIndent()
+        sendMessage(output, exec)
+        val response = waitForResponse(queue, requestId, timeoutMs)
+        requestId += 1
+        if (!response.lowercase().contains(query.lowercase())) {
+          fail("Expected symbol '$query' not found in response: $response")
         }
       }
     }

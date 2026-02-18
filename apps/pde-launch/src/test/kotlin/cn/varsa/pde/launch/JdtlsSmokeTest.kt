@@ -47,8 +47,8 @@ class JdtlsSmokeTest {
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
-    val interfaceFile = root.resolve("demo-project/src/SpaceProvider.java")
-    val implementationFile = root.resolve("demo-project/src/LocalSpaceProvider.java")
+    val interfaceFile = root.resolve("demo-project/src/MyInterface.java")
+    val implementationFile = root.resolve("demo-project/src/MyImplementation.java")
 
     val exitCode = JdtlsSmokeCommand.main(
       arrayOf(
@@ -59,7 +59,7 @@ class JdtlsSmokeTest {
         "--timeout-ms", "60000",
         "--import-projects",
         "--impl-file", interfaceFile.toString(),
-        "--impl-symbol", "SpaceProvider",
+        "--impl-symbol", "MyInterface",
         "--impl-expected", implementationFile.fileName.toString()
       )
     )
@@ -68,15 +68,10 @@ class JdtlsSmokeTest {
 
   @Test
   fun `smoke implementation request in knime-gateway`() {
-    val enabled = System.getenv("JDTLS_REAL_IMPL_TEST")?.trim().orEmpty().equals("1")
-    if (!enabled) return
     val root = resolveKnimeGatewayRoot() ?: return
     val dataDir = root.resolve(".jdtls-data-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
-
-    val interfaceFile = findFile(root, "SpaceProvider.java") ?: return
-    val implementationFile = findFile(root, "LocalSpaceProvider.java") ?: return
 
     val exitCode = JdtlsSmokeCommand.main(
       arrayOf(
@@ -86,9 +81,8 @@ class JdtlsSmokeTest {
         "--data", dataDir.toString(),
         "--timeout-ms", "60000",
         "--import-projects",
-        "--impl-file", interfaceFile.toString(),
-        "--impl-symbol", "SpaceProvider",
-        "--impl-expected", implementationFile.fileName.toString()
+        "--symbol-query", "SpaceProvider",
+        "--symbol-query", "LocalSpaceProvider"
       )
     )
     assertEquals(0, exitCode)
@@ -307,18 +301,18 @@ private fun createWorkspaceWithImplementation(): Path {
     """.trimIndent()
   )
   Files.writeString(
-    projectDir.resolve("src/SpaceProvider.java"),
+    projectDir.resolve("src/MyInterface.java"),
     """
-      public interface SpaceProvider {
-        String name();
+      public interface MyInterface {
+        String id();
       }
     """.trimIndent()
   )
   Files.writeString(
-    projectDir.resolve("src/LocalSpaceProvider.java"),
+    projectDir.resolve("src/MyImplementation.java"),
     """
-      public class LocalSpaceProvider implements SpaceProvider {
-        public String name() { return \"local\"; }
+      public class MyImplementation implements MyInterface {
+        public String id() { return \"demo\"; }
       }
     """.trimIndent()
   )
