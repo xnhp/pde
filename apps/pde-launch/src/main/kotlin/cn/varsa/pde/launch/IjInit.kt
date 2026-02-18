@@ -156,7 +156,8 @@ object IjInit {
         }
         val sourceRoots = determineSourceRoots(bundleDir)
         if (sourceRoots.isEmpty()) {
-          fail("Bundle has no source roots: ${bundleDir}")
+          logger.warning("Bundle has no source roots: ${bundleDir}; skipping")
+          return@forEach
         }
         val moduleFileName = "${bundle}.iml"
         val moduleFile = moduleDir.resolve(moduleFileName)
