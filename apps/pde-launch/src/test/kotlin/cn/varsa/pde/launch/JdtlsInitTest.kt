@@ -195,4 +195,50 @@ class JdtlsInitTest {
     val classpathContents = Files.readString(bundleDir.resolve(".classpath"))
     assertTrue(classpathContents.contains("JavaSE-21"))
   }
+
+  @Test
+  fun `jdtls-init writes projectConfigurations output`() {
+    val baseDir = Files.createTempDirectory("jdtls-init-project-config")
+    val repoDir = baseDir.resolve("knime-gateway")
+    val bundleDir = repoDir.resolve("org.knime.gateway.api")
+    val metaInf = bundleDir.resolve("META-INF")
+    Files.createDirectories(metaInf)
+    Files.createDirectories(bundleDir.resolve("src"))
+
+    Files.writeString(
+      metaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.knime.gateway.api
+        Bundle-Version: 1.0.0
+      """.trimIndent()
+    )
+
+    val configPath = baseDir.resolve("config.yaml")
+    Files.writeString(
+      configPath,
+      """
+        bundlesPerRepo:
+          - repo: knime-gateway
+            bundles:
+              - org.knime.gateway.api
+      """.trimIndent()
+    )
+
+    val outputPath = baseDir.resolve("project-configurations.json")
+    val exitCode = JdtlsInitCommand.main(
+      arrayOf(
+        "--config", configPath.toString(),
+        "--project-configurations-out", outputPath.toString()
+      )
+    )
+    assertEquals(0, exitCode)
+    assertTrue(Files.exists(outputPath))
+
+    val contents = Files.readString(outputPath)
+    val expectedUri = bundleDir.resolve(".project").toAbsolutePath().normalize().toUri().toString()
+    assertTrue(contents.contains("\"projectConfigurations\""))
+    assertTrue(contents.contains(expectedUri))
+  }
 }

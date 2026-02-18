@@ -38,6 +38,11 @@ object JdtlsInitCommand {
       fullName = "force",
       description = "Overwrite existing .project/.classpath"
     ).default(false)
+    val projectConfigurationsOut by parser.option(
+      ArgType.String,
+      fullName = "project-configurations-out",
+      description = "Write JDT LS projectConfigurations JSON to file"
+    )
     val configPos by parser.argument(
       ArgType.String,
       description = "YAML launch configuration (positional)"
@@ -63,8 +68,13 @@ object JdtlsInitCommand {
       val context = LaunchConfigLoader.load(configPath, workingDir)
       val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
       val targetIndex = resolveTargetIndex(context)
-      val written = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, force)
-      println("Generated .project/.classpath for ${written} workspace bundles.")
+      val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, force)
+      println("Generated .project/.classpath for ${result.written} workspace bundles.")
+      val projectConfigurationsPath = projectConfigurationsOut?.let { resolvePath(context.baseDir, it) }
+      if (projectConfigurationsPath != null) {
+        writeProjectConfigurationsOutput(projectConfigurationsPath, result.projectConfigurations)
+        println("Wrote projectConfigurations to ${projectConfigurationsPath.toAbsolutePath().normalize()}")
+      }
       0
     } catch (ex: Exception) {
       System.err.println(ex.message ?: "jdtls-init failed")
@@ -73,12 +83,17 @@ object JdtlsInitCommand {
   }
 }
 
+private data class WorkspaceConfigResult(
+  val written: Int,
+  val projectConfigurations: List<Path>
+)
+
 private fun writeWorkspaceConfigs(
   context: LaunchConfigContext,
   workspaceDescriptors: List<WorkspaceBundleDescriptor>,
   targetIndex: TargetPlatformIndex,
   force: Boolean
-): Int {
+): WorkspaceConfigResult {
   val modules = context.config.workspaceModules
   if (modules.isEmpty()) {
     fail("No workspaceModules configured; add bundlesPerRepo or workspaceModules to your config.")
@@ -89,6 +104,7 @@ private fun writeWorkspaceConfigs(
     bsn to bsn
   }
   var written = 0
+  val projectConfigurations = LinkedHashSet<Path>()
   modules.forEach { module ->
     val moduleDir = resolvePath(context.baseDir, module.path)
     if (!Files.exists(moduleDir) || !Files.isDirectory(moduleDir)) {
@@ -113,6 +129,7 @@ private fun writeWorkspaceConfigs(
       projectNameByBsn
     )
 
+    val projectFile = moduleDir.resolve(".project")
     val projectWritten = writeProjectFile(moduleDir, bundleName, force)
     val classpathWritten = writeClasspathFile(
       moduleDir,
@@ -126,8 +143,11 @@ private fun writeWorkspaceConfigs(
     if (projectWritten || classpathWritten) {
       written += 1
     }
+    if (Files.exists(projectFile)) {
+      projectConfigurations.add(projectFile.toAbsolutePath().normalize())
+    }
   }
-  return written
+  return WorkspaceConfigResult(written, projectConfigurations.toList())
 }
 
 private fun writeProjectFile(moduleDir: Path, projectName: String, force: Boolean): Boolean {
@@ -197,6 +217,23 @@ private fun writeClasspathFile(
   builder.appendLine("</classpath>")
   Files.writeString(classpathFile, builder.toString(), StandardCharsets.UTF_8)
   return true
+}
+
+private fun writeProjectConfigurationsOutput(outputPath: Path, projectConfigurations: List<Path>) {
+  if (outputPath.parent != null) {
+    Files.createDirectories(outputPath.parent)
+  }
+  val uris = projectConfigurations.map { it.toAbsolutePath().normalize().toUri().toString() }.distinct()
+  val builder = StringBuilder()
+  builder.appendLine("{")
+  builder.appendLine("  \"projectConfigurations\": [")
+  uris.forEachIndexed { index, uri ->
+    val suffix = if (index == uris.size - 1) "" else ","
+    builder.append("    \"").append(jsonEscape(uri)).append("\"").append(suffix).appendLine()
+  }
+  builder.appendLine("  ]")
+  builder.appendLine("}")
+  Files.writeString(outputPath, builder.toString(), StandardCharsets.UTF_8)
 }
 
 private data class ClasspathEntry(val kind: String, val path: String, val sourcePath: String? = null)
@@ -334,6 +371,12 @@ private fun xmlEscape(value: String): String {
     .replace(">", "&gt;")
     .replace("\"", "&quot;")
     .replace("'", "&apos;")
+}
+
+private fun jsonEscape(value: String): String {
+  return value
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 }
 
 private fun fail(message: String): Nothing = throw IOException(message)
