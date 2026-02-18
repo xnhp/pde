@@ -756,7 +756,7 @@ private fun waitForDiagnostics(queue: ArrayBlockingQueue<String>, uri: String, m
     if (!message.contains("\"method\":\"textDocument/publishDiagnostics\"")) continue
     if (!message.contains(uri)) continue
     if (minCount <= 0) return true
-    if (message.contains("\"diagnostics\":[]")) return false
+    if (message.contains("\"diagnostics\":[]")) continue
     return true
   }
   return false
