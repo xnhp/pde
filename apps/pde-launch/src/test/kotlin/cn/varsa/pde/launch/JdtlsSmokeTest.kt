@@ -281,7 +281,13 @@ class JdtlsSmokeTest {
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
-    val targetSpec = resolveExistingTargetSpec(root)
+    val targetSpec = resolveExistingTargetSpec(
+      root,
+      listOf(
+        root.resolve("org.knime.gateway.api"),
+        root.resolve("org.knime.gateway.impl")
+      )
+    )
     val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
     assertEquals(0, initExit)
 
@@ -304,6 +310,44 @@ class JdtlsSmokeTest {
     )
     assertEquals(0, exitCode)
   }
+
+  @Test
+  fun `smoke implementation request in knime-server-client`() {
+    val root = resolveKnimeServerClientRoot() ?: return
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val targetSpec = resolveExistingTargetSpec(
+      root,
+      listOf(root.resolve("com.knime.enterprise.client.rest"))
+    )
+    val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
+    assertEquals(0, initExit)
+
+    val interfaceFile = root.resolve(
+      "com.knime.enterprise.client.rest/src/com/knime/enterprise/client/filesystem/RemoteFileSystem.java"
+    )
+    val implementationFile = root.resolve(
+      "com.knime.enterprise.client.rest/src/com/knime/enterprise/client/rest/RestServerContent.java"
+    )
+    if (!Files.isRegularFile(interfaceFile) || !Files.isRegularFile(implementationFile)) return
+
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "120000",
+        "--import-projects",
+        "--definition-file", implementationFile.toString(),
+        "--definition-symbol", "RemoteFileSystem",
+        "--definition-expected", interfaceFile.fileName.toString()
+      )
+    )
+    assertEquals(0, exitCode)
+  }
 }
 
 private fun envPath(name: String): Path? {
@@ -316,6 +360,11 @@ private fun resolveKnimeGatewayRoot(): Path? {
   val env = envPath("JDTLS_ROOT")
   if (env != null && Files.isDirectory(env)) return env
   val default = Paths.get("/home/ben/Desktop/jdtls-playground/knime-gateway")
+  return if (Files.isDirectory(default)) default else null
+}
+
+private fun resolveKnimeServerClientRoot(): Path? {
+  val default = Paths.get("/home/ben/repos/knime-server-client")
   return if (Files.isDirectory(default)) default else null
 }
 
@@ -890,7 +939,7 @@ private data class TargetInstallSpec(
   val installDir: Path
 )
 
-private fun resolveExistingTargetSpec(workspaceRoot: Path): TargetInstallSpec {
+private fun resolveExistingTargetSpec(workspaceRoot: Path, modulePaths: List<Path>): TargetInstallSpec {
   val baseDir = System.getenv("JDTLS_TARGET_DIR")?.takeIf { it.isNotBlank() }
     ?.let { Paths.get(it) }
     ?: Paths.get("/tmp/jdtls-target-test")
@@ -903,6 +952,9 @@ private fun resolveExistingTargetSpec(workspaceRoot: Path): TargetInstallSpec {
   val bundlePool = System.getenv("JDTLS_BUNDLE_POOL")?.takeIf { it.isNotBlank() }
     ?.let { Paths.get(it) }
     ?: baseDir.resolve("bundle-pool")
+  val modulesYaml = modulePaths.joinToString("\n") { path ->
+    "        - path: ${path.toAbsolutePath()}"
+  }
   Files.writeString(
     configFile,
     """
@@ -913,8 +965,7 @@ private fun resolveExistingTargetSpec(workspaceRoot: Path): TargetInstallSpec {
         bundle-pool: ${bundlePool}
         install: ${baseDir.resolve("install")}
       workspaceModules:
-        - path: ${workspaceRoot.resolve("org.knime.gateway.api").toAbsolutePath()}
-        - path: ${workspaceRoot.resolve("org.knime.gateway.impl").toAbsolutePath()}
+${modulesYaml}
     """.trimIndent()
   )
   return TargetInstallSpec(

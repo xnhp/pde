@@ -368,7 +368,7 @@ object JdtlsSmokeCommand {
         fail("Implementation file not found: $implPath")
       }
       val implText = Files.readString(implPath)
-      val position = findPosition(implText, implSymbolValue)
+      val position = findWordPositionLast(implText, implSymbolValue)
         ?: fail("Symbol '$implSymbol' not found in ${implPath}")
       val docUri = implPath.toAbsolutePath().normalize().toUri().toString()
       val didOpen = """
@@ -424,7 +424,7 @@ object JdtlsSmokeCommand {
         fail("Definition file not found: $defPath")
       }
       val defText = Files.readString(defPath)
-      val position = findPosition(defText, defSymbolValue)
+      val position = findWordPositionLast(defText, defSymbolValue)
         ?: fail("Symbol '$defSymbolValue' not found in ${defPath}")
       val docUri = defPath.toAbsolutePath().normalize().toUri().toString()
       val didOpen = """
@@ -480,7 +480,7 @@ object JdtlsSmokeCommand {
         fail("References file not found: $refPath")
       }
       val refText = Files.readString(refPath)
-      val position = findPosition(refText, refSymbolValue)
+      val position = findWordPositionLast(refText, refSymbolValue)
         ?: fail("Symbol '$refSymbolValue' not found in ${refPath}")
       val docUri = refPath.toAbsolutePath().normalize().toUri().toString()
       val didOpen = """
@@ -536,7 +536,7 @@ object JdtlsSmokeCommand {
         fail("Hierarchy file not found: $hierarchyPath")
       }
       val hierarchyText = Files.readString(hierarchyPath)
-      val position = findPosition(hierarchyText, hierarchySymbolValue)
+      val position = findWordPositionLast(hierarchyText, hierarchySymbolValue)
         ?: fail("Symbol '$hierarchySymbolValue' not found in ${hierarchyPath}")
       val docUri = hierarchyPath.toAbsolutePath().normalize().toUri().toString()
       val didOpen = """
@@ -784,6 +784,26 @@ private fun findPosition(text: String, symbol: String): Pair<Int, Int>? {
 private fun findPositionLast(text: String, symbol: String): Pair<Int, Int>? {
   val index = text.lastIndexOf(symbol)
   if (index < 0) return null
+  var line = 0
+  var column = 0
+  var i = 0
+  while (i < index) {
+    val ch = text[i]
+    if (ch == '\n') {
+      line += 1
+      column = 0
+    } else {
+      column += 1
+    }
+    i += 1
+  }
+  return line to column
+}
+
+private fun findWordPositionLast(text: String, symbol: String): Pair<Int, Int>? {
+  val regex = Regex("\\b" + Regex.escape(symbol) + "\\b")
+  val match = regex.findAll(text).lastOrNull() ?: return null
+  val index = match.range.first
   var line = 0
   var column = 0
   var i = 0
