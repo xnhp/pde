@@ -116,6 +116,40 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke definition into target bundle uses sources`() {
+    val bundlePool = Paths.get("/home/ben/Desktop/issues/bundle-pool/plugins")
+    val targetJar = bundlePool.resolve("org.osgi.util.function_1.2.0.202109301733.jar")
+    val sourceJar = bundlePool.resolve("org.osgi.util.function.source_1.2.0.202109301733.jar")
+    if (!Files.isRegularFile(targetJar) || !Files.isRegularFile(sourceJar)) {
+      throw IllegalStateException("Target/source jars not found under ${bundlePool}")
+    }
+
+    val root = createWorkspaceWithTargetSource(targetJar, sourceJar)
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val refFile = root.resolve("bundle-target/src/example/TargetUser.java")
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--classpath-file", refFile.toString(),
+        "--classpath-expected", targetJar.toAbsolutePath().toString(),
+        "--definition-file", refFile.toString(),
+        "--definition-symbol", "Consumer",
+        "--definition-expected", "jdt://",
+        "--source-attachment-expected", "org.osgi.util.function.source_1.2.0.202109301733.jar"
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke implementation request in knime-gateway`() {
     val root = resolveKnimeGatewayRoot() ?: return
     val dataDir = root.resolve(".jdtls-data-test")
@@ -468,6 +502,63 @@ private fun createWorkspaceWithDependency(): Path {
         }
         public String read() {
           return api.value();
+        }
+      }
+    """.trimIndent()
+  )
+  return workspace
+}
+
+private fun createWorkspaceWithTargetSource(targetJar: Path, sourceJar: Path): Path {
+  val workspace = Files.createTempDirectory("jdtls-target-source-workspace")
+  Files.createDirectories(workspace.resolve(".metadata"))
+
+  val bundle = workspace.resolve("bundle-target")
+  Files.createDirectories(bundle.resolve("src"))
+
+  Files.writeString(
+    bundle.resolve(".project"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <projectDescription>
+        <name>bundle-target</name>
+        <comment></comment>
+        <projects></projects>
+        <buildSpec>
+          <buildCommand>
+            <name>org.eclipse.jdt.core.javabuilder</name>
+            <arguments></arguments>
+          </buildCommand>
+        </buildSpec>
+        <natures>
+          <nature>org.eclipse.jdt.core.javanature</nature>
+        </natures>
+      </projectDescription>
+    """.trimIndent()
+  )
+  Files.writeString(
+    bundle.resolve(".classpath"),
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <classpath>
+        <classpathentry kind="src" path="src"/>
+        <classpathentry kind="lib" path="${targetJar.toAbsolutePath()}" sourcepath="${sourceJar.toAbsolutePath()}"/>
+        <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+        <classpathentry kind="output" path="bin"/>
+      </classpath>
+    """.trimIndent()
+  )
+  val exampleDir = bundle.resolve("src/example")
+  Files.createDirectories(exampleDir)
+  Files.writeString(
+    exampleDir.resolve("TargetUser.java"),
+    """
+      package example;
+
+      public class TargetUser {
+        private org.osgi.util.function.Consumer consumer;
+        public void set(org.osgi.util.function.Consumer consumer) {
+          this.consumer = consumer;
         }
       }
     """.trimIndent()

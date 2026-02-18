@@ -76,6 +76,36 @@ object JdtlsSmokeCommand {
       fullName = "definition-expected",
       description = "Expected definition target (file name or identifier; repeatable)"
     ).multiple()
+    val sourceAttachmentClassFile by parser.option(
+      ArgType.String,
+      fullName = "source-attachment-classfile",
+      description = "Classfile URI to resolve source attachment for"
+    )
+    val sourceAttachmentExpected by parser.option(
+      ArgType.String,
+      fullName = "source-attachment-expected",
+      description = "Expected source attachment path substring"
+    )
+    val classpathFile by parser.option(
+      ArgType.String,
+      fullName = "classpath-file",
+      description = "File URI or path to query java.project.getClasspaths"
+    )
+    val classpathExpected by parser.option(
+      ArgType.String,
+      fullName = "classpath-expected",
+      description = "Expected classpath entry substring (repeatable)"
+    ).multiple()
+    val symbolResolveQuery by parser.option(
+      ArgType.String,
+      fullName = "symbol-resolve-query",
+      description = "Workspace symbol query to resolve via java.project.resolveWorkspaceSymbol"
+    )
+    val symbolResolveExpected by parser.option(
+      ArgType.String,
+      fullName = "symbol-resolve-expected",
+      description = "Expected substring in resolved symbol location"
+    )
     val symbolQueries by parser.option(
       ArgType.String,
       fullName = "symbol-query",
@@ -156,7 +186,7 @@ object JdtlsSmokeCommand {
 
     val rootUri = rootPath.toAbsolutePath().normalize().toUri().toString()
     val initialize = """
-      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":${process.pid()},"rootUri":"${escapeJson(rootUri)}","capabilities":{"textDocument":{"implementation":{"dynamicRegistration":false}}},"workspaceFolders":[{"uri":"${escapeJson(rootUri)}","name":"workspace"}]}}
+      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":${process.pid()},"rootUri":"${escapeJson(rootUri)}","capabilities":{"textDocument":{"implementation":{"dynamicRegistration":false}}},"initializationOptions":{"extendedClientCapabilities":{"classFileContentsSupport":true}},"workspaceFolders":[{"uri":"${escapeJson(rootUri)}","name":"workspace"}]}}
     """.trimIndent()
     sendMessage(output, initialize)
 
@@ -238,6 +268,28 @@ object JdtlsSmokeCommand {
       }
     }
 
+    val classpathFileValue = classpathFile
+    if (classpathFileValue != null && classpathExpected.isNotEmpty()) {
+      val fileUri = if (classpathFileValue.startsWith("file:") || classpathFileValue.startsWith("jdt:")) {
+        classpathFileValue
+      } else {
+        Paths.get(classpathFileValue).toAbsolutePath().normalize().toUri().toString()
+      }
+      val optionsJson = "{\"scope\":\"runtime\"}"
+      val exec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.getClasspaths","arguments":["${escapeJson(fileUri)}","${escapeJson(optionsJson)}"]}}
+      """.trimIndent()
+      sendMessage(output, exec)
+      val response = waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
+      val normalized = response.lowercase()
+      classpathExpected.forEach { expected ->
+        if (!normalized.contains(expected.lowercase())) {
+          fail("Expected classpath entry '$expected' not found in response: $response")
+        }
+      }
+    }
+
     val implFileValue = implFile
     val implSymbolValue = implSymbol
     if (implFileValue != null && implSymbolValue != null && implExpected.isNotEmpty()) {
@@ -295,6 +347,7 @@ object JdtlsSmokeCommand {
 
     val defFileValue = definitionFile
     val defSymbolValue = definitionSymbol
+    var definitionLocation: String? = null
     if (defFileValue != null && defSymbolValue != null && definitionExpected.isNotEmpty()) {
       val defPath = Paths.get(defFileValue)
       if (!Files.isRegularFile(defPath)) {
@@ -341,10 +394,50 @@ object JdtlsSmokeCommand {
         fail("No definition response received")
       }
       val normalized = finalResponse.lowercase()
+      definitionLocation = extractLocationUri(finalResponse)
       definitionExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected definition '$expected' not found in response: $finalResponse")
         }
+      }
+    }
+
+    val resolveQuery = symbolResolveQuery
+    val resolveExpected = symbolResolveExpected
+    var resolvedLocation: String? = null
+    if (resolveQuery != null) {
+      val exec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/symbol","params":{"query":"${escapeJson(resolveQuery)}"}}
+      """.trimIndent()
+      sendMessage(output, exec)
+      val response = waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
+      val match = extractFirstSymbol(response)
+        ?: fail("No symbol returned for query '$resolveQuery': $response")
+      val resolveExec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.resolveWorkspaceSymbol","arguments":[${match}]}}
+      """.trimIndent()
+      sendMessage(output, resolveExec)
+      val resolved = waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
+      resolvedLocation = extractLocationUri(resolved)
+      if (resolveExpected != null && !resolved.lowercase().contains(resolveExpected.lowercase())) {
+        fail("Expected resolved symbol '$resolveExpected' not found in response: $resolved")
+      }
+    }
+
+    val classFileUri = sourceAttachmentClassFile ?: definitionLocation ?: resolvedLocation
+    val expectedSource = sourceAttachmentExpected
+    if (classFileUri != null && expectedSource != null) {
+      val requestJson = "{\"classFileUri\":\"${escapeJson(classFileUri)}\"}"
+      val exec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.resolveSourceAttachment","arguments":["${escapeJson(requestJson)}"]}}
+      """.trimIndent()
+      sendMessage(output, exec)
+      val response = waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
+      if (!response.lowercase().contains(expectedSource.lowercase())) {
+        fail("Expected source attachment '$expectedSource' not found in response: $response")
       }
     }
 
@@ -359,7 +452,16 @@ object JdtlsSmokeCommand {
     """.trimIndent()
     sendMessage(output, exit)
 
-    process.destroy()
+    output.flush()
+    output.close()
+    input.close()
+
+    if (!process.waitFor(5, TimeUnit.SECONDS)) {
+      process.destroy()
+      if (!process.waitFor(2, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+      }
+    }
     return 0
   }
 }
@@ -451,6 +553,94 @@ private fun jsonString(value: String): String {
     .replace("\n", "\\n")
     .replace("\t", "\\t")
   return "\"$escaped\""
+}
+
+private fun extractFirstSymbol(response: String): String? {
+  val resultIndex = response.indexOf("\"result\"")
+  if (resultIndex < 0) return null
+  val startArray = response.indexOf('[', resultIndex)
+  if (startArray < 0) return null
+  val endArray = response.indexOf(']', startArray)
+  if (endArray < 0) return null
+  val arrayBody = response.substring(startArray + 1, endArray).trim()
+  if (arrayBody.isEmpty()) return null
+  val firstEnd = findJsonObjectEnd(arrayBody)
+  if (firstEnd <= 0) return null
+  return arrayBody.substring(0, firstEnd)
+}
+
+private fun extractLocationUri(response: String): String? {
+  val uriIndex = response.indexOf("\"uri\"")
+  if (uriIndex < 0) return null
+  val startQuote = response.indexOf('"', uriIndex + 5)
+  if (startQuote < 0) return null
+  val endQuote = response.indexOf('"', startQuote + 1)
+  if (endQuote < 0) return null
+  return unescapeJson(response.substring(startQuote + 1, endQuote))
+}
+
+private fun unescapeJson(value: String): String {
+  val builder = StringBuilder()
+  var i = 0
+  while (i < value.length) {
+    val ch = value[i]
+    if (ch != '\\' || i + 1 >= value.length) {
+      builder.append(ch)
+      i += 1
+      continue
+    }
+    val next = value[i + 1]
+    when (next) {
+      '\\' -> builder.append('\\')
+      '"' -> builder.append('"')
+      'n' -> builder.append('\n')
+      'r' -> builder.append('\r')
+      't' -> builder.append('\t')
+      'u' -> {
+        if (i + 5 < value.length) {
+          val hex = value.substring(i + 2, i + 6)
+          val code = hex.toIntOrNull(16)
+          if (code != null) {
+            builder.append(code.toChar())
+            i += 6
+            continue
+          }
+        }
+        builder.append(next)
+      }
+      else -> builder.append(next)
+    }
+    i += 2
+  }
+  return builder.toString()
+}
+
+private fun findJsonObjectEnd(value: String): Int {
+  var depth = 0
+  var inString = false
+  var escape = false
+  for (i in value.indices) {
+    val ch = value[i]
+    if (escape) {
+      escape = false
+      continue
+    }
+    if (ch == '\\') {
+      if (inString) escape = true
+      continue
+    }
+    if (ch == '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+    if (ch == '{') depth += 1
+    if (ch == '}') {
+      depth -= 1
+      if (depth == 0) return i + 1
+    }
+  }
+  return -1
 }
 
 private fun findFileByName(rootPath: Path, fileName: String): Path? {
