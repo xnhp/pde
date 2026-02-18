@@ -21,10 +21,6 @@ fun main(args: Array<String>) {
     val exitCode = JdtlsInitCommand.main(args.drop(1).toTypedArray())
     exitProcess(exitCode)
   }
-  if (args.isNotEmpty() && args[0] == "jdtls-smoke") {
-    val exitCode = JdtlsSmokeCommand.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
   if (args.isNotEmpty() && args[0] == "compile") {
     val exitCode = compileMain(args.drop(1).toTypedArray())
     exitProcess(exitCode)
@@ -75,7 +71,6 @@ private fun printHelp() {
   println("  api-analyze  Run API analysis")
   println("  ij-init      Generate IntelliJ project")
   println("  jdtls-init   Generate .project/.classpath for JDT LS")
-  println("  jdtls-smoke  Run JDT LS LSP smoke test")
   println()
   println("Run 'pde <command> --help' for command-specific options.")
 }
