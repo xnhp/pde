@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import kotlin.io.path.name
 import kotlin.test.assertEquals
 
 class JdtlsSmokeTest {
@@ -38,12 +39,89 @@ class JdtlsSmokeTest {
     )
     assertEquals(0, exitCode)
   }
+
+  @Test
+  fun `smoke implementation request in synthetic workspace`() {
+    val root = createWorkspaceWithImplementation()
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val interfaceFile = root.resolve("demo-project/src/SpaceProvider.java")
+    val implementationFile = root.resolve("demo-project/src/LocalSpaceProvider.java")
+
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--impl-file", interfaceFile.toString(),
+        "--impl-symbol", "SpaceProvider",
+        "--impl-expected", implementationFile.fileName.toString()
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
+  fun `smoke implementation request in knime-gateway`() {
+    val enabled = System.getenv("JDTLS_REAL_IMPL_TEST")?.trim().orEmpty().equals("1")
+    if (!enabled) return
+    val root = resolveKnimeGatewayRoot() ?: return
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val interfaceFile = findFile(root, "SpaceProvider.java") ?: return
+    val implementationFile = findFile(root, "LocalSpaceProvider.java") ?: return
+
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--impl-file", interfaceFile.toString(),
+        "--impl-symbol", "SpaceProvider",
+        "--impl-expected", implementationFile.fileName.toString()
+      )
+    )
+    assertEquals(0, exitCode)
+  }
 }
 
 private fun envPath(name: String): Path? {
   val value = System.getenv(name)?.trim().orEmpty()
   if (value.isBlank()) return null
   return Paths.get(value)
+}
+
+private fun resolveKnimeGatewayRoot(): Path? {
+  val env = envPath("JDTLS_ROOT")
+  if (env != null && Files.isDirectory(env)) return env
+  val default = Paths.get("/home/ben/Desktop/jdtls-playground/knime-gateway")
+  return if (Files.isDirectory(default)) default else null
+}
+
+private fun resolveJdtlsInstallation(): Pair<Path, Path> {
+  val launcher = envPath("JDTLS_LAUNCHER")
+  val config = envPath("JDTLS_CONFIG")
+  if (launcher != null && config != null) return launcher to config
+  val home = ensureJdtlsCached()
+  return findLauncherJar(home) to home.resolve(selectConfigDir())
+}
+
+private fun findFile(root: Path, fileName: String): Path? {
+  Files.walk(root).use { stream ->
+    return stream.filter { path ->
+      Files.isRegularFile(path) && path.name == fileName
+    }.findFirst().orElse(null)
+  }
 }
 
 private fun ensureJdtlsCached(): Path {
@@ -186,6 +264,61 @@ private fun createWorkspaceFixture(): Path {
         public static void main(String[] args) {
           System.out.println(\"hello\");
         }
+      }
+    """.trimIndent()
+  )
+  return workspace
+}
+
+private fun createWorkspaceWithImplementation(): Path {
+  val workspace = Files.createTempDirectory("jdtls-impl-workspace")
+  Files.createDirectories(workspace.resolve(".metadata"))
+  val projectDir = workspace.resolve("demo-project")
+  Files.createDirectories(projectDir.resolve("src"))
+  Files.writeString(
+    projectDir.resolve(".project"),
+    """
+      <?xml version=\"1.0\" encoding=\"UTF-8\"?>
+      <projectDescription>
+        <name>demo-project</name>
+        <comment></comment>
+        <projects></projects>
+        <buildSpec>
+          <buildCommand>
+            <name>org.eclipse.jdt.core.javabuilder</name>
+            <arguments></arguments>
+          </buildCommand>
+        </buildSpec>
+        <natures>
+          <nature>org.eclipse.jdt.core.javanature</nature>
+        </natures>
+      </projectDescription>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve(".classpath"),
+    """
+      <?xml version=\"1.0\" encoding=\"UTF-8\"?>
+      <classpath>
+        <classpathentry kind=\"src\" path=\"src\"/>
+        <classpathentry kind=\"con\" path=\"org.eclipse.jdt.launching.JRE_CONTAINER\"/>
+        <classpathentry kind=\"output\" path=\"bin\"/>
+      </classpath>
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve("src/SpaceProvider.java"),
+    """
+      public interface SpaceProvider {
+        String name();
+      }
+    """.trimIndent()
+  )
+  Files.writeString(
+    projectDir.resolve("src/LocalSpaceProvider.java"),
+    """
+      public class LocalSpaceProvider implements SpaceProvider {
+        public String name() { return \"local\"; }
       }
     """.trimIndent()
   )

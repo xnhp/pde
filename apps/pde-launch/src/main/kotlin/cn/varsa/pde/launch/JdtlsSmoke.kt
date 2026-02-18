@@ -46,6 +46,26 @@ object JdtlsSmokeCommand {
       fullName = "expect-project",
       description = "Project name expected from java.project.getAll (repeatable)"
     ).multiple()
+    val implFile by parser.option(
+      ArgType.String,
+      fullName = "impl-file",
+      description = "Java interface file to request implementations for"
+    )
+    val implSymbol by parser.option(
+      ArgType.String,
+      fullName = "impl-symbol",
+      description = "Symbol name within impl-file to query"
+    )
+    val implExpected by parser.option(
+      ArgType.String,
+      fullName = "impl-expected",
+      description = "Expected implementation (file name or identifier; repeatable)"
+    ).multiple()
+    val importProjects by parser.option(
+      ArgType.Boolean,
+      fullName = "import-projects",
+      description = "Run java.project.import before other checks"
+    ).default(false)
     val vmArgs by parser.option(
       ArgType.String,
       fullName = "vm-arg",
@@ -137,16 +157,83 @@ object JdtlsSmokeCommand {
     """.trimIndent()
     sendMessage(output, initialized)
 
-    if (expectProjects.isNotEmpty()) {
+    var requestId = 3
+    if (importProjects) {
       val exec = """
-        {"jsonrpc":"2.0","id":3,"method":"workspace/executeCommand","params":{"command":"java.project.getAll","arguments":[]}}
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.import","arguments":[]}}
       """.trimIndent()
       sendMessage(output, exec)
-      val projectResponse = waitForResponse(queue, 3, timeoutMs)
+      waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
+      Thread.sleep(2000)
+    }
+
+    if (expectProjects.isNotEmpty()) {
+      val exec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.getAll","arguments":[]}}
+      """.trimIndent()
+      sendMessage(output, exec)
+      val projectResponse = waitForResponse(queue, requestId, timeoutMs)
+      requestId += 1
       val normalized = projectResponse.lowercase()
       expectProjects.forEach { project ->
         if (!normalized.contains(project.lowercase())) {
           fail("Expected project '$project' not found in response: $projectResponse")
+        }
+      }
+    }
+
+    val implFileValue = implFile
+    val implSymbolValue = implSymbol
+    if (implFileValue != null && implSymbolValue != null && implExpected.isNotEmpty()) {
+      val implPath = Paths.get(implFileValue)
+      if (!Files.isRegularFile(implPath)) {
+        fail("Implementation file not found: $implPath")
+      }
+      val implText = Files.readString(implPath)
+      val position = findPosition(implText, implSymbolValue)
+        ?: fail("Symbol '$implSymbol' not found in ${implPath}")
+      val docUri = implPath.toAbsolutePath().normalize().toUri().toString()
+      val didOpen = """
+        {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(docUri)}","languageId":"java","version":1,"text":${jsonString(implText)}}}}
+      """.trimIndent()
+      sendMessage(output, didOpen)
+
+      val expectedFiles = implExpected.mapNotNull { expected ->
+        findFileByName(rootPath, expected)
+      }
+      expectedFiles.forEach { expectedPath ->
+        val expectedText = Files.readString(expectedPath)
+        val expectedUri = expectedPath.toAbsolutePath().normalize().toUri().toString()
+        val openExpected = """
+          {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(expectedUri)}","languageId":"java","version":1,"text":${jsonString(expectedText)}}}}
+        """.trimIndent()
+        sendMessage(output, openExpected)
+      }
+
+      val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
+      var lastResponse: String? = null
+      while (System.nanoTime() < deadline) {
+        val request = """
+          {"jsonrpc":"2.0","id":${requestId},"method":"textDocument/implementation","params":{"textDocument":{"uri":"${escapeJson(docUri)}"},"position":{"line":${position.first},"character":${position.second}}}}
+        """.trimIndent()
+        sendMessage(output, request)
+        val response = waitForResponse(queue, requestId, timeoutMs)
+        lastResponse = response
+        val normalized = response.lowercase()
+        val allMatched = implExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        if (allMatched) break
+        requestId += 1
+        Thread.sleep(1000)
+      }
+      val finalResponse = lastResponse
+      if (finalResponse == null) {
+        fail("No implementation response received")
+      }
+      val normalized = finalResponse.lowercase()
+      implExpected.forEach { expected ->
+        if (!normalized.contains(expected.lowercase())) {
+          fail("Expected implementation '$expected' not found in response: $finalResponse")
         }
       }
     }
@@ -225,6 +312,43 @@ private fun waitForResponse(queue: ArrayBlockingQueue<String>, id: Int, timeoutM
     }
   }
   fail("No response for request $id within ${timeoutMs}ms")
+}
+
+private fun findPosition(text: String, symbol: String): Pair<Int, Int>? {
+  val index = text.indexOf(symbol)
+  if (index < 0) return null
+  var line = 0
+  var column = 0
+  var i = 0
+  while (i < index) {
+    val ch = text[i]
+    if (ch == '\n') {
+      line += 1
+      column = 0
+    } else {
+      column += 1
+    }
+    i += 1
+  }
+  return line to column
+}
+
+private fun jsonString(value: String): String {
+  val escaped = value
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\r", "\\r")
+    .replace("\n", "\\n")
+    .replace("\t", "\\t")
+  return "\"$escaped\""
+}
+
+private fun findFileByName(rootPath: Path, fileName: String): Path? {
+  Files.walk(rootPath).use { stream ->
+    return stream.filter { path ->
+      Files.isRegularFile(path) && path.fileName.toString() == fileName
+    }.findFirst().orElse(null)
+  }
 }
 
 private fun readLine(input: BufferedInputStream): String? {
