@@ -197,6 +197,59 @@ class JdtlsInitTest {
   }
 
   @Test
+  fun `jdtls-init uses bundle pool when profile missing`() {
+    val baseDir = Files.createTempDirectory("jdtls-init-bundle-pool")
+    val bundleDir = baseDir.resolve("workspace").resolve("org.example.client")
+    val metaInf = bundleDir.resolve("META-INF")
+    Files.createDirectories(metaInf)
+    Files.createDirectories(bundleDir.resolve("src"))
+
+    Files.writeString(
+      metaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.example.client
+        Bundle-Version: 1.0.0
+        Require-Bundle: org.example.dep
+      """.trimIndent() + "\n"
+    )
+
+    val bundlePool = baseDir.resolve("bundle-pool")
+    val targetBundle = bundlePool.resolve("plugins").resolve("org.example.dep_1.0.0")
+    Files.createDirectories(targetBundle.resolve("META-INF"))
+    Files.writeString(
+      targetBundle.resolve("META-INF/MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.example.dep
+        Bundle-Version: 1.0.0
+      """.trimIndent() + "\n"
+    )
+
+    val configPath = baseDir.resolve("config.yaml")
+    Files.writeString(
+      configPath,
+      """
+        target:
+          bundle-pool: ${bundlePool.toAbsolutePath()}
+        workspaceModules:
+          - path: ${bundleDir.toAbsolutePath()}
+      """.trimIndent()
+    )
+
+    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
+    assertEquals(0, exitCode)
+
+    val classpathContents = Files.readString(bundleDir.resolve(".classpath"))
+    assertTrue(
+      classpathContents.contains(targetBundle.toAbsolutePath().toString()),
+      "Expected target bundle path in classpath: $classpathContents"
+    )
+  }
+
+  @Test
   fun `jdtls-init writes projectConfigurations output`() {
     val baseDir = Files.createTempDirectory("jdtls-init-project-config")
     val repoDir = baseDir.resolve("knime-gateway")

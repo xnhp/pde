@@ -332,10 +332,23 @@ private fun isTestBundle(symbolicName: String, moduleDir: Path, hasFragmentHost:
 
 private fun resolveTargetIndex(context: LaunchConfigContext): TargetPlatformIndex {
   val profilePath = resolveProfilePath(context)
-  if (profilePath == null || !Files.exists(profilePath)) {
-    return TargetPlatformIndex.build(emptyList())
+  if (profilePath != null && Files.exists(profilePath)) {
+    return TargetPlatformCache.buildWithCache(listOf(profilePath))
   }
-  return TargetPlatformCache.buildWithCache(listOf(profilePath))
+  val fallbackRoots = resolveTargetFallbackRoots(context)
+  if (fallbackRoots.isNotEmpty()) {
+    return TargetPlatformCache.buildWithCache(fallbackRoots)
+  }
+  return TargetPlatformIndex.build(emptyList())
+}
+
+private fun resolveTargetFallbackRoots(context: LaunchConfigContext): List<Path> {
+  val targetConfig = context.config.target ?: return emptyList()
+  val baseDir = context.baseDir
+  val roots = mutableListOf<Path>()
+  targetConfig.bundlePool?.takeUnless { it.isBlank() }?.let { roots.add(resolvePath(baseDir, it)) }
+  targetConfig.install?.takeUnless { it.isBlank() }?.let { roots.add(resolvePath(baseDir, it)) }
+  return roots.filter { Files.exists(it) }
 }
 
 private fun resolveProfilePath(context: LaunchConfigContext): Path? {
