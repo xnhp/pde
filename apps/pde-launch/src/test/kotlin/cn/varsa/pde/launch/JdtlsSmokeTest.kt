@@ -245,6 +245,36 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke definition into target bundle without sources returns classfile uri`() {
+    val bundlePool = Paths.get("/home/ben/Desktop/issues/bundle-pool/plugins")
+    val targetJar = bundlePool.resolve("org.osgi.util.function_1.2.0.202109301733.jar")
+    if (!Files.isRegularFile(targetJar)) {
+      throw IllegalStateException("Target jar not found under ${bundlePool}")
+    }
+
+    val root = createWorkspaceWithTargetSource(targetJar, null)
+    val dataDir = root.resolve(".jdtls-data-test")
+    val (launcher, config) = resolveJdtlsInstallation()
+    Files.createDirectories(dataDir)
+
+    val refFile = root.resolve("bundle-target/src/example/TargetUser.java")
+    val exitCode = JdtlsSmokeCommand.main(
+      arrayOf(
+        "--launcher", launcher.toString(),
+        "--config", config.toString(),
+        "--root", root.toString(),
+        "--data", dataDir.toString(),
+        "--timeout-ms", "60000",
+        "--import-projects",
+        "--definition-file", refFile.toString(),
+        "--definition-symbol", "Consumer",
+        "--definition-expected", "jdt://"
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke implementation request in knime-gateway`() {
     val root = resolveKnimeGatewayRoot() ?: return
     val dataDir = root.resolve(".jdtls-data-test")
@@ -781,7 +811,7 @@ private fun createWorkspaceWithDiagnostics(): Path {
   return workspace
 }
 
-private fun createWorkspaceWithTargetSource(targetJar: Path, sourceJar: Path): Path {
+private fun createWorkspaceWithTargetSource(targetJar: Path, sourceJar: Path?): Path {
   val workspace = Files.createTempDirectory("jdtls-target-source-workspace")
   Files.createDirectories(workspace.resolve(".metadata"))
 
@@ -808,13 +838,14 @@ private fun createWorkspaceWithTargetSource(targetJar: Path, sourceJar: Path): P
       </projectDescription>
     """.trimIndent()
   )
+  val sourceAttr = sourceJar?.let { " sourcepath=\"${it.toAbsolutePath()}\"" } ?: ""
   Files.writeString(
     bundle.resolve(".classpath"),
     """
       <?xml version="1.0" encoding="UTF-8"?>
       <classpath>
         <classpathentry kind="src" path="src"/>
-        <classpathentry kind="lib" path="${targetJar.toAbsolutePath()}" sourcepath="${sourceJar.toAbsolutePath()}"/>
+        <classpathentry kind="lib" path="${targetJar.toAbsolutePath()}"${sourceAttr}/>
         <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
         <classpathentry kind="output" path="bin"/>
       </classpath>
