@@ -190,7 +190,8 @@ private fun writeClasspathFile(
     "org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-${compliance}"
   builder.appendLine("  <classpathentry kind=\"con\" path=\"${jreContainer}\"/>")
   resolvedEntries.forEach { entry ->
-    builder.appendLine("  <classpathentry kind=\"${entry.kind}\" path=\"${xmlEscape(entry.path)}\"/>")
+    val sourceAttr = entry.sourcePath?.let { " sourcepath=\"${xmlEscape(it)}\"" } ?: ""
+    builder.appendLine("  <classpathentry kind=\"${entry.kind}\" path=\"${xmlEscape(entry.path)}\"${sourceAttr}/>")
   }
   builder.appendLine("  <classpathentry kind=\"output\" path=\"${xmlEscape(outputPath)}\"/>")
   builder.appendLine("</classpath>")
@@ -198,7 +199,7 @@ private fun writeClasspathFile(
   return true
 }
 
-private data class ClasspathEntry(val kind: String, val path: String)
+private data class ClasspathEntry(val kind: String, val path: String, val sourcePath: String? = null)
 
 private fun buildResolvedClasspathEntries(
   bundleName: String,
@@ -217,7 +218,8 @@ private fun buildResolvedClasspathEntries(
       cn.varsa.pde.resolver.algo.BundleOrigin.TARGET -> {
         bundle.classPathEntries.forEach { classPathEntry ->
           val path = classPathEntry.toAbsolutePath().normalize().toString()
-          entries.putIfAbsent(path, ClasspathEntry("lib", path))
+        val sourcePath = bundle.sourceEntries.firstOrNull()?.toAbsolutePath()?.normalize()?.toString()
+        entries.putIfAbsent(path, ClasspathEntry("lib", path, sourcePath))
         }
       }
     }

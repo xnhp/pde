@@ -123,7 +123,7 @@ object Resolver {
         manifest = rb.manifest,
         origin = BundleOrigin.TARGET,
         classPathEntries = computeTargetClassPathEntries(rb, target),
-        sourceEntries = emptyList(),
+        sourceEntries = computeTargetSourceEntries(rb, target),
         fragmentHost = rb.manifest.fragmentHost?.key,
         isHost = isHost
       )
@@ -206,7 +206,8 @@ object Resolver {
       val path: Path,
       val manifest: BundleManifest,
       val origin: BundleOrigin,
-      val classPathEntries: List<Path>
+      val classPathEntries: List<Path>,
+      val sourceEntries: List<Path>
     )
 
     val wsProvidersByPkg: Map<String, List<PkgProvider>> = run {
@@ -224,7 +225,8 @@ object Resolver {
                 desc.path,
                 man,
                 BundleOrigin.WORKSPACE,
-                desc.classPathEntries.ifEmpty { listOf(desc.path) }
+                desc.classPathEntries.ifEmpty { listOf(desc.path) },
+                desc.sourceEntries
               )
             )
         }
@@ -247,7 +249,8 @@ object Resolver {
             rb.location,
             rb.manifest,
             BundleOrigin.TARGET,
-            computeTargetClassPathEntries(rb, target)
+            computeTargetClassPathEntries(rb, target),
+            computeTargetSourceEntries(rb, target)
           )
         }
         if (providers.isNotEmpty()) map[pkg] = providers
@@ -272,7 +275,7 @@ object Resolver {
             manifest = ws.manifest,
             origin = BundleOrigin.WORKSPACE,
             classPathEntries = ws.classPathEntries,
-            sourceEntries = emptyList(),
+            sourceEntries = ws.sourceEntries,
             fragmentHost = ws.manifest.fragmentHost?.key
           )
         }
@@ -292,7 +295,7 @@ object Resolver {
         manifest = provider.manifest,
         origin = provider.origin,
         classPathEntries = provider.classPathEntries,
-        sourceEntries = emptyList(),
+        sourceEntries = provider.sourceEntries,
         fragmentHost = provider.manifest.fragmentHost?.key
       )
     }
@@ -402,5 +405,19 @@ object Resolver {
     }
 
     return entries.distinct()
+  }
+
+  private fun computeTargetSourceEntries(rb: TargetResolvedBundle, target: TargetPlatformIndex): List<Path> {
+    val bsn = rb.manifest.bundleSymbolicName?.key ?: return emptyList()
+    val sourceBsn = "$bsn.source"
+    val byBsn = target.bundlesByBsn()[sourceBsn]
+    if (byBsn != null) {
+      val exact = byBsn[rb.manifest.bundleVersion]
+      if (exact != null) return listOf(exact.location.toAbsolutePath().normalize())
+      val latest = byBsn.lastEntry()?.value
+      if (latest != null) return listOf(latest.location.toAbsolutePath().normalize())
+    }
+    val fallback = target.get(sourceBsn)
+    return fallback?.location?.let { listOf(it.toAbsolutePath().normalize()) } ?: emptyList()
   }
 }

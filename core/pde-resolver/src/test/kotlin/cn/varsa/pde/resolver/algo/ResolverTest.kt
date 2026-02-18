@@ -80,6 +80,24 @@ class ResolverTest {
   }
 
   @Test
+  fun targetSourceBundle_isAttachedToResolvedBundle() {
+    val target = tpIndex(
+      rb("b", "1.0.0"),
+      rb("b.source", "1.0.0")
+    )
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b"
+    )
+
+    val result = Resolver.resolve(target, emptyList(), entry)
+    val picked = result.bundles.firstOrNull { it.bsn == "b" }
+    assertNotNull(picked)
+    assertEquals(listOf(Paths.get("/tmp/b.source-1.0.0")), picked!!.sourceEntries)
+  }
+
+  @Test
   fun requireBundle_prefers_workspace_on_version_ties() {
     val target = tpIndex(
       rb("b", "1.0.0"),
