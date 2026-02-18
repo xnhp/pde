@@ -1,3 +1,4 @@
+import cn.varsa.pde.launch.JdtlsInitCommand
 import cn.varsa.pde.launch.JdtlsSmokeCommand
 import org.junit.Test
 import java.io.BufferedInputStream
@@ -72,6 +73,15 @@ class JdtlsSmokeTest {
     val dataDir = root.resolve(".jdtls-data-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
+
+    val testDir = Files.createTempDirectory("jdtls-target-test")
+    val targetFile = copyTargetDefinition(testDir)
+    val installerJar = resolveTargetInstallerJar()
+    val targetSpec = writeTargetConfig(testDir, targetFile, installerJar, root)
+    val targetExit = runTargetInstall(targetSpec)
+    assertEquals(0, targetExit)
+    val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
+    assertEquals(0, initExit)
 
     val exitCode = JdtlsSmokeCommand.main(
       arrayOf(
@@ -317,6 +327,94 @@ private fun createWorkspaceWithImplementation(): Path {
     """.trimIndent()
   )
   return workspace
+}
+
+private fun copyTargetDefinition(outputDir: Path): Path {
+  val resource = JdtlsSmokeTest::class.java.getResourceAsStream("/targets/KNIME-AP-internal.target")
+    ?: error("Missing target definition resource")
+  val targetFile = outputDir.resolve("KNIME-AP-internal.target")
+  resource.use { input ->
+    Files.newOutputStream(targetFile).use { output ->
+      input.copyTo(output)
+    }
+  }
+  return targetFile
+}
+
+private fun resolveTargetInstallerJar(): Path {
+  var current: Path? = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
+  while (current != null) {
+    val candidate = current.resolve("tools/target-installer/dist/target-installer-launcher.jar")
+    if (Files.isRegularFile(candidate)) return candidate
+    current = current.parent
+  }
+  error("target-installer-launcher.jar not found under tools/target-installer/dist")
+}
+
+private data class TargetInstallSpec(
+  val configFile: Path,
+  val installerJar: Path,
+  val targetFile: Path,
+  val profileId: String,
+  val p2Path: Path,
+  val bundlePool: Path,
+  val installDir: Path
+)
+
+private fun writeTargetConfig(
+  outputDir: Path,
+  targetFile: Path,
+  installerJar: Path,
+  workspaceRoot: Path
+): TargetInstallSpec {
+  val profileId = "jdtls-test"
+  val p2Path = outputDir.resolve("p2")
+  val bundlePool = outputDir.resolve("bundle-pool")
+  val installDir = outputDir.resolve("install")
+  val configFile = outputDir.resolve("config.yaml")
+  Files.writeString(
+    configFile,
+    """
+      target:
+        definition: ${targetFile.toAbsolutePath()}
+        installer: ${installerJar.toAbsolutePath()}
+        profile-id: ${profileId}
+        p2-path: ${p2Path}
+        bundle-pool: ${bundlePool}
+        install: ${installDir}
+      workspaceModules:
+        - path: ${workspaceRoot.resolve("org.knime.gateway.impl").toAbsolutePath()}
+    """.trimIndent()
+  )
+  return TargetInstallSpec(
+    configFile = configFile,
+    installerJar = installerJar,
+    targetFile = targetFile,
+    profileId = profileId,
+    p2Path = p2Path,
+    bundlePool = bundlePool,
+    installDir = installDir
+  )
+}
+
+private fun runTargetInstall(spec: TargetInstallSpec): Int {
+  val command = listOf(
+    "java",
+    "-jar",
+    spec.installerJar.toString(),
+    "--cache=persistent",
+    "--",
+    "-profileId", spec.profileId,
+    "-p2Path", spec.p2Path.toString(),
+    "-targetDefinition", spec.targetFile.toString(),
+    "-install-folder", spec.installDir.toString(),
+    "-bundlePool", spec.bundlePool.toString()
+  )
+  val process = ProcessBuilder(command)
+    .directory(spec.configFile.parent.toFile())
+    .inheritIO()
+    .start()
+  return process.waitFor()
 }
 
 private fun extractTarGz(archive: Path, targetDir: Path) {

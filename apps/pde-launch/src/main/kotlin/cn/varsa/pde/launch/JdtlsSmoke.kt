@@ -124,7 +124,13 @@ object JdtlsSmokeCommand {
     val input = BufferedInputStream(process.inputStream)
     val output = BufferedOutputStream(process.outputStream)
     val queue = ArrayBlockingQueue<String>(16)
-    val reader = Thread { readMessages(input, queue) }
+    val reader = Thread {
+      try {
+        readMessages(input, queue)
+      } catch (_: java.io.IOException) {
+        // Stream closed during shutdown.
+      }
+    }
     reader.isDaemon = true
     reader.start()
 
