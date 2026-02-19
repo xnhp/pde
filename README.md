@@ -10,6 +10,7 @@ This repository contains:
 
 - Build everything: `./gradlew build`
 - Run unit tests: `./gradlew check`
+- Run a single `pde-launch` test: `./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsInitTest`
 
 ## IntelliJ plugin
 

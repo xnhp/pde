@@ -1,5 +1,5 @@
-import cn.varsa.pde.launch.JdtlsInitCommand
-import cn.varsa.pde.launch.JdtlsSmokeCommand
+package cn.varsa.pde.launch
+
 import org.junit.Test
 import java.io.BufferedInputStream
 import java.io.OutputStream
