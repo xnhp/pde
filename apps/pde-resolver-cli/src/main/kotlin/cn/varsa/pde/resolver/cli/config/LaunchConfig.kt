@@ -38,10 +38,7 @@ data class LaunchConfig(
   val workDir: String? = null,
   val cleanRuntime: Boolean = false,
   val targetModules: List<String> = emptyList(),
-  val workspaceModules: List<WorkspaceModule> = emptyList(),
   val bundlesPerRepo: List<RepoBundles> = emptyList(),
-  @JsonDeserialize(contentUsing = WorkspaceModuleDeserializer::class)
-  val extraWorkspaceModules: List<WorkspaceModule> = emptyList(),
   val nonPdeBundles: List<String> = emptyList(),
   val launches: List<LaunchEntry> = emptyList(),
   val tests: List<TestEntry> = emptyList(),
@@ -70,12 +67,6 @@ data class TargetConfig(
   @JsonAlias("bundle-pool")
   val bundlePool: String? = null,
   val installer: String? = null
-)
-
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class WorkspaceModule(
-  val path: String,
-  val classes: List<String>? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -122,6 +113,7 @@ data class LaunchConfigContext(
   val file: Path,
   val baseDir: Path,
   val config: LaunchConfig,
+  val workingDir: Path,
   val jvmDebug: Boolean = false,
   val jvmDebugRequiresPdeTestApp: Boolean = false
 )
@@ -135,9 +127,9 @@ object LaunchConfigLoader {
     val normalized = path.toAbsolutePath().normalize()
     val mergedNode = loadMergedNode(normalized, mutableSetOf())
     val config: LaunchConfig = mapper.treeToValue(mergedNode, LaunchConfig::class.java)
-    val resolvedConfig = resolveWorkspaceModules(config, workingDir)
     val base = normalized.parent ?: normalized
-    return LaunchConfigContext(file = normalized, baseDir = base, config = resolvedConfig)
+    val resolvedWorkingDir = workingDir.toAbsolutePath().normalize()
+    return LaunchConfigContext(file = normalized, baseDir = base, config = config, workingDir = resolvedWorkingDir)
   }
 
   private fun loadMergedNode(path: Path, visited: MutableSet<Path>): ObjectNode {
@@ -244,56 +236,6 @@ object LaunchConfigLoader {
     return merged
   }
 
-  private fun resolveWorkspaceModules(config: LaunchConfig, workingDir: Path): LaunchConfig {
-    val baseModules = when {
-      config.workspaceModules.isNotEmpty() -> config.workspaceModules
-      config.bundlesPerRepo.isNotEmpty() -> buildWorkspaceModulesFromBundles(config, workingDir)
-      else -> emptyList()
-    }
-
-    val extras = buildExtraWorkspaceModules(config, workingDir)
-    val merged = (baseModules + extras)
-      .distinctBy { Paths.get(it.path).normalize().toString() }
-
-    return if (merged == config.workspaceModules) config else config.copy(workspaceModules = merged)
-  }
-
-  private fun buildWorkspaceModulesFromBundles(config: LaunchConfig, workingDir: Path): List<WorkspaceModule> {
-    val seen = linkedSetOf<String>()
-    return config.bundlesPerRepo.flatMap { repoEntry ->
-      val skipBundles = (config.nonPdeBundles + repoEntry.nonPdeBundles).toSet()
-      val repoPath = Paths.get(repoEntry.repo)
-      val repoBase = if (repoPath.isAbsolute) repoPath else workingDir.resolve(repoEntry.repo)
-      repoEntry.bundles.mapNotNull { bundle ->
-        if (skipBundles.contains(bundle.name)) return@mapNotNull null
-        val modulePath = repoBase.resolve(bundle.name).normalize().toString()
-        if (seen.add(modulePath)) {
-          WorkspaceModule(path = modulePath, classes = bundle.classes)
-        } else {
-          null
-        }
-      }
-    }
-  }
-
-  private fun buildExtraWorkspaceModules(config: LaunchConfig, workingDir: Path): List<WorkspaceModule> {
-    if (config.extraWorkspaceModules.isEmpty()) return emptyList()
-    return config.extraWorkspaceModules.map { module ->
-      val path = Paths.get(module.path)
-      val resolved = if (path.isAbsolute) path else workingDir.resolve(module.path)
-      module.copy(path = resolved.normalize().toString())
-    }
-  }
-}
-
-private class WorkspaceModuleDeserializer : JsonDeserializer<WorkspaceModule>() {
-  override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): WorkspaceModule {
-    return when (parser.currentToken) {
-      JsonToken.VALUE_STRING -> WorkspaceModule(path = parser.valueAsString)
-      JsonToken.START_OBJECT -> parser.codec.readValue(parser, WorkspaceModule::class.java)
-      else -> throw ctxt.reportInputMismatch(WorkspaceModule::class.java, "Expected string or object for workspace module")
-    }
-  }
 }
 
 private class BundleRefDeserializer : JsonDeserializer<BundleRef>() {

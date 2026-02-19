@@ -94,9 +94,9 @@ private fun writeWorkspaceConfigs(
   targetIndex: TargetPlatformIndex,
   force: Boolean
 ): WorkspaceConfigResult {
-  val modules = context.config.workspaceModules
-  if (modules.isEmpty()) {
-    fail("No workspaceModules configured; add bundlesPerRepo or workspaceModules to your config.")
+  val moduleDefinitions = WorkspaceModuleResolver.resolveDefinitions(context)
+  if (moduleDefinitions.isEmpty()) {
+    fail("No workspace bundles resolved from config; add bundlesPerRepo.")
   }
   val descriptorByPath = workspaceDescriptors.associateBy { it.path.toAbsolutePath().normalize() }
   val projectNameByBsn = workspaceDescriptors.associate {
@@ -105,8 +105,8 @@ private fun writeWorkspaceConfigs(
   }
   var written = 0
   val projectConfigurations = LinkedHashSet<Path>()
-  modules.forEach { module ->
-    val moduleDir = resolvePath(context.baseDir, module.path)
+  moduleDefinitions.forEach { definition ->
+    val moduleDir = definition.moduleDir.toAbsolutePath().normalize()
     if (!Files.exists(moduleDir) || !Files.isDirectory(moduleDir)) {
       fail("Workspace bundle directory does not exist: ${moduleDir}")
     }

@@ -15,6 +15,7 @@ class TestDebugArgsTest {
       file = Paths.get("config.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
+      workingDir = Paths.get("").toAbsolutePath(),
       jvmDebug = true,
       jvmDebugRequiresPdeTestApp = true
     )
@@ -33,6 +34,7 @@ class TestDebugArgsTest {
       file = Paths.get("config.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
+      workingDir = Paths.get("").toAbsolutePath(),
       jvmDebug = true,
       jvmDebugRequiresPdeTestApp = true
     )
@@ -52,6 +54,7 @@ class TestDebugArgsTest {
       file = Paths.get("config.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
+      workingDir = Paths.get("").toAbsolutePath(),
       jvmDebug = true,
       jvmDebugRequiresPdeTestApp = false
     )

@@ -235,8 +235,10 @@ class JdtlsInitTest {
       """
         target:
           bundle-pool: ${bundlePool.toAbsolutePath()}
-        workspaceModules:
-          - path: ${bundleDir.toAbsolutePath()}
+        bundlesPerRepo:
+          - repo: ${bundleDir.parent.toAbsolutePath()}
+            bundles:
+              - ${bundleDir.fileName}
       """.trimIndent()
     )
 

@@ -410,10 +410,11 @@ private fun describeConfig(
   profilePath: Path?,
   targetArgs: TargetLaunchArgs?
 ) {
+  val workspaceCount = WorkspaceModuleResolver.resolveDefinitions(config).size
   logger.info("Loaded launch config from ${config.file}")
   logger.info("  product: ${config.config.product?.takeUnless { it.isBlank() } ?: "<unspecified>"}")
   logger.info("  application: ${config.config.application ?: "<unspecified>"}")
-  logger.info("  workspace modules: ${config.config.workspaceModules.size}")
+  logger.info("  workspace bundles: $workspaceCount")
   logger.info("  target definition: ${targetDefinition ?: "<unspecified>"}")
   logger.info("  profile path: ${profilePath ?: "<unspecified>"}")
   logger.info("  target vm args: ${targetArgs?.vmArgs?.size ?: 0}")
@@ -1903,7 +1904,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   }
   val workspaceInputs = WorkspaceModuleResolver.resolve(apiContext, allowMissingClasses = true)
   if (workspaceInputs.descriptors.isEmpty()) {
-    logger.severe("No workspace modules resolved from config; add workspaceModules or bundlesPerRepo.")
+    logger.severe("No workspace bundles resolved from config; add bundlesPerRepo.")
     return 2
   }
   val workspaceDescriptors = workspaceInputs.descriptors

@@ -116,29 +116,6 @@ bundlesPerRepo:
 
 Use the object form when the bundle’s resources live outside the default `bin` (e.g. `org.knime.core` needs `bin/eclipse` for `log4j` resources).
 
-### workspaceModules
-Explicit list of workspace modules.
-
-```yaml
-workspaceModules:
-  - path: /abs/path/to/org.example.bundle
-    classes:
-      - bin
-```
-
-If `workspaceModules` is set, it overrides automatic expansion from `bundlesPerRepo` (unless you also use `extraWorkspaceModules`).
-
-### extraWorkspaceModules
-Additional workspace modules appended to the resolved list.
-
-```yaml
-extraWorkspaceModules:
-  - path: /abs/path/to/org.example.bundle
-    classes:
-      - bin/eclipse
-      - bin
-```
-
 ## Launch definitions
 
 ### launches
@@ -200,7 +177,7 @@ Keys map to PDE/JUnit options:
 
 - If you want local sources and dev-classpath overrides, prefer the object form in `bundlesPerRepo`.
 - `classes` paths are relative to the bundle directory.
-- When in doubt, use absolute paths for `repo`, `path`, and `target.*` paths.
+- When in doubt, use absolute paths for `repo` and `target.*` paths.
 
 ## JDT LS workspace setup
 
@@ -212,7 +189,7 @@ defined by this config. See `docs/jdtls-eglot.md` for Emacs/Eglot setup details.
 The API analyzer runs once per workspace bundle resolved from the config and compares each bundle against the baseline.
 
 Requirements:
-- `workspaceModules` or `bundlesPerRepo` must resolve at least one workspace bundle.
+- `bundlesPerRepo` must resolve at least one workspace bundle.
 - `target.definition` should point at the target definition used to build the dependency list.
 - `--baseline-root` is optional; if omitted, the CLI falls back to `target.install`, then `target.p2Path`, then the resolved target profile path.
 - `--baseline-root` can point to a `.target` file (for API baselines) and will be passed directly to the analyzer.

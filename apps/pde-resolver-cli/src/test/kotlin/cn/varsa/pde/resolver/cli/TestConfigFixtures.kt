@@ -42,14 +42,18 @@ fun writeConfigFile(
   profileId: String = "profile",
   p2Path: String = "target/p2"
 ): Path {
+  val repoDir = workspace.parent ?: workspace
+  val bundleName = workspace.fileName?.toString().orEmpty().ifBlank { workspace.toString() }
   val configFile = baseDir.resolve(fileName)
   configFile.writeText(
     """
       target:
         profile-id: $profileId
         p2-path: $p2Path
-      workspaceModules:
-        - path: ${workspace.toAbsolutePath()}
+      bundlesPerRepo:
+        - repo: ${repoDir.toAbsolutePath()}
+          bundles:
+            - $bundleName
     """.trimIndent()
   )
   return configFile

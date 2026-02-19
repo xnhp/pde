@@ -11,35 +11,6 @@ class LaunchConfigLoaderTest {
   @Rule @JvmField val tmp = TemporaryFolder()
 
   @Test
-  fun mergesBundlesPerRepoWithExtraWorkspaceModules() {
-    val root: Path = tmp.root.toPath()
-    val configFile = root.resolve("config.yaml").toFile()
-    configFile.writeText(
-      """
-      bundlesPerRepo:
-        - repo: repo-a
-          bundles:
-            - bundle-one
-      extraWorkspaceModules:
-        - extra-module
-        - path: extra-module-2
-      """.trimIndent()
-    )
-
-    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
-    val paths = loaded.config.workspaceModules.map { it.path }
-
-    assertEquals(
-      listOf(
-        root.resolve("repo-a").resolve("bundle-one").normalize().toString(),
-        root.resolve("extra-module").normalize().toString(),
-        root.resolve("extra-module-2").normalize().toString()
-      ),
-      paths
-    )
-  }
-
-  @Test
   fun launchEntryOverridesProductAndApplication() {
     val root: Path = tmp.root.toPath()
     val configFile = root.resolve("config.yaml").toFile()

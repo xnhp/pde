@@ -980,8 +980,11 @@ private fun resolveExistingTargetSpec(workspaceRoot: Path, modulePaths: List<Pat
   val bundlePool = System.getenv("JDTLS_BUNDLE_POOL")?.takeIf { it.isNotBlank() }
     ?.let { Paths.get(it) }
     ?: baseDir.resolve("bundle-pool")
+  val root = workspaceRoot.toAbsolutePath().normalize()
   val modulesYaml = modulePaths.joinToString("\n") { path ->
-    "        - path: ${path.toAbsolutePath()}"
+    val normalized = path.toAbsolutePath().normalize()
+    val relative = if (normalized.startsWith(root)) root.relativize(normalized).toString() else normalized.fileName.toString()
+    "            - $relative"
   }
   Files.writeString(
     configFile,
@@ -992,7 +995,9 @@ private fun resolveExistingTargetSpec(workspaceRoot: Path, modulePaths: List<Pat
         p2-path: ${baseDir.resolve("p2")}
         bundle-pool: ${bundlePool}
         install: ${baseDir.resolve("install")}
-      workspaceModules:
+      bundlesPerRepo:
+        - repo: ${workspaceRoot.toAbsolutePath()}
+          bundles:
 ${modulesYaml}
     """.trimIndent()
   )

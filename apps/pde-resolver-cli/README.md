@@ -58,20 +58,22 @@ shared resolver library and its on‑disk cache.
   debug the test run.
 - Set `launches[].debug: true` to enable JDWP for non-test launches using the same port.
 
-### Workspace modules
+### Workspace bundles
 
 Example entry inside `launch.yaml`:
 
 ```
-workspaceModules:
-  - path: ../workspace/org.example.bundle
-    classes:
-      - build/classes/java/main
-      - build/classes/java/test
+bundlesPerRepo:
+  - repo: ../workspace
+    bundles:
+      - name: org.example.bundle
+        classes:
+          - build/classes/java/main
+          - build/classes/java/test
 ```
 
-- `path` must point to a built bundle (directory or exploded JAR containing
-  `META-INF/MANIFEST.MF`). Paths can be relative to `launch.yaml`.
+- `repo` points at the repository root; bundle paths are resolved under it.
+- `bundles` entries can be strings or objects with `name` and `classes`.
 - `classes` is optional; if omitted we default to `bin`. This directory must
   already contain compiled `.class` files—the CLI does not build sources.
 

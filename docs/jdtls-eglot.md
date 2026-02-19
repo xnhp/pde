@@ -23,7 +23,7 @@ pde jdtls-init --config /path/to/config.yaml
 `jdtls-init` discovers `config.yaml`, `launch.yaml`, or `pde.yaml` if you omit `--config`.
 
 Notes:
-- Re-run `jdtls-init` when workspace modules change.
+- Re-run `jdtls-init` when workspace bundles change.
 - Files are written per bundle directory.
 
 ## Eglot setup
