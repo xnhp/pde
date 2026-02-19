@@ -1,6 +1,7 @@
 package cn.varsa.pde.launch
 
 import org.junit.Test
+import org.junit.Assume.assumeTrue
 import java.io.BufferedInputStream
 import java.io.OutputStream
 import java.net.URI
@@ -279,28 +280,33 @@ class JdtlsSmokeTest {
 
   @Test
   fun `smoke implementation request in knime-gateway`() {
-    val root = resolveKnimeGatewayRoot() ?: return
-    val dataDir = resolveExternalDataDir(root, "gateway")
+    assumeRealWorkspaceEnabled("knime-gateway")
+    val root = resolveKnimeGatewayRoot()
+    assumeTrue("Skipping knime-gateway real-workspace smoke test; workspace not found.", root != null)
+    val rootPath = root!!
+    val dataDir = resolveExternalDataDir(rootPath, "gateway")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
     val targetSpec = resolveExistingTargetSpec(
-      root,
+      rootPath,
       listOf(
-        root.resolve("org.knime.gateway.api"),
-        root.resolve("org.knime.gateway.impl")
+        rootPath.resolve("org.knime.gateway.api"),
+        rootPath.resolve("org.knime.gateway.impl")
       )
     )
     val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
     assertEquals(0, initExit)
 
-    val implementationFile = findFile(root, "LocalSpaceProvider.java") ?: return
+    val implementationFile = findFile(rootPath, "LocalSpaceProvider.java")
+    assumeTrue("Skipping knime-gateway real-workspace smoke test; LocalSpaceProvider.java not found.", implementationFile != null)
+    val implementationPath = implementationFile!!
 
     val exitCode = JdtlsSmokeCommand.main(
       arrayOf(
         "--launcher", launcher.toString(),
         "--config", config.toString(),
-        "--root", root.toString(),
+        "--root", rootPath.toString(),
         "--data", dataDir.toString(),
         "--timeout-ms", "120000",
         "--import-projects",
@@ -308,10 +314,10 @@ class JdtlsSmokeTest {
         "--symbol-query", "LocalSpaceProvider",
         "--definition-file", implementationFile.toString(),
         "--definition-symbol", "EntityFactory",
-        "--definition-expected", root.resolve("org.knime.gateway.api").toString(),
-        "--impl-file", implementationFile.toString(),
+        "--definition-expected", rootPath.resolve("org.knime.gateway.api").toString(),
+        "--impl-file", implementationPath.toString(),
         "--impl-symbol", "SpaceProvider",
-        "--impl-expected", implementationFile.fileName.toString()
+        "--impl-expected", implementationPath.fileName.toString()
       )
     )
     assertEquals(0, exitCode)
@@ -319,31 +325,37 @@ class JdtlsSmokeTest {
 
   @Test
   fun `smoke implementation request in knime-server-client`() {
-    val root = resolveKnimeServerClientRoot() ?: return
-    val dataDir = resolveExternalDataDir(root, "server-client")
+    assumeRealWorkspaceEnabled("knime-server-client")
+    val root = resolveKnimeServerClientRoot()
+    assumeTrue("Skipping knime-server-client real-workspace smoke test; workspace not found.", root != null)
+    val rootPath = root!!
+    val dataDir = resolveExternalDataDir(rootPath, "server-client")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
     val targetSpec = resolveExistingTargetSpec(
-      root,
+      rootPath,
       listOf(
-        root.resolve("com.knime.enterprise.client.rest"),
-        root.resolve("com.knime.explorer.server")
+        rootPath.resolve("com.knime.enterprise.client.rest"),
+        rootPath.resolve("com.knime.explorer.server")
       )
     )
     val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
     assertEquals(0, initExit)
 
-    val implementationFile = root.resolve(
+    val implementationFile = rootPath.resolve(
       "com.knime.explorer.server/src/com/knime/explorer/server/rest/RestServerExplorerFileStore.java"
     )
-    if (!Files.isRegularFile(implementationFile)) return
+    assumeTrue(
+      "Skipping knime-server-client real-workspace smoke test; RestServerExplorerFileStore.java not found.",
+      Files.isRegularFile(implementationFile)
+    )
 
     val exitCode = JdtlsSmokeCommand.main(
       arrayOf(
         "--launcher", launcher.toString(),
         "--config", config.toString(),
-        "--root", root.toString(),
+        "--root", rootPath.toString(),
         "--data", dataDir.toString(),
         "--timeout-ms", "120000",
         "--import-projects",
@@ -1078,6 +1090,21 @@ private fun skipFully(input: java.util.zip.GZIPInputStream, size: Long) {
 private val PROFILE_ENABLED: Boolean = System.getenv("JDTLS_PROFILE")?.trim()?.let {
   it == "1" || it.equals("true", ignoreCase = true)
 } ?: false
+
+private val REAL_WORKSPACE_ENABLED: Boolean =
+  isTruthy(System.getProperty("jdtls.real.workspace")) || isTruthy(System.getenv("JDTLS_REAL_WORKSPACE"))
+
+private fun isTruthy(value: String?): Boolean {
+  val trimmed = value?.trim().orEmpty()
+  return trimmed == "1" || trimmed.equals("true", ignoreCase = true)
+}
+
+private fun assumeRealWorkspaceEnabled(label: String) {
+  assumeTrue(
+    "Skipping ${label} real-workspace smoke test. Set JDTLS_REAL_WORKSPACE=1 or -Djdtls.real.workspace=true to enable.",
+    REAL_WORKSPACE_ENABLED
+  )
+}
 
 private fun profileLog(label: String, startNs: Long) {
   if (!PROFILE_ENABLED) return

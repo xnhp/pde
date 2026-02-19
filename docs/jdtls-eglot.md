@@ -47,6 +47,19 @@ Optional per-workspace settings (via `.dir-locals.el`):
                 . ((:java . (:configuration (:updateBuildConfiguration "automatic"))))))))
 ```
 
+## Slow real-workspace smoke tests
+
+The JDT LS smoke tests include optional real-workspace checks (e.g. knime-gateway,
+knime-server-client). These are slow and require local repo checkouts, so they are
+skipped by default unless you opt in.
+
+Enable them with an environment variable or JVM property:
+
+```bash
+JDTLS_REAL_WORKSPACE=1 ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsSmokeTest
+./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsSmokeTest -Djdtls.real.workspace=true
+```
+
 ## Common JDT LS commands
 
 If imports or diagnostics look stale, run these via `M-x eglot-execute-command`:
