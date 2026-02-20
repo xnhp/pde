@@ -539,7 +539,7 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
     profileTotal("total", overallStart)
     return 0
   } finally {
-    val proc = process ?: return
+    val proc = process ?: return 0
     if (proc.isAlive) {
       try {
         output?.let { stream ->
