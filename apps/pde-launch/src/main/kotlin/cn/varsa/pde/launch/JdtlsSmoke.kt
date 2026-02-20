@@ -55,7 +55,17 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
   val configPath = config.configDir
   val rootPath = config.rootDir
   val dataPath = config.dataDir ?: rootPath.resolve(".jdtls-data")
+  val shutdownMessage = """
+    {"jsonrpc":"2.0","id":2,"method":"shutdown","params":{}}
+  """.trimIndent()
+  val exitMessage = """
+    {"jsonrpc":"2.0","method":"exit","params":{}}
+  """.trimIndent()
+  var process: Process? = null
+  var input: BufferedInputStream? = null
+  var output: BufferedOutputStream? = null
 
+  try {
     if (!Files.isRegularFile(launcherPath)) fail("Launcher jar not found: $launcherPath")
     if (!Files.isDirectory(configPath)) fail("Config directory not found: $configPath")
     if (!Files.isDirectory(rootPath)) fail("Root directory not found: $rootPath")
@@ -80,7 +90,7 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
       dataPath.toAbsolutePath().normalize().toString()
     )
 
-    val process = ProcessBuilder(command)
+    process = ProcessBuilder(command)
       .directory(rootPath.toFile())
       .redirectErrorStream(false)
       .start()
@@ -91,8 +101,12 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
     stderrThread.isDaemon = true
     stderrThread.start()
 
-    val input = BufferedInputStream(process.inputStream)
-    val output = BufferedOutputStream(process.outputStream)
+    val inputStream = BufferedInputStream(process.inputStream)
+    val outputStream = BufferedOutputStream(process.outputStream)
+    input = inputStream
+    output = outputStream
+    val input = inputStream
+    val output = outputStream
     val queue = ArrayBlockingQueue<String>(16)
     val reader = Thread {
       try {
@@ -517,29 +531,45 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
       }
     }
 
-    val shutdown = """
-      {"jsonrpc":"2.0","id":2,"method":"shutdown","params":{}}
-    """.trimIndent()
-    sendMessage(output, shutdown)
+    sendMessage(output, shutdownMessage)
     queue.poll(5000, TimeUnit.MILLISECONDS)
 
-    val exit = """
-      {"jsonrpc":"2.0","method":"exit","params":{}}
-    """.trimIndent()
-    sendMessage(output, exit)
-
+    sendMessage(output, exitMessage)
     output.flush()
-    output.close()
-    input.close()
-
-    if (!process.waitFor(5, TimeUnit.SECONDS)) {
-      process.destroy()
-      if (!process.waitFor(2, TimeUnit.SECONDS)) {
-        process.destroyForcibly()
-      }
-    }
     profileTotal("total", overallStart)
     return 0
+  } finally {
+    val proc = process ?: return
+    if (proc.isAlive) {
+      try {
+        output?.let { stream ->
+          sendMessage(stream, shutdownMessage)
+          sendMessage(stream, exitMessage)
+          stream.flush()
+        }
+      } catch (_: Exception) {
+        // Ignore shutdown failures on cleanup.
+      }
+    }
+    try {
+      output?.close()
+    } catch (_: Exception) {
+      // Ignore close failures on cleanup.
+    }
+    try {
+      input?.close()
+    } catch (_: Exception) {
+      // Ignore close failures on cleanup.
+    }
+    if (proc.isAlive) {
+      if (!proc.waitFor(5, TimeUnit.SECONDS)) {
+        proc.destroy()
+        if (!proc.waitFor(2, TimeUnit.SECONDS)) {
+          proc.destroyForcibly()
+        }
+      }
+    }
+  }
 }
 
 private fun sendMessage(output: BufferedOutputStream, payload: String) {
