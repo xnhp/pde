@@ -380,7 +380,13 @@ class JdtlsInitTest {
     assertTrue(Files.exists(outputPath))
 
     val contents = Files.readString(outputPath)
+    val expectedRoot = baseDir.toAbsolutePath().normalize()
+    val expectedRootUri = expectedRoot.toUri().toString()
     val expectedUri = bundleDir.resolve(".project").toAbsolutePath().normalize().toUri().toString()
+    assertTrue(contents.contains("\"rootPaths\""))
+    assertTrue(contents.contains(expectedRoot.toString()))
+    assertTrue(contents.contains("\"workspaceFolders\""))
+    assertTrue(contents.contains(expectedRootUri))
     assertTrue(contents.contains("\"projectConfigurations\""))
     assertTrue(contents.contains(expectedUri))
   }

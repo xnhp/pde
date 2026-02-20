@@ -27,6 +27,8 @@ Notes:
 - Files are written per bundle directory.
 - When using `--issue-dir`, bundle paths in `bundlesPerRepo` resolve relative to the issue directory
   even if they come from included YAML files (includes still resolve relative to their file).
+- `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations
+  for editor integrations that need explicit workspace roots.
 - `jdtls-init` requires a `target` section in `config.yaml` with a resolved profile (set `target.profile-id` and `target.p2-path`, and run `pde target-install` as needed).
 
 ## Eglot setup

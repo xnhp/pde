@@ -76,7 +76,19 @@ object JdtlsInitCommand {
       println("Generated .project/.classpath for ${result.written} workspace bundles.")
       val projectConfigurationsPath = projectConfigurationsOut?.let { resolvePath(context.baseDir, it) }
       if (projectConfigurationsPath != null) {
-        writeProjectConfigurationsOutput(projectConfigurationsPath, result.projectConfigurations)
+        val workspaceRoot = resolveWorkspaceRoot(context)
+        val workspaceFolders = listOf(
+          WorkspaceFolder(
+            workspaceRoot.toUri().toString(),
+            workspaceRoot.fileName?.toString() ?: "workspace"
+          )
+        )
+        writeProjectConfigurationsOutput(
+          projectConfigurationsPath,
+          result.projectConfigurations,
+          listOf(workspaceRoot),
+          workspaceFolders
+        )
         println("Wrote projectConfigurations to ${projectConfigurationsPath.toAbsolutePath().normalize()}")
       }
       0
@@ -90,6 +102,11 @@ object JdtlsInitCommand {
 private data class WorkspaceConfigResult(
   val written: Int,
   val projectConfigurations: List<Path>
+)
+
+private data class WorkspaceFolder(
+  val uri: String,
+  val name: String
 )
 
 private fun writeWorkspaceConfigs(
@@ -223,13 +240,35 @@ private fun writeClasspathFile(
   return true
 }
 
-private fun writeProjectConfigurationsOutput(outputPath: Path, projectConfigurations: List<Path>) {
+private fun writeProjectConfigurationsOutput(
+  outputPath: Path,
+  projectConfigurations: List<Path>,
+  rootPaths: List<Path>,
+  workspaceFolders: List<WorkspaceFolder>
+) {
   if (outputPath.parent != null) {
     Files.createDirectories(outputPath.parent)
   }
+  val rootPathStrings = rootPaths.map { it.toAbsolutePath().normalize().toString() }.distinct()
+  val folderEntries = workspaceFolders.distinctBy { it.uri }
   val uris = projectConfigurations.map { it.toAbsolutePath().normalize().toUri().toString() }.distinct()
   val builder = StringBuilder()
   builder.appendLine("{")
+  builder.appendLine("  \"rootPaths\": [")
+  rootPathStrings.forEachIndexed { index, path ->
+    val suffix = if (index == rootPathStrings.size - 1) "" else ","
+    builder.append("    \"").append(jsonEscape(path)).append("\"").append(suffix).appendLine()
+  }
+  builder.appendLine("  ],")
+  builder.appendLine("  \"workspaceFolders\": [")
+  folderEntries.forEachIndexed { index, folder ->
+    val suffix = if (index == folderEntries.size - 1) "" else ","
+    builder.appendLine("    {")
+    builder.append("      \"uri\": \"").append(jsonEscape(folder.uri)).append("\",").appendLine()
+    builder.append("      \"name\": \"").append(jsonEscape(folder.name)).append("\"").appendLine()
+    builder.append("    }").append(suffix).appendLine()
+  }
+  builder.appendLine("  ],")
   builder.appendLine("  \"projectConfigurations\": [")
   uris.forEachIndexed { index, uri ->
     val suffix = if (index == uris.size - 1) "" else ","
@@ -238,6 +277,10 @@ private fun writeProjectConfigurationsOutput(outputPath: Path, projectConfigurat
   builder.appendLine("  ]")
   builder.appendLine("}")
   Files.writeString(outputPath, builder.toString(), StandardCharsets.UTF_8)
+}
+
+private fun resolveWorkspaceRoot(context: LaunchConfigContext): Path {
+  return context.workingDir.toAbsolutePath().normalize()
 }
 
 private data class ClasspathEntry(val kind: String, val path: String, val sourcePath: String? = null)
