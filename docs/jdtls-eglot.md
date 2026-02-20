@@ -43,6 +43,28 @@ If Eglot chooses the wrong project root, make sure it points at the workspace ro
 (the directory with your config). In multi-repo setups, you may need to add a local
 project marker or register the root with `project.el`.
 
+### Issue-dir layouts and root selection
+
+When you use `pde jdtls-init --issue-dir`, the workspace root is the issue directory
+that contains `config.yaml` and the repo checkouts. JDT LS metadata is written under
+that issue root, and `bundlesPerRepo` paths resolve relative to it.
+
+Eglot often defaults to the repo root of the current file. In an issue-dir layout,
+override the project root so it matches the issue directory; otherwise JDT LS will
+miss the generated metadata or resolve the wrong bundle paths.
+
+Options that work well:
+
+```elisp
+(with-eval-after-load 'project
+  (add-to-list 'project-vc-extra-root-markers "config.yaml")
+  (add-to-list 'project-vc-extra-root-markers "pde.yaml")
+  (add-to-list 'project-vc-extra-root-markers "launch.yaml"))
+```
+
+Or, register the issue root once via `M-x project-remember-projects-under` and open
+files through that project so `project.el` returns the issue directory.
+
 Optional per-workspace settings (via `.dir-locals.el`):
 
 ```elisp

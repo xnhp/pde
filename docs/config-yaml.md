@@ -111,6 +111,8 @@ bundlesPerRepo:
 
 - `repo`: absolute or relative path to the repository root. Relative paths resolve against the config file directory.
   When running `pde jdtls-init --issue-dir`, relative repo paths resolve against the issue directory instead.
+  Make sure your editor/JDT LS project root also points at the issue directory so the
+  generated metadata and bundle paths line up with the config.
 - `bundles`: list of bundles. Each entry can be:
   - string: bundle name (uses default class root `bin`)
   - object: `{ name, classes }` where `classes` overrides the dev class roots.
