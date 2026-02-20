@@ -1,6 +1,9 @@
 package cn.varsa.pde.launch
 
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
@@ -46,12 +49,15 @@ class JdtlsInitTest {
     val configPath = baseDir.resolve("config.yaml")
     Files.writeString(
       configPath,
-      """
-        bundlesPerRepo:
-          - repo: knime-gateway
-            bundles:
-              - org.knime.gateway.api.tests
-      """.trimIndent()
+      configText(
+        writeTargetConfig(baseDir),
+        listOf(
+          "bundlesPerRepo:",
+          "  - repo: knime-gateway",
+          "    bundles:",
+          "      - org.knime.gateway.api.tests"
+        )
+      )
     )
 
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
@@ -101,12 +107,15 @@ class JdtlsInitTest {
     val configPath = baseDir.resolve("config.yaml")
     Files.writeString(
       configPath,
-      """
-        bundlesPerRepo:
-          - repo: knime-gateway
-            bundles:
-              - org.knime.gateway.impl
-      """.trimIndent()
+      configText(
+        writeTargetConfig(baseDir),
+        listOf(
+          "bundlesPerRepo:",
+          "  - repo: knime-gateway",
+          "    bundles:",
+          "      - org.knime.gateway.impl"
+        )
+      )
     )
 
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
@@ -205,12 +214,15 @@ class JdtlsInitTest {
     val configPath = baseDir.resolve("config.yaml")
     Files.writeString(
       configPath,
-      """
-        bundlesPerRepo:
-          - repo: knime-gateway
-            bundles:
-              - org.knime.gateway.api
-      """.trimIndent()
+      configText(
+        writeTargetConfig(baseDir),
+        listOf(
+          "bundlesPerRepo:",
+          "  - repo: knime-gateway",
+          "    bundles:",
+          "      - org.knime.gateway.api"
+        )
+      )
     )
 
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
@@ -242,12 +254,15 @@ class JdtlsInitTest {
     val configPath = baseDir.resolve("config.yaml")
     Files.writeString(
       configPath,
-      """
-        bundlesPerRepo:
-          - repo: knime-gateway
-            bundles:
-              - org.knime.gateway.json
-      """.trimIndent()
+      configText(
+        writeTargetConfig(baseDir),
+        listOf(
+          "bundlesPerRepo:",
+          "  - repo: knime-gateway",
+          "    bundles:",
+          "      - org.knime.gateway.json"
+        )
+      )
     )
 
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
@@ -258,7 +273,7 @@ class JdtlsInitTest {
   }
 
   @Test
-  fun `jdtls-init uses bundle pool when profile missing`() {
+  fun `jdtls-init uses target profile bundles`() {
     val baseDir = Files.createTempDirectory("jdtls-init-bundle-pool")
     val bundleDir = baseDir.resolve("workspace").resolve("org.example.client")
     val metaInf = bundleDir.resolve("META-INF")
@@ -276,7 +291,7 @@ class JdtlsInitTest {
       """.trimIndent() + "\n"
     )
 
-    val bundlePool = baseDir.resolve("bundle-pool")
+    val bundlePool = baseDir.resolve("target").resolve("bundle-pool")
     val targetBundle = bundlePool.resolve("plugins").resolve("org.example.dep_1.0.0")
     Files.createDirectories(targetBundle.resolve("META-INF"))
     Files.writeString(
@@ -290,16 +305,22 @@ class JdtlsInitTest {
     )
 
     val configPath = baseDir.resolve("config.yaml")
+    val targetConfig = writeTargetConfig(
+      baseDir,
+      profileId = "jdtls-test",
+      artifacts = listOf("org.example.dep" to "1.0.0")
+    )
     Files.writeString(
       configPath,
-      """
-        target:
-          bundle-pool: ${bundlePool.toAbsolutePath()}
-        bundlesPerRepo:
-          - repo: ${bundleDir.parent.toAbsolutePath()}
-            bundles:
-              - ${bundleDir.fileName}
-      """.trimIndent()
+      configText(
+        targetConfig,
+        listOf(
+          "bundlesPerRepo:",
+          "  - repo: ${bundleDir.parent.toAbsolutePath()}",
+          "    bundles:",
+          "      - ${bundleDir.fileName}"
+        )
+      )
     )
 
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
@@ -334,12 +355,15 @@ class JdtlsInitTest {
     val configPath = baseDir.resolve("config.yaml")
     Files.writeString(
       configPath,
-      """
-        bundlesPerRepo:
-          - repo: knime-gateway
-            bundles:
-              - org.knime.gateway.api
-      """.trimIndent()
+      configText(
+        writeTargetConfig(baseDir),
+        listOf(
+          "bundlesPerRepo:",
+          "  - repo: knime-gateway",
+          "    bundles:",
+          "      - org.knime.gateway.api"
+        )
+      )
     )
 
     val outputPath = baseDir.resolve("project-configurations.json")
@@ -356,5 +380,108 @@ class JdtlsInitTest {
     val expectedUri = bundleDir.resolve(".project").toAbsolutePath().normalize().toUri().toString()
     assertTrue(contents.contains("\"projectConfigurations\""))
     assertTrue(contents.contains(expectedUri))
+  }
+
+  @Test
+  fun `jdtls-init fails without target config`() {
+    val baseDir = Files.createTempDirectory("jdtls-init-missing-target")
+    val repoDir = baseDir.resolve("knime-gateway")
+    val bundleDir = repoDir.resolve("org.knime.gateway.api")
+    val metaInf = bundleDir.resolve("META-INF")
+    Files.createDirectories(metaInf)
+    Files.createDirectories(bundleDir.resolve("src"))
+
+    Files.writeString(
+      metaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.knime.gateway.api
+        Bundle-Version: 1.0.0
+      """.trimIndent()
+    )
+
+    val configPath = baseDir.resolve("config.yaml")
+    Files.writeString(
+      configPath,
+      listOf(
+        "bundlesPerRepo:",
+        "  - repo: knime-gateway",
+        "    bundles:",
+        "      - org.knime.gateway.api"
+      ).joinToString("\n")
+    )
+
+    val (exitCode, stderr) = captureStderr {
+      JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
+    }
+    assertEquals(1, exitCode)
+    assertTrue(
+      stderr.contains("Target configuration is required"),
+      "Expected missing target error, got: $stderr"
+    )
+  }
+
+  private fun writeTargetConfig(
+    baseDir: Path,
+    profileId: String = "profile",
+    artifacts: List<Pair<String, String>> = emptyList()
+  ): String {
+    val p2Path = baseDir.resolve("target").resolve("p2")
+    val registryDir = p2Path.resolve("org.eclipse.equinox.p2.engine/profileRegistry")
+    val profileDir = registryDir.resolve("$profileId.profile")
+    Files.createDirectories(profileDir)
+
+    val bundlePool = baseDir.resolve("target").resolve("bundle-pool")
+    Files.createDirectories(bundlePool.resolve("plugins"))
+
+    val profileFile = profileDir.resolve("1.profile")
+    val artifactsXml = artifacts.joinToString("\n") { (id, version) ->
+      "        <artifact classifier=\"osgi.bundle\" id=\"$id\" version=\"$version\"/>"
+    }
+    val profileXml = buildString {
+      appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+      appendLine("<profile>")
+      appendLine("  <properties>")
+      appendLine("    <property name=\"org.eclipse.equinox.p2.cache\" value=\"${bundlePool.toAbsolutePath().toUri()}\"/>")
+      appendLine("  </properties>")
+      appendLine("  <installableUnits>")
+      appendLine("    <unit id=\"$profileId\">")
+      appendLine("      <artifacts>")
+      if (artifactsXml.isNotBlank()) {
+        appendLine(artifactsXml)
+      }
+      appendLine("      </artifacts>")
+      appendLine("    </unit>")
+      appendLine("  </installableUnits>")
+      appendLine("</profile>")
+    }
+    Files.writeString(profileFile, profileXml)
+    return listOf(
+      "target:",
+      "  profile-id: $profileId",
+      "  p2-path: target/p2"
+    ).joinToString("\n")
+  }
+
+  private fun configText(targetConfig: String, bodyLines: List<String>): String {
+    val lines = mutableListOf<String>()
+    lines.addAll(targetConfig.trimEnd().lines())
+    lines.addAll(bodyLines)
+    return lines.joinToString("\n")
+  }
+
+  private fun captureStderr(block: () -> Int): Pair<Int, String> {
+    val originalErr = System.err
+    val buffer = ByteArrayOutputStream()
+    val capturing = PrintStream(buffer, true, StandardCharsets.UTF_8)
+    return try {
+      System.setErr(capturing)
+      val exitCode = block()
+      exitCode to buffer.toString(StandardCharsets.UTF_8)
+    } finally {
+      System.setErr(originalErr)
+      capturing.flush()
+    }
   }
 }

@@ -335,32 +335,18 @@ private fun isTestBundle(symbolicName: String, moduleDir: Path, hasFragmentHost:
 }
 
 private fun resolveTargetIndex(context: LaunchConfigContext): TargetPlatformIndex {
-  val profilePath = resolveProfilePath(context)
-  if (profilePath != null && Files.exists(profilePath)) {
-    return TargetPlatformCache.buildWithCache(listOf(profilePath))
-  }
-  val fallbackRoots = resolveTargetFallbackRoots(context)
-  if (fallbackRoots.isNotEmpty()) {
-    return TargetPlatformCache.buildWithCache(fallbackRoots)
-  }
-  return TargetPlatformIndex.build(emptyList())
-}
-
-private fun resolveTargetFallbackRoots(context: LaunchConfigContext): List<Path> {
-  val targetConfig = context.config.target ?: return emptyList()
-  val baseDir = context.baseDir
-  val roots = mutableListOf<Path>()
-  targetConfig.bundlePool?.takeUnless { it.isBlank() }?.let { roots.add(resolvePath(baseDir, it)) }
-  targetConfig.install?.takeUnless { it.isBlank() }?.let { roots.add(resolvePath(baseDir, it)) }
-  return roots.filter { Files.exists(it) }
-}
-
-private fun resolveProfilePath(context: LaunchConfigContext): Path? {
-  val baseDir = context.baseDir
   val targetConfig = context.config.target
-  val legacyProfile = context.config.profilePath?.takeUnless { it.isBlank() }
-    ?.let { baseDir.resolve(it).normalize() }
-  if (targetConfig == null) return legacyProfile
+    ?: fail("Target configuration is required for jdtls-init. Add a target section to config.yaml.")
+  val profilePath = resolveProfilePath(context, targetConfig)
+  if (!Files.exists(profilePath)) {
+    fail("Target profile not found at ${profilePath.toAbsolutePath().normalize()}. " +
+      "Update target.profile-id/target.p2-path or run target installer.")
+  }
+  return TargetPlatformCache.buildWithCache(listOf(profilePath))
+}
+
+private fun resolveProfilePath(context: LaunchConfigContext, targetConfig: cn.varsa.pde.resolver.cli.config.TargetConfig): Path {
+  val baseDir = context.baseDir
   val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
   val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
   val registryDir = baseDir.resolve(p2Path)

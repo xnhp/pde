@@ -42,6 +42,7 @@ Fields:
 Notes:
 - `pde target-install` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
 - The target installer resolves relative paths against its runtime cache directory, not the CLI working directory, so prefer absolute paths for `target.*` values.
+- `pde jdtls-init` requires a `target` section with a resolved profile (`target.profile-id` + `target.p2-path`). It does not fall back to bundle pools or install roots.
 
 Example:
 
@@ -183,7 +184,8 @@ Keys map to PDE/JUnit options:
 ## JDT LS workspace setup
 
 Use `pde jdtls-init` to generate `.project` and `.classpath` files for workspace bundles
-defined by this config. See `docs/jdtls-eglot.md` for Emacs/Eglot setup details.
+defined by this config. `target` must be configured and point at a resolved target profile.
+See `docs/jdtls-eglot.md` for Emacs/Eglot setup details.
 
 ## API analysis (pde api-analyze)
 
