@@ -31,17 +31,17 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val runStart = System.nanoTime()
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", resolvedLauncher.toString(),
-        "--config", resolvedConfig.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--expect-project", "demo-project"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = resolvedLauncher,
+        configDir = resolvedConfig,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        expectProjects = listOf("demo-project")
       )
     )
-    profileLog("JdtlsSmokeCommand.main", runStart)
+    profileLog("runJdtlsSmoke", runStart)
     assertEquals(0, exitCode)
   }
 
@@ -55,17 +55,17 @@ class JdtlsSmokeTest {
     val interfaceFile = root.resolve("demo-project/src/MyInterface.java")
     val implementationFile = root.resolve("demo-project/src/MyImplementation.java")
 
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--impl-file", interfaceFile.toString(),
-        "--impl-symbol", "MyInterface",
-        "--impl-expected", implementationFile.fileName.toString()
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        implFile = interfaceFile,
+        implSymbol = "MyInterface",
+        implExpected = listOf(implementationFile.fileName.toString())
       )
     )
     assertEquals(0, exitCode)
@@ -79,17 +79,17 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val refFile = root.resolve("bundle-b/src/Consumer.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--definition-file", refFile.toString(),
-        "--definition-symbol", "MyApi",
-        "--definition-expected", "MyApi.java"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        definitionFile = refFile,
+        definitionSymbol = "MyApi",
+        definitionExpected = listOf("MyApi.java")
       )
     )
     assertEquals(0, exitCode)
@@ -103,17 +103,17 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val refFile = root.resolve("bundle-b/src/Consumer.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--definition-file", refFile.toString(),
-        "--definition-symbol", "value",
-        "--definition-expected", "MyApi.java"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        definitionFile = refFile,
+        definitionSymbol = "value",
+        definitionExpected = listOf("MyApi.java")
       )
     )
     assertEquals(0, exitCode)
@@ -127,17 +127,17 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val refFile = root.resolve("bundle-a/src/MyApi.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--references-file", refFile.toString(),
-        "--references-symbol", "MyApi",
-        "--references-expected", "Consumer.java"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        referencesFile = refFile,
+        referencesSymbol = "MyApi",
+        referencesExpected = listOf("Consumer.java")
       )
     )
     assertEquals(0, exitCode)
@@ -151,17 +151,17 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val baseFile = root.resolve("bundle-hierarchy/src/Base.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--hierarchy-file", baseFile.toString(),
-        "--hierarchy-symbol", "Base",
-        "--hierarchy-expected", "Derived"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        hierarchyFile = baseFile,
+        hierarchySymbol = "Base",
+        hierarchyExpected = listOf("Derived")
       )
     )
     assertEquals(0, exitCode)
@@ -175,17 +175,17 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val completionFile = root.resolve("bundle-completion/src/CompletionUser.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--completion-file", completionFile.toString(),
-        "--completion-symbol", "Ba",
-        "--completion-expected", "Base()"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        completionFile = completionFile,
+        completionSymbol = "Ba",
+        completionExpected = listOf("Base()")
       )
     )
     assertEquals(0, exitCode)
@@ -199,16 +199,16 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val diagnosticsFile = root.resolve("bundle-diagnostics/src/DiagnosticsUser.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--diagnostics-file", diagnosticsFile.toString(),
-        "--diagnostics-min", "1"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        diagnosticsFile = diagnosticsFile,
+        diagnosticsMin = 1
       )
     )
     assertEquals(0, exitCode)
@@ -229,20 +229,20 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val refFile = root.resolve("bundle-target/src/example/TargetUser.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--classpath-file", refFile.toString(),
-        "--classpath-expected", targetJar.toAbsolutePath().toString(),
-        "--definition-file", refFile.toString(),
-        "--definition-symbol", "Consumer",
-        "--definition-expected", "jdt://",
-        "--source-attachment-expected", "org.osgi.util.function.source_1.2.0.202109301733.jar"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        classpathFile = refFile.toString(),
+        classpathExpected = listOf(targetJar.toAbsolutePath().toString()),
+        definitionFile = refFile,
+        definitionSymbol = "Consumer",
+        definitionExpected = listOf("jdt://"),
+        sourceAttachmentExpected = "org.osgi.util.function.source_1.2.0.202109301733.jar"
       )
     )
     assertEquals(0, exitCode)
@@ -262,17 +262,17 @@ class JdtlsSmokeTest {
     Files.createDirectories(dataDir)
 
     val refFile = root.resolve("bundle-target/src/example/TargetUser.java")
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", root.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "60000",
-        "--import-projects",
-        "--definition-file", refFile.toString(),
-        "--definition-symbol", "Consumer",
-        "--definition-expected", "jdt://"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = root,
+        dataDir = dataDir,
+        timeoutMs = 60000,
+        importProjects = true,
+        definitionFile = refFile,
+        definitionSymbol = "Consumer",
+        definitionExpected = listOf("jdt://")
       )
     )
     assertEquals(0, exitCode)
@@ -302,22 +302,21 @@ class JdtlsSmokeTest {
     assumeTrue("Skipping knime-gateway real-workspace smoke test; LocalSpaceProvider.java not found.", implementationFile != null)
     val implementationPath = implementationFile!!
 
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", rootPath.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "120000",
-        "--import-projects",
-        "--symbol-query", "SpaceProvider",
-        "--symbol-query", "LocalSpaceProvider",
-        "--definition-file", implementationFile.toString(),
-        "--definition-symbol", "EntityFactory",
-        "--definition-expected", rootPath.resolve("org.knime.gateway.api").toString(),
-        "--impl-file", implementationPath.toString(),
-        "--impl-symbol", "SpaceProvider",
-        "--impl-expected", implementationPath.fileName.toString()
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = rootPath,
+        dataDir = dataDir,
+        timeoutMs = 120000,
+        importProjects = true,
+        symbolQueries = listOf("SpaceProvider", "LocalSpaceProvider"),
+        definitionFile = implementationFile,
+        definitionSymbol = "EntityFactory",
+        definitionExpected = listOf(rootPath.resolve("org.knime.gateway.api").toString()),
+        implFile = implementationPath,
+        implSymbol = "SpaceProvider",
+        implExpected = listOf(implementationPath.fileName.toString())
       )
     )
     assertEquals(0, exitCode)
@@ -351,17 +350,17 @@ class JdtlsSmokeTest {
       Files.isRegularFile(implementationFile)
     )
 
-    val exitCode = JdtlsSmokeCommand.main(
-      arrayOf(
-        "--launcher", launcher.toString(),
-        "--config", config.toString(),
-        "--root", rootPath.toString(),
-        "--data", dataDir.toString(),
-        "--timeout-ms", "120000",
-        "--import-projects",
-        "--definition-file", implementationFile.toString(),
-        "--definition-symbol", "RestServerContent",
-        "--definition-expected", "com.knime.enterprise.client.rest/src/"
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = rootPath,
+        dataDir = dataDir,
+        timeoutMs = 120000,
+        importProjects = true,
+        definitionFile = implementationFile,
+        definitionSymbol = "RestServerContent",
+        definitionExpected = listOf("com.knime.enterprise.client.rest/src/")
       )
     )
     assertEquals(0, exitCode)

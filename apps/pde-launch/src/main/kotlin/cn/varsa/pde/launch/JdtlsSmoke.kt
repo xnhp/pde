@@ -1,9 +1,5 @@
 package cn.varsa.pde.launch
 
-import kotlinx.cli.ArgParser
-import kotlinx.cli.ArgType
-import kotlinx.cli.default
-import kotlinx.cli.multiple
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.nio.charset.StandardCharsets
@@ -13,201 +9,52 @@ import java.nio.file.Paths
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 
-object JdtlsSmokeCommand {
-  fun main(args: Array<String>): Int {
-    val overallStart = System.nanoTime()
-    var mark = overallStart
-    val parser = ArgParser("pde jdtls-smoke")
-    val launcherJar by parser.option(
-      ArgType.String,
-      fullName = "launcher",
-      description = "Path to org.eclipse.equinox.launcher_*.jar"
-    )
-    val configDir by parser.option(
-      ArgType.String,
-      fullName = "config",
-      description = "Path to JDT LS config dir (e.g., config_linux)"
-    )
-    val rootDir by parser.option(
-      ArgType.String,
-      fullName = "root",
-      description = "Workspace root directory containing projects"
-    )
-    val dataDir by parser.option(
-      ArgType.String,
-      fullName = "data",
-      description = "JDT LS data directory (defaults to <root>/.jdtls-data)"
-    )
-    val timeoutMs by parser.option(
-      ArgType.Int,
-      fullName = "timeout-ms",
-      description = "Timeout for initialize response"
-    ).default(60000)
-    val expectProjects by parser.option(
-      ArgType.String,
-      fullName = "expect-project",
-      description = "Project name expected from java.project.getAll (repeatable)"
-    ).multiple()
-    val implFile by parser.option(
-      ArgType.String,
-      fullName = "impl-file",
-      description = "Java interface file to request implementations for"
-    )
-    val implSymbol by parser.option(
-      ArgType.String,
-      fullName = "impl-symbol",
-      description = "Symbol name within impl-file to query"
-    )
-    val implExpected by parser.option(
-      ArgType.String,
-      fullName = "impl-expected",
-      description = "Expected implementation (file name or identifier; repeatable)"
-    ).multiple()
-    val definitionFile by parser.option(
-      ArgType.String,
-      fullName = "definition-file",
-      description = "Java file to request definition for"
-    )
-    val definitionSymbol by parser.option(
-      ArgType.String,
-      fullName = "definition-symbol",
-      description = "Symbol name within definition-file to query"
-    )
-    val definitionExpected by parser.option(
-      ArgType.String,
-      fullName = "definition-expected",
-      description = "Expected definition target (file name or identifier; repeatable)"
-    ).multiple()
-    val referencesFile by parser.option(
-      ArgType.String,
-      fullName = "references-file",
-      description = "Java file to request references for"
-    )
-    val referencesSymbol by parser.option(
-      ArgType.String,
-      fullName = "references-symbol",
-      description = "Symbol name within references-file to query"
-    )
-    val referencesExpected by parser.option(
-      ArgType.String,
-      fullName = "references-expected",
-      description = "Expected reference target (file name or identifier; repeatable)"
-    ).multiple()
-    val referencesIncludeDeclaration by parser.option(
-      ArgType.Boolean,
-      fullName = "references-include-declaration",
-      description = "Include declaration in references results"
-    ).default(false)
-    val hierarchyFile by parser.option(
-      ArgType.String,
-      fullName = "hierarchy-file",
-      description = "Java file to request type hierarchy for"
-    )
-    val hierarchySymbol by parser.option(
-      ArgType.String,
-      fullName = "hierarchy-symbol",
-      description = "Symbol name within hierarchy-file to query"
-    )
-    val hierarchyExpected by parser.option(
-      ArgType.String,
-      fullName = "hierarchy-expected",
-      description = "Expected type hierarchy entry (repeatable)"
-    ).multiple()
-    val hierarchyDirection by parser.option(
-      ArgType.Int,
-      fullName = "hierarchy-direction",
-      description = "Type hierarchy direction (0=children,1=parents,2=both)"
-    ).default(0)
-    val hierarchyResolve by parser.option(
-      ArgType.Int,
-      fullName = "hierarchy-resolve",
-      description = "Type hierarchy resolve depth"
-    ).default(1)
-    val completionFile by parser.option(
-      ArgType.String,
-      fullName = "completion-file",
-      description = "Java file to request completion for"
-    )
-    val completionSymbol by parser.option(
-      ArgType.String,
-      fullName = "completion-symbol",
-      description = "Symbol prefix within completion-file to query"
-    )
-    val completionExpected by parser.option(
-      ArgType.String,
-      fullName = "completion-expected",
-      description = "Expected completion item label (repeatable)"
-    ).multiple()
-    val diagnosticsFile by parser.option(
-      ArgType.String,
-      fullName = "diagnostics-file",
-      description = "Java file to wait for diagnostics"
-    )
-    val diagnosticsMin by parser.option(
-      ArgType.Int,
-      fullName = "diagnostics-min",
-      description = "Minimum diagnostics count to assert"
-    ).default(1)
-    val sourceAttachmentClassFile by parser.option(
-      ArgType.String,
-      fullName = "source-attachment-classfile",
-      description = "Classfile URI to resolve source attachment for"
-    )
-    val sourceAttachmentExpected by parser.option(
-      ArgType.String,
-      fullName = "source-attachment-expected",
-      description = "Expected source attachment path substring"
-    )
-    val classpathFile by parser.option(
-      ArgType.String,
-      fullName = "classpath-file",
-      description = "File URI or path to query java.project.getClasspaths"
-    )
-    val classpathExpected by parser.option(
-      ArgType.String,
-      fullName = "classpath-expected",
-      description = "Expected classpath entry substring (repeatable)"
-    ).multiple()
-    val symbolResolveQuery by parser.option(
-      ArgType.String,
-      fullName = "symbol-resolve-query",
-      description = "Workspace symbol query to resolve via java.project.resolveWorkspaceSymbol"
-    )
-    val symbolResolveExpected by parser.option(
-      ArgType.String,
-      fullName = "symbol-resolve-expected",
-      description = "Expected substring in resolved symbol location"
-    )
-    val symbolQueries by parser.option(
-      ArgType.String,
-      fullName = "symbol-query",
-      description = "Workspace symbol query to validate (repeatable)"
-    ).multiple()
-    val importProjects by parser.option(
-      ArgType.Boolean,
-      fullName = "import-projects",
-      description = "Run java.project.import before other checks"
-    ).default(false)
-    val refreshDiagnostics by parser.option(
-      ArgType.Boolean,
-      fullName = "refresh-diagnostics",
-      description = "Run java.project.refreshDiagnostics after import"
-    ).default(false)
-    val vmArgs by parser.option(
-      ArgType.String,
-      fullName = "vm-arg",
-      description = "Additional JVM arg (repeatable)"
-    ).multiple()
-    parser.parse(args)
+data class JdtlsSmokeConfig(
+  val launcherJar: Path,
+  val configDir: Path,
+  val rootDir: Path,
+  val dataDir: Path? = null,
+  val timeoutMs: Int = 60000,
+  val expectProjects: List<String> = emptyList(),
+  val implFile: Path? = null,
+  val implSymbol: String? = null,
+  val implExpected: List<String> = emptyList(),
+  val definitionFile: Path? = null,
+  val definitionSymbol: String? = null,
+  val definitionExpected: List<String> = emptyList(),
+  val referencesFile: Path? = null,
+  val referencesSymbol: String? = null,
+  val referencesExpected: List<String> = emptyList(),
+  val referencesIncludeDeclaration: Boolean = false,
+  val hierarchyFile: Path? = null,
+  val hierarchySymbol: String? = null,
+  val hierarchyExpected: List<String> = emptyList(),
+  val hierarchyDirection: Int = 0,
+  val hierarchyResolve: Int = 1,
+  val completionFile: Path? = null,
+  val completionSymbol: String? = null,
+  val completionExpected: List<String> = emptyList(),
+  val diagnosticsFile: Path? = null,
+  val diagnosticsMin: Int = 1,
+  val sourceAttachmentClassFile: String? = null,
+  val sourceAttachmentExpected: String? = null,
+  val classpathFile: String? = null,
+  val classpathExpected: List<String> = emptyList(),
+  val symbolResolveQuery: String? = null,
+  val symbolResolveExpected: String? = null,
+  val symbolQueries: List<String> = emptyList(),
+  val importProjects: Boolean = false,
+  val refreshDiagnostics: Boolean = false,
+  val vmArgs: List<String> = emptyList()
+)
 
-    val launcherPath = launcherJar?.let { Paths.get(it) }
-      ?: fail("--launcher is required")
-    val configPath = configDir?.let { Paths.get(it) }
-      ?: fail("--config is required")
-    val rootPath = rootDir?.let { Paths.get(it) }
-      ?: fail("--root is required")
-    val dataPath = dataDir?.let { Paths.get(it) }
-      ?: rootPath.resolve(".jdtls-data")
+fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
+  val overallStart = System.nanoTime()
+  var mark = overallStart
+  val launcherPath = config.launcherJar
+  val configPath = config.configDir
+  val rootPath = config.rootDir
+  val dataPath = config.dataDir ?: rootPath.resolve(".jdtls-data")
 
     if (!Files.isRegularFile(launcherPath)) fail("Launcher jar not found: $launcherPath")
     if (!Files.isDirectory(configPath)) fail("Config directory not found: $configPath")
@@ -224,7 +71,7 @@ object JdtlsSmokeCommand {
       "--add-opens", "java.base/java.util=ALL-UNNAMED",
       "--add-opens", "java.base/java.lang=ALL-UNNAMED"
     )
-    val command = listOf("java") + defaultVmArgs + vmArgs + listOf(
+    val command = listOf("java") + defaultVmArgs + config.vmArgs + listOf(
       "-jar",
       launcherPath.toAbsolutePath().normalize().toString(),
       "-configuration",
@@ -263,6 +110,7 @@ object JdtlsSmokeCommand {
     """.trimIndent()
     sendMessage(output, initialize)
 
+    val timeoutMs = config.timeoutMs
     val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
     var initializeResponse: String? = null
     while (System.nanoTime() < deadline) {
@@ -293,7 +141,7 @@ object JdtlsSmokeCommand {
     sendMessage(output, initialized)
 
     var requestId = 3
-    if (importProjects) {
+    if (config.importProjects) {
       val exec = """
         {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.import","arguments":[]}}
       """.trimIndent()
@@ -304,7 +152,7 @@ object JdtlsSmokeCommand {
       mark = profileStep("java.project.import", mark)
     }
 
-    if (refreshDiagnostics) {
+    if (config.refreshDiagnostics) {
       val exec = """
         {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.refreshDiagnostics","arguments":["${escapeJson(rootUri)}"]}}
       """.trimIndent()
@@ -315,7 +163,7 @@ object JdtlsSmokeCommand {
       mark = profileStep("java.project.refreshDiagnostics", mark)
     }
 
-    if (expectProjects.isNotEmpty()) {
+    if (config.expectProjects.isNotEmpty()) {
       val exec = """
         {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.getAll","arguments":[]}}
       """.trimIndent()
@@ -323,7 +171,7 @@ object JdtlsSmokeCommand {
       val projectResponse = waitForResponse(queue, requestId, timeoutMs)
       requestId += 1
       val normalized = projectResponse.lowercase()
-      expectProjects.forEach { project ->
+      config.expectProjects.forEach { project ->
         if (!normalized.contains(project.lowercase())) {
           fail("Expected project '$project' not found in response: $projectResponse")
         }
@@ -331,8 +179,8 @@ object JdtlsSmokeCommand {
       mark = profileStep("java.project.getAll", mark)
     }
 
-    if (symbolQueries.isNotEmpty()) {
-      symbolQueries.forEach { query ->
+    if (config.symbolQueries.isNotEmpty()) {
+      config.symbolQueries.forEach { query ->
         val exec = """
           {"jsonrpc":"2.0","id":${requestId},"method":"workspace/symbol","params":{"query":"${escapeJson(query)}"}}
         """.trimIndent()
@@ -345,8 +193,8 @@ object JdtlsSmokeCommand {
       }
     }
 
-    val classpathFileValue = classpathFile
-    if (classpathFileValue != null && classpathExpected.isNotEmpty()) {
+    val classpathFileValue = config.classpathFile
+    if (classpathFileValue != null && config.classpathExpected.isNotEmpty()) {
       val fileUri = if (classpathFileValue.startsWith("file:") || classpathFileValue.startsWith("jdt:")) {
         classpathFileValue
       } else {
@@ -360,30 +208,30 @@ object JdtlsSmokeCommand {
       val response = waitForResponse(queue, requestId, timeoutMs)
       requestId += 1
       val normalized = response.lowercase()
-      classpathExpected.forEach { expected ->
+      config.classpathExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected classpath entry '$expected' not found in response: $response")
         }
       }
     }
 
-    val implFileValue = implFile
-    val implSymbolValue = implSymbol
-    if (implFileValue != null && implSymbolValue != null && implExpected.isNotEmpty()) {
-      val implPath = Paths.get(implFileValue)
+    val implFileValue = config.implFile
+    val implSymbolValue = config.implSymbol
+    if (implFileValue != null && implSymbolValue != null && config.implExpected.isNotEmpty()) {
+      val implPath = implFileValue
       if (!Files.isRegularFile(implPath)) {
         fail("Implementation file not found: $implPath")
       }
       val implText = Files.readString(implPath)
       val position = findWordPositionLast(implText, implSymbolValue)
-        ?: fail("Symbol '$implSymbol' not found in ${implPath}")
+        ?: fail("Symbol '$implSymbolValue' not found in ${implPath}")
       val docUri = implPath.toAbsolutePath().normalize().toUri().toString()
       val didOpen = """
         {"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"${escapeJson(docUri)}","languageId":"java","version":1,"text":${jsonString(implText)}}}}
       """.trimIndent()
       sendMessage(output, didOpen)
 
-      val expectedFiles = implExpected.mapNotNull { expected ->
+      val expectedFiles = config.implExpected.mapNotNull { expected ->
         findFileByName(rootPath, expected)
       }
       expectedFiles.forEach { expectedPath ->
@@ -405,7 +253,7 @@ object JdtlsSmokeCommand {
         val response = waitForResponse(queue, requestId, timeoutMs)
         lastResponse = response
         val normalized = response.lowercase()
-        val allMatched = implExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        val allMatched = config.implExpected.all { expected -> normalized.contains(expected.lowercase()) }
         if (allMatched) break
         requestId += 1
         Thread.sleep(1000)
@@ -415,18 +263,18 @@ object JdtlsSmokeCommand {
         fail("No implementation response received")
       }
       val normalized = finalResponse.lowercase()
-      implExpected.forEach { expected ->
+      config.implExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected implementation '$expected' not found in response: $finalResponse")
         }
       }
     }
 
-    val defFileValue = definitionFile
-    val defSymbolValue = definitionSymbol
+    val defFileValue = config.definitionFile
+    val defSymbolValue = config.definitionSymbol
     var definitionLocation: String? = null
-    if (defFileValue != null && defSymbolValue != null && definitionExpected.isNotEmpty()) {
-      val defPath = Paths.get(defFileValue)
+    if (defFileValue != null && defSymbolValue != null && config.definitionExpected.isNotEmpty()) {
+      val defPath = defFileValue
       if (!Files.isRegularFile(defPath)) {
         fail("Definition file not found: $defPath")
       }
@@ -439,7 +287,7 @@ object JdtlsSmokeCommand {
       """.trimIndent()
       sendMessage(output, didOpen)
 
-      val expectedFiles = definitionExpected.mapNotNull { expected ->
+      val expectedFiles = config.definitionExpected.mapNotNull { expected ->
         findFileByName(rootPath, expected)
       }
       expectedFiles.forEach { expectedPath ->
@@ -461,7 +309,7 @@ object JdtlsSmokeCommand {
         val response = waitForResponse(queue, requestId, timeoutMs)
         lastResponse = response
         val normalized = response.lowercase()
-        val allMatched = definitionExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        val allMatched = config.definitionExpected.all { expected -> normalized.contains(expected.lowercase()) }
         if (allMatched) break
         requestId += 1
         Thread.sleep(1000)
@@ -472,17 +320,17 @@ object JdtlsSmokeCommand {
       }
       val normalized = finalResponse.lowercase()
       definitionLocation = extractLocationUri(finalResponse)
-      definitionExpected.forEach { expected ->
+      config.definitionExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected definition '$expected' not found in response: $finalResponse")
         }
       }
     }
 
-    val refFileValue = referencesFile
-    val refSymbolValue = referencesSymbol
-    if (refFileValue != null && refSymbolValue != null && referencesExpected.isNotEmpty()) {
-      val refPath = Paths.get(refFileValue)
+    val refFileValue = config.referencesFile
+    val refSymbolValue = config.referencesSymbol
+    if (refFileValue != null && refSymbolValue != null && config.referencesExpected.isNotEmpty()) {
+      val refPath = refFileValue
       if (!Files.isRegularFile(refPath)) {
         fail("References file not found: $refPath")
       }
@@ -495,7 +343,7 @@ object JdtlsSmokeCommand {
       """.trimIndent()
       sendMessage(output, didOpen)
 
-      val expectedFiles = referencesExpected.mapNotNull { expected ->
+      val expectedFiles = config.referencesExpected.mapNotNull { expected ->
         findFileByName(rootPath, expected)
       }
       expectedFiles.forEach { expectedPath ->
@@ -507,7 +355,7 @@ object JdtlsSmokeCommand {
         sendMessage(output, openExpected)
       }
 
-      val includeDeclaration = if (referencesIncludeDeclaration) "true" else "false"
+      val includeDeclaration = if (config.referencesIncludeDeclaration) "true" else "false"
       val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
       var lastResponse: String? = null
       while (System.nanoTime() < deadline) {
@@ -518,7 +366,7 @@ object JdtlsSmokeCommand {
         val response = waitForResponse(queue, requestId, timeoutMs)
         lastResponse = response
         val normalized = response.lowercase()
-        val allMatched = referencesExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        val allMatched = config.referencesExpected.all { expected -> normalized.contains(expected.lowercase()) }
         if (allMatched) break
         requestId += 1
         Thread.sleep(1000)
@@ -528,17 +376,17 @@ object JdtlsSmokeCommand {
         fail("No references response received")
       }
       val normalized = finalResponse.lowercase()
-      referencesExpected.forEach { expected ->
+      config.referencesExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected reference '$expected' not found in response: $finalResponse")
         }
       }
     }
 
-    val hierarchyFileValue = hierarchyFile
-    val hierarchySymbolValue = hierarchySymbol
-    if (hierarchyFileValue != null && hierarchySymbolValue != null && hierarchyExpected.isNotEmpty()) {
-      val hierarchyPath = Paths.get(hierarchyFileValue)
+    val hierarchyFileValue = config.hierarchyFile
+    val hierarchySymbolValue = config.hierarchySymbol
+    if (hierarchyFileValue != null && hierarchySymbolValue != null && config.hierarchyExpected.isNotEmpty()) {
+      val hierarchyPath = hierarchyFileValue
       if (!Files.isRegularFile(hierarchyPath)) {
         fail("Hierarchy file not found: $hierarchyPath")
       }
@@ -552,8 +400,8 @@ object JdtlsSmokeCommand {
       sendMessage(output, didOpen)
 
       val paramsJson = "{\"textDocument\":{\"uri\":\"${escapeJson(docUri)}\"},\"position\":{\"line\":${position.first},\"character\":${position.second}}}"
-      val directionJson = hierarchyDirection.toString()
-      val resolveJson = hierarchyResolve.toString()
+      val directionJson = config.hierarchyDirection.toString()
+      val resolveJson = config.hierarchyResolve.toString()
       val exec = """
         {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.navigate.openTypeHierarchy","arguments":["${escapeJson(paramsJson)}","${escapeJson(directionJson)}","${escapeJson(resolveJson)}"]}}
       """.trimIndent()
@@ -561,17 +409,17 @@ object JdtlsSmokeCommand {
       val response = waitForResponse(queue, requestId, timeoutMs)
       requestId += 1
       val normalized = response.lowercase()
-      hierarchyExpected.forEach { expected ->
+      config.hierarchyExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected hierarchy entry '$expected' not found in response: $response")
         }
       }
     }
 
-    val completionFileValue = completionFile
-    val completionSymbolValue = completionSymbol
-    if (completionFileValue != null && completionSymbolValue != null && completionExpected.isNotEmpty()) {
-      val completionPath = Paths.get(completionFileValue)
+    val completionFileValue = config.completionFile
+    val completionSymbolValue = config.completionSymbol
+    if (completionFileValue != null && completionSymbolValue != null && config.completionExpected.isNotEmpty()) {
+      val completionPath = completionFileValue
       if (!Files.isRegularFile(completionPath)) {
         fail("Completion file not found: $completionPath")
       }
@@ -594,7 +442,7 @@ object JdtlsSmokeCommand {
         val response = waitForResponse(queue, requestId, timeoutMs)
         lastResponse = response
         val normalized = response.lowercase()
-        val allMatched = completionExpected.all { expected -> normalized.contains(expected.lowercase()) }
+        val allMatched = config.completionExpected.all { expected -> normalized.contains(expected.lowercase()) }
         if (allMatched) break
         requestId += 1
         Thread.sleep(1000)
@@ -604,16 +452,16 @@ object JdtlsSmokeCommand {
         fail("No completion response received")
       }
       val normalized = finalResponse.lowercase()
-      completionExpected.forEach { expected ->
+      config.completionExpected.forEach { expected ->
         if (!normalized.contains(expected.lowercase())) {
           fail("Expected completion '$expected' not found in response: $finalResponse")
         }
       }
     }
 
-    val diagnosticsFileValue = diagnosticsFile
+    val diagnosticsFileValue = config.diagnosticsFile
     if (diagnosticsFileValue != null) {
-      val diagnosticsPath = Paths.get(diagnosticsFileValue)
+      val diagnosticsPath = diagnosticsFileValue
       if (!Files.isRegularFile(diagnosticsPath)) {
         fail("Diagnostics file not found: $diagnosticsPath")
       }
@@ -624,14 +472,14 @@ object JdtlsSmokeCommand {
       """.trimIndent()
       sendMessage(output, didOpen)
 
-      val result = waitForDiagnostics(queue, docUri, diagnosticsMin, timeoutMs)
+      val result = waitForDiagnostics(queue, docUri, config.diagnosticsMin, timeoutMs)
       if (!result) {
-        fail("Expected at least ${diagnosticsMin} diagnostics for $docUri")
+        fail("Expected at least ${config.diagnosticsMin} diagnostics for $docUri")
       }
     }
 
-    val resolveQuery = symbolResolveQuery
-    val resolveExpected = symbolResolveExpected
+    val resolveQuery = config.symbolResolveQuery
+    val resolveExpected = config.symbolResolveExpected
     var resolvedLocation: String? = null
     if (resolveQuery != null) {
       val exec = """
@@ -654,8 +502,8 @@ object JdtlsSmokeCommand {
       }
     }
 
-    val classFileUri = sourceAttachmentClassFile ?: definitionLocation ?: resolvedLocation
-    val expectedSource = sourceAttachmentExpected
+    val classFileUri = config.sourceAttachmentClassFile ?: definitionLocation ?: resolvedLocation
+    val expectedSource = config.sourceAttachmentExpected
     if (classFileUri != null && expectedSource != null) {
       val requestJson = "{\"classFileUri\":\"${escapeJson(classFileUri)}\"}"
       val exec = """
@@ -692,7 +540,6 @@ object JdtlsSmokeCommand {
     }
     profileTotal("total", overallStart)
     return 0
-  }
 }
 
 private fun sendMessage(output: BufferedOutputStream, payload: String) {
