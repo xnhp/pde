@@ -165,10 +165,13 @@ class JdtlsInitTest {
     val configPath = issueDir.resolve("config.yaml")
     Files.writeString(
       configPath,
-      """
-        includes:
-          - ../shared/include.yaml
-      """.trimIndent()
+      configText(
+        writeTargetConfig(issueDir),
+        listOf(
+          "includes:",
+          "  - ../shared/include.yaml"
+        )
+      )
     )
 
     val exitCode = JdtlsInitCommand.main(
