@@ -29,6 +29,8 @@ Notes:
 - Use `--project-configurations-out` to write `projectConfigurations.json` next to the
   per-issue `-data` dir; JDT LS uses this to import projects after updates.
 - Files are written per bundle directory.
+- If you see `Generated .project/.classpath for 0 workspace bundles`, that means
+  0 new ones were created (existing files were already present).
 - When using `--issue-dir`, bundle paths in `bundlesPerRepo` resolve relative to the issue directory
   even if they come from included YAML files (includes still resolve relative to their file).
 - `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations
@@ -96,6 +98,12 @@ Example helper that reads the JSON payload and runs `java.project.import`:
     (eglot-execute-command (eglot-current-server)
                            "java.project.import"
                            payload)))
+```
+
+Manual check with `jq` (JSON key is `.projectConfigurations`):
+
+```bash
+jq '.projectConfigurations | map(.projectName)' projectConfigurations.json
 ```
 
 Workflow for per-issue data dirs:
