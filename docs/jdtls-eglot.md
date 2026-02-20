@@ -18,12 +18,16 @@ The binary lives at `apps/pde-launch/build/install/pde/bin/pde`.
 ```bash
 pde jdtls-init --issue-dir /path/to/workspace
 pde jdtls-init --config /path/to/config.yaml
+pde jdtls-init --issue-dir /path/to/workspace \
+  --project-configurations-out /path/to/workspace/.jdtls-data/projectConfigurations.json
 ```
 
 `jdtls-init` discovers `config.yaml`, `launch.yaml`, or `pde.yaml` if you omit `--config`.
 
 Notes:
 - Re-run `jdtls-init` when workspace bundles change.
+- Use `--project-configurations-out` to write `projectConfigurations.json` next to the
+  per-issue `-data` dir; JDT LS uses this to import projects after updates.
 - Files are written per bundle directory.
 - When using `--issue-dir`, bundle paths in `bundlesPerRepo` resolve relative to the issue directory
   even if they come from included YAML files (includes still resolve relative to their file).
@@ -74,6 +78,34 @@ Optional per-workspace settings (via `.dir-locals.el`):
                 . ((:java . (:configuration (:updateBuildConfiguration "automatic"))))))))
 ```
 
+## Import with projectConfigurations.json
+
+When you keep JDT LS state in a per-issue `-data` directory, also keep the
+`projectConfigurations.json` file there. After re-running `jdtls-init`, import
+the updated project list and refresh diagnostics.
+
+Example helper that reads the JSON payload and runs `java.project.import`:
+
+```elisp
+(defun pde-jdtls-import (config-file)
+  "Import JDT LS projects from projectConfigurations.json."
+  (interactive (list (expand-file-name "projectConfigurations.json"
+                                       "~/issues/td-101fe7/.jdtls-data")))
+  (let* ((json-object-type 'plist)
+         (payload (json-read-file config-file)))
+    (eglot-execute-command (eglot-current-server)
+                           "java.project.import"
+                           payload)))
+```
+
+Workflow for per-issue data dirs:
+
+```text
+1. pde jdtls-init --project-configurations-out <issue-root>/.jdtls-data/projectConfigurations.json
+2. M-x pde-jdtls-import
+3. M-x eglot-execute-command -> java.project.refreshDiagnostics
+```
+
 ## Slow real-workspace smoke tests
 
 The JDT LS smoke tests include optional real-workspace checks (e.g. knime-gateway,
@@ -91,5 +123,7 @@ JDTLS_REAL_WORKSPACE=1 ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.Jd
 
 If imports or diagnostics look stale, run these via `M-x eglot-execute-command`:
 
-- `java.project.import`
+- `java.project.import` (use `projectConfigurations.json` from `jdtls-init`)
+- `java.project.refresh`
+- `java.project.updateProjectConfiguration`
 - `java.project.refreshDiagnostics`
