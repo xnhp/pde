@@ -119,6 +119,66 @@ class JdtlsInitTest {
   }
 
   @Test
+  fun `jdtls-init resolves bundle paths from issue dir when includes come from shared config`() {
+    val rootDir = Files.createTempDirectory("jdtls-init-issue-dir")
+    val issueDir = rootDir.resolve("issue-123")
+    val sharedDir = rootDir.resolve("shared")
+    Files.createDirectories(issueDir)
+    Files.createDirectories(sharedDir)
+
+    val repoDir = issueDir.resolve("knime-gateway")
+    val bundleDir = repoDir.resolve("org.knime.gateway.api")
+    val metaInf = bundleDir.resolve("META-INF")
+    Files.createDirectories(metaInf)
+    Files.createDirectories(bundleDir.resolve("src"))
+
+    Files.writeString(
+      metaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.knime.gateway.api
+        Bundle-Version: 1.0.0
+      """.trimIndent()
+    )
+
+    val includePath = sharedDir.resolve("include.yaml")
+    Files.writeString(
+      includePath,
+      """
+        bundlesPerRepo:
+          - repo: knime-gateway
+            bundles:
+              - org.knime.gateway.api
+      """.trimIndent()
+    )
+
+    val configPath = issueDir.resolve("config.yaml")
+    Files.writeString(
+      configPath,
+      """
+        includes:
+          - ../shared/include.yaml
+      """.trimIndent()
+    )
+
+    val exitCode = JdtlsInitCommand.main(
+      arrayOf(
+        "--issue-dir",
+        issueDir.toString(),
+        "--config",
+        configPath.toString()
+      )
+    )
+    assertEquals(0, exitCode)
+
+    val projectFile = bundleDir.resolve(".project")
+    val classpathFile = bundleDir.resolve(".classpath")
+    assertTrue(Files.exists(projectFile))
+    assertTrue(Files.exists(classpathFile))
+  }
+
+  @Test
   fun `jdtls-init keeps existing files unless forced`() {
     val baseDir = Files.createTempDirectory("jdtls-init-force")
     val repoDir = baseDir.resolve("knime-gateway")

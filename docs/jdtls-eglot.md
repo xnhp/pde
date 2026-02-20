@@ -25,6 +25,8 @@ pde jdtls-init --config /path/to/config.yaml
 Notes:
 - Re-run `jdtls-init` when workspace bundles change.
 - Files are written per bundle directory.
+- When using `--issue-dir`, bundle paths in `bundlesPerRepo` resolve relative to the issue directory
+  even if they come from included YAML files (includes still resolve relative to their file).
 
 ## Eglot setup
 

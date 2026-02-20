@@ -49,7 +49,9 @@ object JdtlsInitCommand {
     ).optional()
     parser.parse(args)
 
-    val issueDir = issueDirOpt?.let { Paths.get(it) } ?: Paths.get("").toAbsolutePath()
+    val issueDir = issueDirOpt
+      ?.let { Paths.get(it).toAbsolutePath().normalize() }
+      ?: Paths.get("").toAbsolutePath().normalize()
     val explicitConfig = resolveConfigPath(issueDir, configOpt, configPos)
     val configPath = explicitConfig ?: findConfigPath(issueDir)
     if (explicitConfig != null && (configPath == null || !Files.exists(configPath))) {
@@ -62,9 +64,11 @@ object JdtlsInitCommand {
     }
 
     return try {
-      val workingDir = issueDirOpt?.let { Paths.get(it) }
-        ?: configPath.parent
-        ?: issueDir
+      val workingDir = if (issueDirOpt != null) {
+        issueDir
+      } else {
+        configPath.parent?.toAbsolutePath()?.normalize() ?: issueDir
+      }
       val context = LaunchConfigLoader.load(configPath, workingDir)
       val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
       val targetIndex = resolveTargetIndex(context)

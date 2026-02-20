@@ -108,7 +108,8 @@ bundlesPerRepo:
       - org.example.nonpde.bundle
 ```
 
-- `repo`: absolute or relative path to the repository root.
+- `repo`: absolute or relative path to the repository root. Relative paths resolve against the config file directory.
+  When running `pde jdtls-init --issue-dir`, relative repo paths resolve against the issue directory instead.
 - `bundles`: list of bundles. Each entry can be:
   - string: bundle name (uses default class root `bin`)
   - object: `{ name, classes }` where `classes` overrides the dev class roots.
