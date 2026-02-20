@@ -915,7 +915,10 @@ private fun prepareLaunch(
 ): PreparedLaunch {
   val workspaceInputs = WorkspaceModuleResolver.resolve(context)
   val profilePath = resolveProfilePath(context)
-    ?: error("target profile path missing in YAML config (set target.profile-id + target.p2-path or profilePath)")
+    ?: error(
+      "Target profile path missing in YAML config. Add a target section to config.yaml " +
+        "(set target.profile-id + target.p2-path) or set profilePath. See docs/config-yaml.md#target."
+    )
   if (!Files.exists(profilePath)) {
     error("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
   }
@@ -1345,7 +1348,7 @@ private fun stripConfigArgs(programArgs: List<String>): List<String> {
 
 private fun buildTargetInstallerArgs(context: LaunchConfigContext, targetDefinition: Path): List<String> {
   val targetConfig = context.config.target
-    ?: error("Missing target config while building installer args")
+    ?: error("Missing target config while building installer args. See docs/config-yaml.md#target.")
   val baseDir = context.baseDir
   val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
   val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
@@ -1509,7 +1512,7 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
   RuntimeLayoutWriter.write(layout, plan, ctx, opts, defaults)
 }
 
-private fun targetMain(args: Array<String>): Int {
+internal fun targetMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
   val parser = ArgParser("pde target-install")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
@@ -1552,7 +1555,10 @@ private fun targetMain(args: Array<String>): Int {
   val issueContext = LaunchConfigLoader.load(discoveredConfig)
   val targetConfig = issueContext.config.target
   if (targetConfig == null) {
-    logger.severe("Missing target config in ${issueContext.file}")
+    logger.severe(
+      "Missing target config in ${issueContext.file}. " +
+        "Add a target section to config.yaml and see docs/config-yaml.md#target."
+    )
     return 2
   }
   val installerPath = targetConfig.installer?.takeUnless { it.isBlank() }
