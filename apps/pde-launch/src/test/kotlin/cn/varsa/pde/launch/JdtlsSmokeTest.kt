@@ -279,6 +279,50 @@ class JdtlsSmokeTest {
   }
 
   @Test
+  fun `smoke projectConfigurations import in issue workspace`() {
+    assumeRealWorkspaceEnabled("issue workspace import")
+    val root = resolveIssueWorkspaceRoot()
+    assumeTrue("Skipping issue workspace import smoke test; set JDTLS_ISSUE_ROOT to the issue directory.", root != null)
+    val rootPath = root!!
+    val configPath = resolveIssueConfig(rootPath)
+    assumeTrue(
+      "Skipping issue workspace import smoke test; config.yaml not found. Set JDTLS_ISSUE_CONFIG to override.",
+      configPath != null
+    )
+    val dataDir = rootPath.resolve(".jdtls-data")
+    Files.createDirectories(dataDir)
+    val projectConfig = dataDir.resolve("projectConfigurations.json")
+
+    val initExit = JdtlsInitCommand.main(
+      arrayOf(
+        "--config", configPath.toString(),
+        "--project-configurations-out", projectConfig.toString(),
+        "--force"
+      )
+    )
+    assertEquals(0, initExit)
+    assumeTrue(
+      "Skipping issue workspace import smoke test; projectConfigurations.json not written.",
+      Files.isRegularFile(projectConfig)
+    )
+
+    val (launcher, config) = resolveJdtlsInstallation()
+    val expectProjects = envList("JDTLS_IMPORT_EXPECT")
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = rootPath,
+        dataDir = dataDir,
+        timeoutMs = 120000,
+        importProjectConfigurations = projectConfig,
+        expectProjects = expectProjects
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+
+  @Test
   fun `smoke implementation request in knime-gateway`() {
     assumeRealWorkspaceEnabled("knime-gateway")
     val root = resolveKnimeGatewayRoot()
@@ -373,6 +417,12 @@ private fun envPath(name: String): Path? {
   return Paths.get(value)
 }
 
+private fun envList(name: String): List<String> {
+  val value = System.getenv(name)?.trim().orEmpty()
+  if (value.isBlank()) return emptyList()
+  return value.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+}
+
 private fun resolveExternalDataDir(root: Path, label: String): Path {
   val override = System.getenv("JDTLS_DATA_ROOT")?.trim().orEmpty()
   val baseDir = if (override.isNotBlank()) {
@@ -384,6 +434,19 @@ private fun resolveExternalDataDir(root: Path, label: String): Path {
   val dataDir = baseDir.resolve("${rootName}-${label}")
   Files.createDirectories(dataDir)
   return dataDir
+}
+
+private fun resolveIssueWorkspaceRoot(): Path? {
+  val env = envPath("JDTLS_ISSUE_ROOT")
+  if (env != null && Files.isDirectory(env)) return env
+  return null
+}
+
+private fun resolveIssueConfig(issueRoot: Path): Path? {
+  val env = envPath("JDTLS_ISSUE_CONFIG")
+  if (env != null && Files.isRegularFile(env)) return env
+  val default = issueRoot.resolve("config.yaml")
+  return if (Files.isRegularFile(default)) default else null
 }
 
 private fun resolveKnimeGatewayRoot(): Path? {

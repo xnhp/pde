@@ -127,6 +127,21 @@ JDTLS_REAL_WORKSPACE=1 ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.Jd
 ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsSmokeTest -Djdtls.real.workspace=true
 ```
 
+The issue-workspace import smoke test validates that `jdtls-init` produces a usable
+`projectConfigurations.json` and that JDT LS can import it. It expects an issue
+directory layout with a `config.yaml` at the root and a `.jdtls-data` directory.
+
+```bash
+JDTLS_REAL_WORKSPACE=1 \
+  JDTLS_ISSUE_ROOT=~/issues/td-123456 \
+  ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsSmokeTest
+```
+
+Optional overrides:
+
+- `JDTLS_ISSUE_CONFIG` to point at a non-standard config path.
+- `JDTLS_IMPORT_EXPECT` (comma-separated project names) to assert imported projects.
+
 ## Common JDT LS commands
 
 If imports or diagnostics look stale, run these via `M-x eglot-execute-command`:

@@ -44,6 +44,7 @@ data class JdtlsSmokeConfig(
   val symbolResolveExpected: String? = null,
   val symbolQueries: List<String> = emptyList(),
   val importProjects: Boolean = false,
+  val importProjectConfigurations: Path? = null,
   val refreshDiagnostics: Boolean = false,
   val vmArgs: List<String> = emptyList()
 )
@@ -155,9 +156,21 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
     sendMessage(output, initialized)
 
     var requestId = 3
-    if (config.importProjects) {
+    val importPayload = config.importProjectConfigurations?.let { payloadPath ->
+      if (!Files.isRegularFile(payloadPath)) {
+        fail("projectConfigurations payload not found: $payloadPath")
+      }
+      Files.readString(payloadPath, StandardCharsets.UTF_8).trim()
+    }
+    if (config.importProjects || importPayload != null) {
+      val importArgs = if (importPayload != null) {
+        if (importPayload.isBlank()) fail("projectConfigurations payload is blank: ${config.importProjectConfigurations}")
+        "[${importPayload}]"
+      } else {
+        "[]"
+      }
       val exec = """
-        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.import","arguments":[]}}
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.import","arguments":${importArgs}}}
       """.trimIndent()
       sendMessage(output, exec)
       waitForResponse(queue, requestId, timeoutMs)
