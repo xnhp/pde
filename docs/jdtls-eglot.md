@@ -144,6 +144,23 @@ Optional overrides:
 - `JDTLS_IMPORT_EXPECT` (comma-separated project names) to assert imported projects via
   `java.project.list` (falls back to `java.project.getAll` when unsupported).
   If unset, the smoke test logs that the project list assertion is skipped.
+- `JDTLS_IMPORT_NAV_FILE` to a source file for a cross-bundle definition check
+  (absolute or relative to `JDTLS_ISSUE_ROOT`).
+- `JDTLS_IMPORT_NAV_SYMBOL` for the symbol at the definition request location.
+- `JDTLS_IMPORT_NAV_EXPECT` (comma-separated path fragments) to validate the definition
+  result. If any `JDTLS_IMPORT_NAV_*` values are missing, the navigation check is skipped.
+
+Example with navigation check enabled:
+
+```bash
+JDTLS_IMPORT_REAL=1 \
+  JDTLS_ISSUE_ROOT=~/issues/td-03c3e2 \
+  JDTLS_IMPORT_NAV_FILE=knime-gateway/org.knime.gateway.impl/src/org/knime/gateway/impl/space/LocalSpaceProvider.java \
+  JDTLS_IMPORT_NAV_SYMBOL=SpaceProvider \
+  JDTLS_IMPORT_NAV_EXPECT=org.knime.gateway.api/src/ \
+  ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsImportSmokeTest
+```
+
 
 ## Common JDT LS commands
 

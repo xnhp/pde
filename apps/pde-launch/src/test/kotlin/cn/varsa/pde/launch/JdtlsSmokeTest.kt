@@ -401,6 +401,15 @@ class JdtlsImportSmokeTest {
     if (expectProjects.isEmpty()) {
       println("[jdtls-smoke] JDTLS_IMPORT_EXPECT not set; skipping project list assertion.")
     }
+    val navFile = resolveIssueNavFile(rootPath)
+    val navSymbol = envString("JDTLS_IMPORT_NAV_SYMBOL")
+    val navExpected = envList("JDTLS_IMPORT_NAV_EXPECT")
+    val hasNav = navFile != null && navSymbol != null && navExpected.isNotEmpty()
+    if (!hasNav) {
+      println(
+        "[jdtls-smoke] JDTLS_IMPORT_NAV_* not set or file missing; skipping cross-bundle definition check."
+      )
+    }
     val exitCode = runJdtlsSmoke(
       JdtlsSmokeConfig(
         launcherJar = launcher,
@@ -409,7 +418,10 @@ class JdtlsImportSmokeTest {
         dataDir = dataDir,
         timeoutMs = 120000,
         importProjectConfigurations = projectConfig,
-        expectProjects = expectProjects
+        expectProjects = expectProjects,
+        definitionFile = if (hasNav) navFile else null,
+        definitionSymbol = if (hasNav) navSymbol else null,
+        definitionExpected = if (hasNav) navExpected else emptyList()
       )
     )
     assertEquals(0, exitCode)
@@ -426,6 +438,18 @@ private fun envList(name: String): List<String> {
   val value = System.getenv(name)?.trim().orEmpty()
   if (value.isBlank()) return emptyList()
   return value.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+}
+
+private fun envString(name: String): String? {
+  val value = System.getenv(name)?.trim().orEmpty()
+  return if (value.isBlank()) null else value
+}
+
+private fun resolveIssueNavFile(issueRoot: Path): Path? {
+  val value = envString("JDTLS_IMPORT_NAV_FILE") ?: return null
+  val candidate = Paths.get(value)
+  val resolved = if (candidate.isAbsolute) candidate else issueRoot.resolve(candidate)
+  return if (Files.isRegularFile(resolved)) resolved else null
 }
 
 private fun resolveExternalDataDir(root: Path, label: String): Path {
