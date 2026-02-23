@@ -308,6 +308,9 @@ class JdtlsSmokeTest {
 
     val (launcher, config) = resolveJdtlsInstallation()
     val expectProjects = envList("JDTLS_IMPORT_EXPECT")
+    if (expectProjects.isEmpty()) {
+      println("[jdtls-smoke] JDTLS_IMPORT_EXPECT not set; skipping project list assertion.")
+    }
     val exitCode = runJdtlsSmoke(
       JdtlsSmokeConfig(
         launcherJar = launcher,

@@ -140,7 +140,9 @@ JDTLS_REAL_WORKSPACE=1 \
 Optional overrides:
 
 - `JDTLS_ISSUE_CONFIG` to point at a non-standard config path.
-- `JDTLS_IMPORT_EXPECT` (comma-separated project names) to assert imported projects.
+- `JDTLS_IMPORT_EXPECT` (comma-separated project names) to assert imported projects via
+  `java.project.list` (falls back to `java.project.getAll` when unsupported).
+  If unset, the smoke test logs that the project list assertion is skipped.
 
 ## Common JDT LS commands
 

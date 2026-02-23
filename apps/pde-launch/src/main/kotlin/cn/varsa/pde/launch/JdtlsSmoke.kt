@@ -191,19 +191,34 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
     }
 
     if (config.expectProjects.isNotEmpty()) {
-      val exec = """
-        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.getAll","arguments":[]}}
+      val listExec = """
+        {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.list","arguments":[]}}
       """.trimIndent()
-      sendMessage(output, exec)
-      val projectResponse = waitForResponse(queue, requestId, timeoutMs)
+      sendMessage(output, listExec)
+      val listResponse = waitForResponse(queue, requestId, timeoutMs)
       requestId += 1
+      var projectResponse = listResponse
+      var label = "java.project.list"
+      if (listResponse.contains("\"error\"")) {
+        val fallbackExec = """
+          {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.getAll","arguments":[]}}
+        """.trimIndent()
+        sendMessage(output, fallbackExec)
+        val fallbackResponse = waitForResponse(queue, requestId, timeoutMs)
+        requestId += 1
+        if (fallbackResponse.contains("\"error\"")) {
+          fail("Project list command failed: $fallbackResponse")
+        }
+        projectResponse = fallbackResponse
+        label = "java.project.getAll"
+      }
       val normalized = projectResponse.lowercase()
       config.expectProjects.forEach { project ->
         if (!normalized.contains(project.lowercase())) {
           fail("Expected project '$project' not found in response: $projectResponse")
         }
       }
-      mark = profileStep("java.project.getAll", mark)
+      mark = profileStep(label, mark)
     }
 
     if (config.symbolQueries.isNotEmpty()) {
