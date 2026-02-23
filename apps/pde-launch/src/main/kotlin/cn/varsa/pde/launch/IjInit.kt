@@ -161,7 +161,7 @@ object IjInit {
         }
         val moduleFileName = "${bundle}.iml"
         val moduleFile = moduleDir.resolve(moduleFileName)
-        val contentRoot = bundleDir.toAbsolutePath().toUri().toString()
+        val contentRoot = normalizeContentRoot(bundleDir.toAbsolutePath().normalize().toUri().toString())
         val relativeSourceRoots = sourceRoots.map { root ->
           bundleDir.relativize(root).toString().replace('\\', '/')
         }
@@ -294,7 +294,18 @@ object IjInit {
     return roots
   }
 
-  private fun determineExcludedFolders(bundleDir: Path): List<String> = listOf("bin")
+  private fun determineExcludedFolders(bundleDir: Path): List<String> {
+    val excludes = mutableListOf("bin")
+    if (Files.exists(bundleDir.resolve("package.json"))) {
+      excludes.add("node_modules")
+    }
+    return excludes
+  }
+
+  private fun normalizeContentRoot(url: String): String {
+    if (!url.endsWith("/") || url.length <= "file:///".length) return url
+    return url.removeSuffix("/")
+  }
 
   private fun writeModulesXml(projectDir: Path, moduleFiles: List<String>) {
     val builder = StringBuilder()

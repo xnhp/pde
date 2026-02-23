@@ -68,6 +68,7 @@ class IjInitTest {
     val configPath = baseDir.resolve("config.yaml")
     val repoDir = baseDir.resolve("knime-core").resolve("org.knime.core")
     Files.createDirectories(repoDir.resolve("src"))
+    Files.writeString(repoDir.resolve("package.json"), "{}")
     Files.writeString(
       configPath,
       """
@@ -82,6 +83,13 @@ class IjInitTest {
 
     val moduleFile = baseDir.resolve("ij-project/ij-module-files/org.knime.core.iml")
     assertTrue(Files.exists(moduleFile))
+    val moduleContents = Files.readString(moduleFile)
+    val expectedRoot = repoDir.toAbsolutePath().normalize().toUri().toString().removeSuffix("/")
+    assertTrue(moduleContents.contains("content url=\"${expectedRoot}\""))
+    assertTrue(moduleContents.contains("sourceFolder url=\"${expectedRoot}/src\""))
+    assertTrue(moduleContents.contains("excludeFolder url=\"${expectedRoot}/node_modules\""))
+    assertTrue(!moduleContents.contains("//src"))
+    assertTrue(!moduleContents.contains("//node_modules"))
     val modulesXml = Files.readString(baseDir.resolve("ij-project/.idea/modules.xml"))
     assertTrue(modulesXml.contains("org.knime.core.iml"))
   }
