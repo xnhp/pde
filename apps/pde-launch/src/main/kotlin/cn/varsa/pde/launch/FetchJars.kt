@@ -14,7 +14,7 @@ private class FetchJarsException(message: String) : RuntimeException(message)
 
 object FetchJarsCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde fetch_jars [WIP]")
+    val parser = ArgParser("pde fetch_jars ${maturityTag("WIP")}")
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",

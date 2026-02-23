@@ -1,5 +1,6 @@
 package pde.format
 
+import cn.varsa.pde.remoterunner.ConsoleTags
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -257,7 +258,7 @@ class CliParser(
     companion object {
         fun usage(): String {
             return """
-pde format [WIP]
+pde format ${maturityTag("WIP")}
 
 Usage:
   pde-format fix    --eclipse-home <path> [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --in <file> [--range start:end] [--in-place | --out <path>]
@@ -329,6 +330,15 @@ private fun resolveFormatterConfigPath(configPath: Path?): Path? {
     if (raw.isBlank()) return null
     val path = Paths.get(raw)
     return if (path.isAbsolute) path else baseDir.resolve(path).normalize()
+}
+
+private fun maturityTag(label: String): String {
+    val useColor = System.console() != null
+    return when (label.lowercase()) {
+        "usable" -> ConsoleTags.success(label, useColor)
+        "wip" -> ConsoleTags.danger(label, useColor)
+        else -> "[$label]"
+    }
 }
 
 private fun readStdinLines(): List<String> {

@@ -123,6 +123,14 @@ private fun resolveLogLevel(logLevel: String?, verbose: Boolean, debug: Boolean)
   else -> Level.WARNING
 }
 private fun shouldUseColor(noColor: Boolean = false): Boolean = !noColor && System.console() != null
+private fun maturityTag(label: String): String {
+  val useColor = shouldUseColor()
+  return when (label.lowercase()) {
+    "usable" -> ConsoleTags.success(label, useColor)
+    "wip" -> ConsoleTags.danger(label, useColor)
+    else -> "[$label]"
+  }
+}
 internal val launchOptionsRequiringValue = setOf(
   "--config",
   "--log",
@@ -286,7 +294,7 @@ fun launchMain(args: Array<String>) {
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
 
-  val parser = ArgParser("pde run [usable]")
+  val parser = ArgParser("pde run ${maturityTag("usable")}")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -1514,7 +1522,7 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
 
 internal fun targetMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
-  val parser = ArgParser("pde target-install [usable]")
+  val parser = ArgParser("pde target-install ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchOpt by parser.option(ArgType.String, fullName = "launch", description = "Installer launch name (defaults to 'install' if present)")
@@ -1626,7 +1634,7 @@ internal fun targetMain(args: Array<String>): Int {
 private fun testMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, testOptionsRequiringValue)
 
-  val parser = ArgParser("pde test [usable]")
+  val parser = ArgParser("pde test ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchPos by parser.argument(ArgType.String, description = "Test name (optional, ignored with --all)").optional()
@@ -1792,7 +1800,7 @@ private fun testMain(args: Array<String>): Int {
 
 private fun apiAnalyzeMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
-  val parser = ArgParser("pde api-analyze [WIP]")
+  val parser = ArgParser("pde api-analyze ${maturityTag("WIP")}")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -2084,7 +2092,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
 
 fun compileMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
-  val parser = ArgParser("pde compile [usable]")
+  val parser = ArgParser("pde compile ${maturityTag("usable")}")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",

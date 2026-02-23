@@ -18,7 +18,7 @@ private class IssueNewException(message: String) : RuntimeException(message)
 
 object IssueNewCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde issue-new [WIP]")
+    val parser = ArgParser("pde issue-new ${maturityTag("WIP")}")
     val issueId by parser.argument(ArgType.String, description = "Issue ID")
     parser.parse(args)
 
