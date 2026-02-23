@@ -63,6 +63,41 @@ class IjInitTest {
   }
 
   @Test
+  fun `initIjProjectFromConfig defaults profile path to issue dir`() {
+    val issueDir = Files.createTempDirectory("ij-init-issue")
+    val configDir = issueDir.resolve("config")
+    Files.createDirectories(configDir)
+    val repoDir = configDir.resolve("knime-core").resolve("org.knime.core")
+    Files.createDirectories(repoDir.resolve("src"))
+    val configPath = configDir.resolve("config.yaml")
+    Files.writeString(
+      configPath,
+      """
+        target: {}
+        bundlesPerRepo:
+          - repo: knime-core
+            bundles:
+              - org.knime.core
+      """.trimIndent()
+    )
+    val profileFile = issueDir
+      .resolve("target")
+      .resolve("p2")
+      .resolve("org.eclipse.equinox.p2.engine")
+      .resolve("profileRegistry")
+      .resolve("profile.profile")
+      .resolve("Profile.profile")
+    Files.createDirectories(profileFile.parent)
+    Files.writeString(profileFile, "")
+
+    IjInit.initIjProjectFromConfig(configPath, issueDir)
+
+    val eclipsePartial = Files.readString(configDir.resolve("ij-project/.idea/eclipse-partial.xml"))
+    val expected = profileFile.toAbsolutePath().normalize().toString()
+    assertTrue(eclipsePartial.contains("location=\"${expected}\""))
+  }
+
+  @Test
   fun `initIjProjectFromConfig writes module files`() {
     val baseDir = Files.createTempDirectory("ij-init-config")
     val configPath = baseDir.resolve("config.yaml")

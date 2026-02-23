@@ -73,7 +73,12 @@ object IjInit {
     }
 
     return try {
-      val moduleCount = initIjProjectFromConfig(configPath)
+      val workingDir = if (issueDirOpt != null) {
+        issueDir.toAbsolutePath().normalize()
+      } else {
+        configPath.parent?.toAbsolutePath()?.normalize() ?: issueDir.toAbsolutePath().normalize()
+      }
+      val moduleCount = initIjProjectFromConfig(configPath, workingDir)
       logger.info("IntelliJ PDE project initialized for ${moduleCount} workspace bundles.")
       0
     } catch (ex: Exception) {
@@ -82,9 +87,9 @@ object IjInit {
     }
   }
 
-  internal fun initIjProjectFromConfig(configPath: Path): Int {
+  internal fun initIjProjectFromConfig(configPath: Path, workingDir: Path = configPath.parent ?: configPath): Int {
     val baseDir = configPath.parent ?: fail("Config file has no parent directory: ${configPath}")
-    val context = LaunchConfigLoader.load(configPath, baseDir)
+    val context = LaunchConfigLoader.load(configPath, workingDir)
     if (context.config.bundlesPerRepo.isEmpty()) {
       fail("No bundlesPerRepo entries found in config; add bundlesPerRepo to generate modules.")
     }
@@ -234,7 +239,7 @@ object IjInit {
 
     val profileId = targetConfig.profileId ?: "profile"
     val p2Path = targetConfig.p2Path?.let { resolvePath(baseDir, it) }
-      ?: baseDir.resolve("target").resolve("p2")
+      ?: context.workingDir.resolve("target").resolve("p2")
     val registry = p2Path.resolve("org.eclipse.equinox.p2.engine").resolve("profileRegistry")
     val profileDir = registry.resolve("${profileId}.profile")
     val profileFile = profileDir.resolve("Profile.profile")
