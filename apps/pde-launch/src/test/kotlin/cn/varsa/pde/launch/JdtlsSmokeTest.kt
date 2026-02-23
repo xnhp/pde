@@ -279,53 +279,6 @@ class JdtlsSmokeTest {
   }
 
   @Test
-  fun `smoke projectConfigurations import in issue workspace`() {
-    assumeRealWorkspaceEnabled("issue workspace import")
-    val root = resolveIssueWorkspaceRoot()
-    assumeTrue("Skipping issue workspace import smoke test; set JDTLS_ISSUE_ROOT to the issue directory.", root != null)
-    val rootPath = root!!
-    val configPath = resolveIssueConfig(rootPath)
-    assumeTrue(
-      "Skipping issue workspace import smoke test; config.yaml not found. Set JDTLS_ISSUE_CONFIG to override.",
-      configPath != null
-    )
-    val dataDir = rootPath.resolve(".jdtls-data")
-    Files.createDirectories(dataDir)
-    val projectConfig = dataDir.resolve("projectConfigurations.json")
-
-    val initExit = JdtlsInitCommand.main(
-      arrayOf(
-        "--config", configPath.toString(),
-        "--project-configurations-out", projectConfig.toString(),
-        "--force"
-      )
-    )
-    assertEquals(0, initExit)
-    assumeTrue(
-      "Skipping issue workspace import smoke test; projectConfigurations.json not written.",
-      Files.isRegularFile(projectConfig)
-    )
-
-    val (launcher, config) = resolveJdtlsInstallation()
-    val expectProjects = envList("JDTLS_IMPORT_EXPECT")
-    if (expectProjects.isEmpty()) {
-      println("[jdtls-smoke] JDTLS_IMPORT_EXPECT not set; skipping project list assertion.")
-    }
-    val exitCode = runJdtlsSmoke(
-      JdtlsSmokeConfig(
-        launcherJar = launcher,
-        configDir = config,
-        rootDir = rootPath,
-        dataDir = dataDir,
-        timeoutMs = 120000,
-        importProjectConfigurations = projectConfig,
-        expectProjects = expectProjects
-      )
-    )
-    assertEquals(0, exitCode)
-  }
-
-  @Test
   fun `smoke implementation request in knime-gateway`() {
     assumeRealWorkspaceEnabled("knime-gateway")
     val root = resolveKnimeGatewayRoot()
@@ -408,6 +361,55 @@ class JdtlsSmokeTest {
         definitionFile = implementationFile,
         definitionSymbol = "RestServerContent",
         definitionExpected = listOf("com.knime.enterprise.client.rest/src/")
+      )
+    )
+    assertEquals(0, exitCode)
+  }
+}
+
+class JdtlsImportSmokeTest {
+  @Test
+  fun `smoke projectConfigurations import in issue workspace`() {
+    assumeImportRealEnabled("issue workspace import")
+    val root = resolveIssueWorkspaceRoot()
+    assumeTrue("Skipping issue workspace import smoke test; set JDTLS_ISSUE_ROOT to the issue directory.", root != null)
+    val rootPath = root!!
+    val configPath = resolveIssueConfig(rootPath)
+    assumeTrue(
+      "Skipping issue workspace import smoke test; config.yaml not found. Set JDTLS_ISSUE_CONFIG to override.",
+      configPath != null
+    )
+    val dataDir = rootPath.resolve(".jdtls-data")
+    Files.createDirectories(dataDir)
+    val projectConfig = dataDir.resolve("projectConfigurations.json")
+
+    val initExit = JdtlsInitCommand.main(
+      arrayOf(
+        "--config", configPath.toString(),
+        "--project-configurations-out", projectConfig.toString(),
+        "--force"
+      )
+    )
+    assertEquals(0, initExit)
+    assumeTrue(
+      "Skipping issue workspace import smoke test; projectConfigurations.json not written.",
+      Files.isRegularFile(projectConfig)
+    )
+
+    val (launcher, config) = resolveJdtlsInstallation()
+    val expectProjects = envList("JDTLS_IMPORT_EXPECT")
+    if (expectProjects.isEmpty()) {
+      println("[jdtls-smoke] JDTLS_IMPORT_EXPECT not set; skipping project list assertion.")
+    }
+    val exitCode = runJdtlsSmoke(
+      JdtlsSmokeConfig(
+        launcherJar = launcher,
+        configDir = config,
+        rootDir = rootPath,
+        dataDir = dataDir,
+        timeoutMs = 120000,
+        importProjectConfigurations = projectConfig,
+        expectProjects = expectProjects
       )
     )
     assertEquals(0, exitCode)
@@ -1159,6 +1161,9 @@ private val PROFILE_ENABLED: Boolean = System.getenv("JDTLS_PROFILE")?.trim()?.l
 private val REAL_WORKSPACE_ENABLED: Boolean =
   isTruthy(System.getProperty("jdtls.real.workspace")) || isTruthy(System.getenv("JDTLS_REAL_WORKSPACE"))
 
+private val IMPORT_REAL_ENABLED: Boolean =
+  isTruthy(System.getProperty("jdtls.import.real")) || isTruthy(System.getenv("JDTLS_IMPORT_REAL"))
+
 private fun isTruthy(value: String?): Boolean {
   val trimmed = value?.trim().orEmpty()
   return trimmed == "1" || trimmed.equals("true", ignoreCase = true)
@@ -1168,6 +1173,13 @@ private fun assumeRealWorkspaceEnabled(label: String) {
   assumeTrue(
     "Skipping ${label} real-workspace smoke test. Set JDTLS_REAL_WORKSPACE=1 or -Djdtls.real.workspace=true to enable.",
     REAL_WORKSPACE_ENABLED
+  )
+}
+
+private fun assumeImportRealEnabled(label: String) {
+  assumeTrue(
+    "Skipping ${label} import smoke test. Set JDTLS_IMPORT_REAL=1 or -Djdtls.import.real=true to enable.",
+    IMPORT_REAL_ENABLED
   )
 }
 
