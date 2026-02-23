@@ -401,13 +401,22 @@ class JdtlsImportSmokeTest {
     if (expectProjects.isEmpty()) {
       println("[jdtls-smoke] JDTLS_IMPORT_EXPECT not set; skipping project list assertion.")
     }
-    val navFile = resolveIssueNavFile(rootPath)
+    val navFile = resolveIssueNavFile(rootPath, "JDTLS_IMPORT_NAV_FILE")
     val navSymbol = envString("JDTLS_IMPORT_NAV_SYMBOL")
     val navExpected = envList("JDTLS_IMPORT_NAV_EXPECT")
     val hasNav = navFile != null && navSymbol != null && navExpected.isNotEmpty()
     if (!hasNav) {
       println(
         "[jdtls-smoke] JDTLS_IMPORT_NAV_* not set or file missing; skipping cross-bundle definition check."
+      )
+    }
+    val nav2File = resolveIssueNavFile(rootPath, "JDTLS_IMPORT_NAV2_FILE")
+    val nav2Symbol = envString("JDTLS_IMPORT_NAV2_SYMBOL")
+    val nav2Expected = envList("JDTLS_IMPORT_NAV2_EXPECT")
+    val hasNav2 = nav2File != null && nav2Symbol != null && nav2Expected.isNotEmpty()
+    if (!hasNav2) {
+      println(
+        "[jdtls-smoke] JDTLS_IMPORT_NAV2_* not set or file missing; skipping second cross-bundle definition check."
       )
     }
     val exitCode = runJdtlsSmoke(
@@ -425,6 +434,22 @@ class JdtlsImportSmokeTest {
       )
     )
     assertEquals(0, exitCode)
+    if (hasNav2) {
+      val nav2Exit = runJdtlsSmoke(
+        JdtlsSmokeConfig(
+          launcherJar = launcher,
+          configDir = config,
+          rootDir = rootPath,
+          dataDir = dataDir,
+          timeoutMs = 120000,
+          importProjectConfigurations = projectConfig,
+          definitionFile = nav2File,
+          definitionSymbol = nav2Symbol,
+          definitionExpected = nav2Expected
+        )
+      )
+      assertEquals(0, nav2Exit)
+    }
   }
 }
 
@@ -445,8 +470,8 @@ private fun envString(name: String): String? {
   return if (value.isBlank()) null else value
 }
 
-private fun resolveIssueNavFile(issueRoot: Path): Path? {
-  val value = envString("JDTLS_IMPORT_NAV_FILE") ?: return null
+private fun resolveIssueNavFile(issueRoot: Path, envName: String): Path? {
+  val value = envString(envName) ?: return null
   val candidate = Paths.get(value)
   val resolved = if (candidate.isAbsolute) candidate else issueRoot.resolve(candidate)
   return if (Files.isRegularFile(resolved)) resolved else null
