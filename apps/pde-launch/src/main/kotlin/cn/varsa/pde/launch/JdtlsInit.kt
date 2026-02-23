@@ -22,7 +22,7 @@ import java.nio.file.Paths
 
 object JdtlsInitCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde jdtls-init")
+    val parser = ArgParser("pde jdtls-init [WIP]")
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",

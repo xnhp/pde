@@ -14,7 +14,7 @@ private class ForeachRepoException(message: String) : RuntimeException(message)
 
 object ForeachRepoCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde foreach-repo")
+    val parser = ArgParser("pde foreach-repo [usable]")
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",

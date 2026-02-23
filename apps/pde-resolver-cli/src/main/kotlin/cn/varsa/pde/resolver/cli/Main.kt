@@ -286,7 +286,7 @@ fun launchMain(args: Array<String>) {
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
 
-  val parser = ArgParser("pde run")
+  val parser = ArgParser("pde run [usable]")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -1514,7 +1514,7 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
 
 internal fun targetMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
-  val parser = ArgParser("pde target-install")
+  val parser = ArgParser("pde target-install [usable]")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchOpt by parser.option(ArgType.String, fullName = "launch", description = "Installer launch name (defaults to 'install' if present)")
@@ -1626,7 +1626,7 @@ internal fun targetMain(args: Array<String>): Int {
 private fun testMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, testOptionsRequiringValue)
 
-  val parser = ArgParser("pde test")
+  val parser = ArgParser("pde test [usable]")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchPos by parser.argument(ArgType.String, description = "Test name (optional, ignored with --all)").optional()
@@ -1792,7 +1792,7 @@ private fun testMain(args: Array<String>): Int {
 
 private fun apiAnalyzeMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
-  val parser = ArgParser("pde api-analyze")
+  val parser = ArgParser("pde api-analyze [WIP]")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -2084,7 +2084,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
 
 fun compileMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
-  val parser = ArgParser("pde compile")
+  val parser = ArgParser("pde compile [usable]")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",

@@ -15,7 +15,7 @@ private class CodegenException(message: String) : RuntimeException(message)
 
 object CodegenCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde codegen")
+    val parser = ArgParser("pde codegen [WIP]")
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",

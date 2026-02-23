@@ -14,7 +14,7 @@ private class CliException(message: String) : RuntimeException(message)
 
 object CloneCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde clone")
+    val parser = ArgParser("pde clone [usable]")
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",

@@ -42,7 +42,7 @@ object IjInit {
 
   fun main(args: Array<String>): Int {
     configureLogging(Level.INFO, shouldUseColor())
-    val parser = ArgParser("pde ij-init")
+    val parser = ArgParser("pde ij-init [usable]")
     val issueDirOpt by parser.option(
       ArgType.String,
       fullName = "issue-dir",

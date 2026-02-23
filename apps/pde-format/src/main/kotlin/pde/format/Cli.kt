@@ -257,6 +257,8 @@ class CliParser(
     companion object {
         fun usage(): String {
             return """
+pde format [WIP]
+
 Usage:
   pde-format fix    --eclipse-home <path> [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --in <file> [--range start:end] [--in-place | --out <path>]
   pde-format fix    --eclipse-home <path> [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --repo <dir> [--include <glob,...>] [--in-place]
