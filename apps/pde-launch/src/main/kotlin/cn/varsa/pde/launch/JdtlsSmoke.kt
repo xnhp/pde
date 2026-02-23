@@ -195,7 +195,7 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
         {"jsonrpc":"2.0","id":${requestId},"method":"workspace/executeCommand","params":{"command":"java.project.list","arguments":[]}}
       """.trimIndent()
       sendMessage(output, listExec)
-      val listResponse = waitForResponse(queue, requestId, timeoutMs)
+      val listResponse = waitForResponse(queue, requestId, timeoutMs, allowError = true)
       requestId += 1
       var projectResponse = listResponse
       var label = "java.project.list"
@@ -644,14 +644,19 @@ private fun readMessages(input: BufferedInputStream, queue: ArrayBlockingQueue<S
   }
 }
 
-private fun waitForResponse(queue: ArrayBlockingQueue<String>, id: Int, timeoutMs: Int): String {
+private fun waitForResponse(
+  queue: ArrayBlockingQueue<String>,
+  id: Int,
+  timeoutMs: Int,
+  allowError: Boolean = false
+): String {
   val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs.toLong())
   while (System.nanoTime() < deadline) {
     val remaining = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())
     val message = queue.poll(remaining.coerceAtMost(1000), TimeUnit.MILLISECONDS)
     if (message == null) continue
     if (message.contains("\"id\":$id")) {
-      if (message.contains("\"error\"")) {
+      if (message.contains("\"error\"") && !allowError) {
         fail("Request $id failed: $message")
       }
       return message
