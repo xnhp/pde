@@ -2,6 +2,7 @@ package cn.varsa.pde.launch
 
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
+import pde.format.main as formatMain
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
@@ -24,6 +25,10 @@ fun main(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "compile") {
     val exitCode = compileMain(args.drop(1).toTypedArray())
     exitProcess(exitCode)
+  }
+  if (args.isNotEmpty() && args[0] == "format") {
+    formatMain(args.drop(1).toTypedArray())
+    return
   }
   if (args.isNotEmpty() && args[0] == "clone") {
     val exitCode = CloneCommand.main(args.drop(1).toTypedArray())
@@ -67,6 +72,7 @@ private fun printHelp() {
   println("  run          Run a launch config")
   println("  compile      Compile PDE Java bundles")
   println("  target-install  Resolve/prepare target platform")
+  println("  format       Format Java sources via Eclipse formatter")
   println("  test         Run PDE test launch")
   println("  api-analyze  Run API analysis")
   println("  ij-init      Generate IntelliJ project")

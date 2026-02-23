@@ -14,6 +14,7 @@ dependencies {
   implementation(project(":pde-test-runner"))
   implementation(project(":pde-resolver"))
   implementation(project(":pde-resolver-cli"))
+  implementation(project(":pde-format"))
   testImplementation(kotlin("test"))
 }
 
