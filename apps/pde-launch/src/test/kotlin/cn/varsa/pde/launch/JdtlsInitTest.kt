@@ -191,7 +191,7 @@ class JdtlsInitTest {
   }
 
   @Test
-  fun `jdtls-init keeps existing files unless forced`() {
+  fun `jdtls-init overwrites existing files`() {
     val baseDir = Files.createTempDirectory("jdtls-init-force")
     val repoDir = baseDir.resolve("knime-gateway")
     val bundleDir = repoDir.resolve("org.knime.gateway.api")
@@ -231,8 +231,10 @@ class JdtlsInitTest {
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
     assertEquals(0, exitCode)
 
-    assertEquals("<projectDescription>custom</projectDescription>", Files.readString(projectFile))
-    assertEquals("<classpath>custom</classpath>", Files.readString(classpathFile))
+    val projectContents = Files.readString(projectFile)
+    val classpathContents = Files.readString(classpathFile)
+    assertTrue(projectContents.contains("org.eclipse.jdt.core.javanature"))
+    assertTrue(classpathContents.contains("JavaSE-21"))
   }
 
   @Test

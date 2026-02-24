@@ -28,9 +28,7 @@ Notes:
 - Re-run `jdtls-init` when workspace bundles change.
 - Use `--project-configurations-out` to write `projectConfigurations.json` next to the
   per-issue `-data` dir; JDT LS uses this to import projects after updates.
-- Files are written per bundle directory.
-- If you see `Generated .project/.classpath for 0 workspace bundles`, that means
-  0 new ones were created (existing files were already present).
+- Files are written per bundle directory and always overwrite existing metadata.
 - When using `--issue-dir`, bundle paths in `bundlesPerRepo` resolve relative to the issue directory
   even if they come from included YAML files (includes still resolve relative to their file).
 - `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations

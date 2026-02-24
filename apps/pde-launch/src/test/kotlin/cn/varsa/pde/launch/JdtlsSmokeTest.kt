@@ -295,7 +295,7 @@ class JdtlsSmokeTest {
         rootPath.resolve("org.knime.gateway.impl")
       )
     )
-    val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
+    val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString()))
     assertEquals(0, initExit)
 
     val implementationFile = findFile(rootPath, "LocalSpaceProvider.java")
@@ -339,7 +339,7 @@ class JdtlsSmokeTest {
         rootPath.resolve("com.knime.explorer.server")
       )
     )
-    val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString(), "--force"))
+    val initExit = JdtlsInitCommand.main(arrayOf("--config", targetSpec.configFile.toString()))
     assertEquals(0, initExit)
 
     val implementationFile = rootPath.resolve(
@@ -386,8 +386,7 @@ class JdtlsImportSmokeTest {
     val initExit = JdtlsInitCommand.main(
       arrayOf(
         "--config", configPath.toString(),
-        "--project-configurations-out", projectConfig.toString(),
-        "--force"
+        "--project-configurations-out", projectConfig.toString()
       )
     )
     assertEquals(0, initExit)

@@ -12,7 +12,6 @@ import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
-import kotlinx.cli.default
 import kotlinx.cli.optional
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -33,11 +32,6 @@ object JdtlsInitCommand {
       fullName = "issue-dir",
       description = "Issue directory containing config.yaml and repos"
     )
-    val force by parser.option(
-      ArgType.Boolean,
-      fullName = "force",
-      description = "Overwrite existing .project/.classpath"
-    ).default(false)
     val projectConfigurationsOut by parser.option(
       ArgType.String,
       fullName = "project-configurations-out",
@@ -72,7 +66,7 @@ object JdtlsInitCommand {
       val context = LaunchConfigLoader.load(configPath, workingDir)
       val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
       val targetIndex = resolveTargetIndex(context)
-      val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, force)
+      val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex)
       println("Generated .project/.classpath for ${result.written} workspace bundles.")
       val projectConfigurationsPath = projectConfigurationsOut?.let { resolvePath(context.baseDir, it) }
       if (projectConfigurationsPath != null) {
@@ -112,8 +106,7 @@ private data class WorkspaceFolder(
 private fun writeWorkspaceConfigs(
   context: LaunchConfigContext,
   workspaceDescriptors: List<WorkspaceBundleDescriptor>,
-  targetIndex: TargetPlatformIndex,
-  force: Boolean
+  targetIndex: TargetPlatformIndex
 ): WorkspaceConfigResult {
   val moduleDefinitions = WorkspaceModuleResolver.resolveDefinitions(context)
   if (moduleDefinitions.isEmpty()) {
@@ -151,15 +144,14 @@ private fun writeWorkspaceConfigs(
     )
 
     val projectFile = moduleDir.resolve(".project")
-    val projectWritten = writeProjectFile(moduleDir, bundleName, force)
+    val projectWritten = writeProjectFile(moduleDir, bundleName)
     val classpathWritten = writeClasspathFile(
       moduleDir,
       sourceRoots,
       resolvedEntries,
       outputPath,
       isTestBundle,
-      compliance,
-      force
+      compliance
     )
     if (projectWritten || classpathWritten) {
       written += 1
@@ -171,9 +163,8 @@ private fun writeWorkspaceConfigs(
   return WorkspaceConfigResult(written, projectConfigurations.toList())
 }
 
-private fun writeProjectFile(moduleDir: Path, projectName: String, force: Boolean): Boolean {
+private fun writeProjectFile(moduleDir: Path, projectName: String): Boolean {
   val projectFile = moduleDir.resolve(".project")
-  if (!force && Files.exists(projectFile)) return false
   val builder = StringBuilder()
   builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
   builder.appendLine("<projectDescription>")
@@ -209,11 +200,9 @@ private fun writeClasspathFile(
   resolvedEntries: List<ClasspathEntry>,
   outputPath: String,
   isTestBundle: Boolean,
-  compliance: String,
-  force: Boolean
+  compliance: String
 ): Boolean {
   val classpathFile = moduleDir.resolve(".classpath")
-  if (!force && Files.exists(classpathFile)) return false
   val builder = StringBuilder()
   builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
   builder.appendLine("<classpath>")
