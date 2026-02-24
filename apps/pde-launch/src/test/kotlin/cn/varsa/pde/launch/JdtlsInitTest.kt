@@ -394,6 +394,56 @@ class JdtlsInitTest {
   }
 
   @Test
+  fun `jdtls-init defaults projectConfigurations output when run from issue root`() {
+    val baseDir = Files.createTempDirectory("jdtls-init-default-project-config")
+    val repoDir = baseDir.resolve("knime-gateway")
+    val bundleDir = repoDir.resolve("org.knime.gateway.api")
+    val metaInf = bundleDir.resolve("META-INF")
+    Files.createDirectories(metaInf)
+    Files.createDirectories(bundleDir.resolve("src"))
+
+    Files.writeString(
+      metaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.knime.gateway.api
+        Bundle-Version: 1.0.0
+      """.trimIndent()
+    )
+
+    val configPath = baseDir.resolve("config.yaml")
+    Files.writeString(
+      configPath,
+      configText(
+        writeTargetConfig(baseDir),
+        listOf(
+          "bundlesPerRepo:",
+          "  - repo: knime-gateway",
+          "    bundles:",
+          "      - org.knime.gateway.api"
+        )
+      )
+    )
+
+    val exitCode = withWorkingDirectory(baseDir) {
+      JdtlsInitCommand.main(emptyArray())
+    }
+    assertEquals(0, exitCode)
+
+    val outputPath = baseDir.resolve(".jdtls-data").resolve("projectConfigurations.json")
+    assertTrue(Files.exists(outputPath))
+
+    val contents = Files.readString(outputPath)
+    val expectedRoot = baseDir.toAbsolutePath().normalize()
+    val expectedRootUri = expectedRoot.toUri().toString()
+    val expectedUri = bundleDir.resolve(".project").toAbsolutePath().normalize().toUri().toString()
+    assertTrue(contents.contains(expectedRoot.toString()))
+    assertTrue(contents.contains(expectedRootUri))
+    assertTrue(contents.contains(expectedUri))
+  }
+
+  @Test
   fun `jdtls-init fails without target config`() {
     val baseDir = Files.createTempDirectory("jdtls-init-missing-target")
     val repoDir = baseDir.resolve("knime-gateway")
@@ -493,6 +543,16 @@ class JdtlsInitTest {
     } finally {
       System.setErr(originalErr)
       capturing.flush()
+    }
+  }
+
+  private fun <T> withWorkingDirectory(dir: Path, block: () -> T): T {
+    val original = System.getProperty("user.dir")
+    System.setProperty("user.dir", dir.toAbsolutePath().normalize().toString())
+    return try {
+      block()
+    } finally {
+      System.setProperty("user.dir", original)
     }
   }
 }

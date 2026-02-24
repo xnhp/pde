@@ -13,7 +13,7 @@ Eglot can use those directly; no extra protocol integration is required.
 
 The binary lives at `apps/pde-launch/build/install/pde/bin/pde`.
 
-2. Run `jdtls-init` from the workspace root or point at a config:
+2. Run `jdtls-init` from the issue root or point at a config:
 
 ```bash
 pde jdtls-init --issue-dir /path/to/workspace
@@ -28,12 +28,16 @@ Notes:
 - Re-run `jdtls-init` when workspace bundles change.
 - Use `--project-configurations-out` to write `projectConfigurations.json` next to the
   per-issue `-data` dir; JDT LS uses this to import projects after updates.
+- When you run from an issue root that contains `config.yaml`, `jdtls-init` defaults
+  `--issue-dir` to the current directory and writes
+  `./.jdtls-data/projectConfigurations.json` if you omit `--project-configurations-out`.
 - Files are written per bundle directory and always overwrite existing metadata.
 - When using `--issue-dir`, bundle paths in `bundlesPerRepo` resolve relative to the issue directory
   even if they come from included YAML files (includes still resolve relative to their file).
 - `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations
   for editor integrations that need explicit workspace roots.
 - `jdtls-init` requires a `target` section in `config.yaml` with a resolved profile (set `target.profile-id` and `target.p2-path`, and run `pde target-install` as needed).
+- For issue-dir layouts the default profile path resolves from the issue root, e.g. `<issue>/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile`.
 
 ## Eglot setup
 
@@ -45,9 +49,9 @@ Add a JDT LS entry with a stable workspace data directory:
                `(java-mode . ("jdtls" "-data" ,(expand-file-name "~/.cache/jdtls/workspaces/your-workspace")))))
 ```
 
-If Eglot chooses the wrong project root, make sure it points at the workspace root
-(the directory with your config). In multi-repo setups, you may need to add a local
-project marker or register the root with `project.el`.
+If Eglot chooses the wrong project root, make sure it points at the issue root
+(the directory with your config). In multi-repo setups, add a local project marker
+and open files through that project.
 
 ### Issue-dir layouts and root selection
 
@@ -68,8 +72,9 @@ Options that work well:
   (add-to-list 'project-vc-extra-root-markers "launch.yaml"))
 ```
 
-Or, register the issue root once via `M-x project-remember-projects-under` and open
-files through that project so `project.el` returns the issue directory.
+If you use Spacemacs/Projectile, a `.projectile` file in the issue root is often
+enough to force the correct root. Alternatively, register the issue root once via
+`M-x project-remember-projects-under` and open files through that project.
 
 Optional per-workspace settings (via `.dir-locals.el`):
 
@@ -84,13 +89,14 @@ When you keep JDT LS state in a per-issue `-data` directory, also keep the
 `projectConfigurations.json` file there. After re-running `jdtls-init`, import
 the updated project list and refresh diagnostics.
 
-Example helper that reads the JSON payload and runs `java.project.import`:
+Minimal helper that reads `projectConfigurations.json` and runs `java.project.import`
+(run from a Java buffer so `eglot-current-server` is non-nil):
 
 ```elisp
 (defun pde-jdtls-import (config-file)
   "Import JDT LS projects from projectConfigurations.json."
   (interactive (list (expand-file-name "projectConfigurations.json"
-                                       "~/issues/td-101fe7/.jdtls-data")))
+                                       "~/issues/<issue>/.jdtls-data")))
   (let* ((json-object-type 'plist)
          (payload (json-read-file config-file)))
     (eglot-execute-command (eglot-current-server)
@@ -108,7 +114,7 @@ Workflow for per-issue data dirs:
 
 ```text
 1. pde jdtls-init --project-configurations-out <issue-root>/.jdtls-data/projectConfigurations.json
-2. M-x pde-jdtls-import
+2. M-x pde-jdtls-import (from a Java buffer in the issue project)
 3. M-x eglot-execute-command -> java.project.refreshDiagnostics
 ```
 

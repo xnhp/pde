@@ -43,9 +43,12 @@ object JdtlsInitCommand {
     ).optional()
     parser.parse(args)
 
+    val cwd = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
+    val cwdConfig = cwd.resolve("config.yaml")
+    val hasCwdConfig = Files.exists(cwdConfig) && Files.isRegularFile(cwdConfig)
     val issueDir = issueDirOpt
       ?.let { Paths.get(it).toAbsolutePath().normalize() }
-      ?: Paths.get("").toAbsolutePath().normalize()
+      ?: cwd
     val explicitConfig = resolveConfigPath(issueDir, configOpt, configPos)
     val configPath = explicitConfig ?: findConfigPath(issueDir)
     if (explicitConfig != null && (configPath == null || !Files.exists(configPath))) {
@@ -68,7 +71,12 @@ object JdtlsInitCommand {
       val targetIndex = resolveTargetIndex(context)
       val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex)
       println("Generated .project/.classpath for ${result.written} workspace bundles.")
-      val projectConfigurationsPath = projectConfigurationsOut?.let { resolvePath(context.baseDir, it) }
+      val projectConfigurationsOutValue = projectConfigurationsOut
+      val projectConfigurationsPath = when {
+        projectConfigurationsOutValue != null -> resolvePath(context.baseDir, projectConfigurationsOutValue)
+        issueDirOpt == null && hasCwdConfig -> issueDir.resolve(".jdtls-data").resolve("projectConfigurations.json")
+        else -> null
+      }
       if (projectConfigurationsPath != null) {
         val workspaceRoot = resolveWorkspaceRoot(context)
         val workspaceFolders = listOf(
