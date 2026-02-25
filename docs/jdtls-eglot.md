@@ -37,6 +37,17 @@ Notes:
 - For issue-dir layouts the default profile path resolves from the issue root,
   e.g. `<issue>/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile`.
 
+## Compilation outputs and `pde compile`
+
+`pde jdtls-init` only generates metadata; it does not compile. It sets the Java
+output directory based on `build.properties` (`output..`) or falls back to `bin`.
+JDT LS handles compilation and incremental updates after import, independent of
+`pde compile`.
+
+`pde compile` is a separate ECJ-based compile step that writes bundle output
+folders and can emit runtime layouts. There is no file-change watcher that
+triggers `pde compile` automatically.
+
 
 ### Verification
 
