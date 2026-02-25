@@ -181,6 +181,11 @@ Keys map to PDE/JUnit options:
 
 - If you want local sources and dev-classpath overrides, prefer the object form in `bundlesPerRepo`.
 - `classes` paths are relative to the bundle directory.
+- `classes` must point at the compiled output directory. If `build.properties`
+  sets `output..=bin/eclipse`, set `classes: [bin/eclipse]` so `pde run` finds
+  the compiled output.
+- `pde run` and `pde test` do not compile sources; they require `.class` files
+  in the configured class roots (from JDT LS or `pde compile`).
 - When in doubt, use absolute paths for `repo` and `target.*` paths.
 
 ## JDT LS workspace setup

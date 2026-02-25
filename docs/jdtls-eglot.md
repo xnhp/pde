@@ -48,6 +48,19 @@ JDT LS handles compilation and incremental updates after import, independent of
 folders and can emit runtime layouts. There is no file-change watcher that
 triggers `pde compile` automatically.
 
+### Using JDT LS outputs for `pde run`
+
+`pde run` expects compiled classes in the class roots configured for each
+workspace bundle. Those roots come from `bundlesPerRepo[].classes` (default
+`bin`) and must match the output directory that JDT LS is writing to. If a
+bundle uses `build.properties` with `output..=bin/eclipse` and your config
+still uses `classes: [bin]`, `pde run` will report missing classes.
+
+JDT LS only writes `.class` files. It does not copy non-Java resources into the
+output directory. This is fine for interactive `pde run` because the bundle
+location is still the module directory, but it is not a drop-in replacement for
+`pde compile` when generating runtime layouts or bundles.info.
+
 
 ### Verification
 
