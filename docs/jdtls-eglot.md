@@ -27,83 +27,18 @@ pde jdtls-init --issue-dir /path/to/workspace \
 
 Notes:
 - Re-run `jdtls-init` when workspace bundles change.
-- Use `--project-configurations-out` to write `projectConfigurations.json` next to the
-  per-issue `-data` dir; JDT LS uses this to import projects after updates.
 - When you run from an issue root that contains `config.yaml`, `jdtls-init` defaults
   `--issue-dir` to the current directory and writes
   `./.jdtls-data/projectConfigurations.json` if you omit `--project-configurations-out`.
 - Files are written per bundle directory and always overwrite existing metadata.
-- When using `--issue-dir`, bundle paths in `bundlesPerRepo` resolve relative to the issue directory
-  even if they come from included YAML files (includes still resolve relative to their file).
 - `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations
   for editor integrations that need explicit workspace roots.
-- `jdtls-init` requires a `target` section in `config.yaml` with a resolved profile (set `target.profile-id` and `target.p2-path`, and run `pde target-install` as needed).
-- For issue-dir layouts the default profile path resolves from the issue root, e.g. `<issue>/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile`.
+- `jdtls-init` requires a `target` section in `config.yaml` with a resolved profile.
+- For issue-dir layouts the default profile path resolves from the issue root,
+  e.g. `<issue>/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile`.
 
-## Eglot setup
 
-Add a JDT LS entry with a stable workspace data directory:
-
-```elisp
-(with-eval-after-load 'eglot
-  (add-to-list 'eglot-server-programs
-               `(java-mode . ("jdtls" "-data" ,(expand-file-name "~/.cache/jdtls/workspaces/your-workspace")))))
-```
-
-If Eglot chooses the wrong project root, make sure it points at the issue root
-(the directory with your config). In multi-repo setups, add a local project marker
-and open files through that project.
-
-### Issue-dir layouts and root selection
-
-When you use `pde jdtls-init --issue-dir`, the workspace root is the issue directory
-that contains `config.yaml` and the repo checkouts. JDT LS metadata is written under
-that issue root, and `bundlesPerRepo` paths resolve relative to it.
-
-Eglot often defaults to the repo root of the current file. In an issue-dir layout,
-override the project root so it matches the issue directory; otherwise JDT LS will
-miss the generated metadata or resolve the wrong bundle paths.
-
-Options that work well:
-
-```elisp
-(with-eval-after-load 'project
-  (add-to-list 'project-vc-extra-root-markers "config.yaml")
-  (add-to-list 'project-vc-extra-root-markers "pde.yaml")
-  (add-to-list 'project-vc-extra-root-markers "launch.yaml"))
-```
-
-If you use Spacemacs/Projectile, a `.projectile` file in the issue root is often
-enough to force the correct root. Alternatively, register the issue root once via
-`M-x project-remember-projects-under` and open files through that project.
-
-Optional per-workspace settings (via `.dir-locals.el`):
-
-```elisp
-((java-mode . ((eglot-workspace-configuration
-                . ((:java . (:configuration (:updateBuildConfiguration "automatic"))))))))
-```
-
-## Import with projectConfigurations.json
-
-When you keep JDT LS state in a per-issue `-data` directory, also keep the
-`projectConfigurations.json` file there. After re-running `jdtls-init`, import
-the updated project list and refresh diagnostics.
-
-Minimal helper that reads `projectConfigurations.json` and runs `java.project.import`
-(run from a Java buffer so `eglot-current-server` is non-nil):
-
-```elisp
-(defun pde-jdtls-import (config-file)
-  "Import JDT LS projects from projectConfigurations.json."
-  (interactive (list (expand-file-name "projectConfigurations.json"
-                                       "~/issues/<issue>/.jdtls-data")))
-  (let* ((json-object-type 'plist)
-         (payload (json-read-file config-file)))
-    (eglot-execute-command (eglot-current-server)
-                           "java.project.import"
-                           payload)))
-```
+### Verification
 
 Manual check with `jq` (JSON key is `.projectConfigurations`):
 
@@ -111,17 +46,57 @@ Manual check with `jq` (JSON key is `.projectConfigurations`):
 jq '.projectConfigurations | map(.projectName)' projectConfigurations.json
 ```
 
-Workflow for per-issue data dirs:
+## Eglot setup (Spacemacs + Projectile, issue-dir)
 
-```text
-1. pde jdtls-init (from the issue root; writes ./.jdtls-data/projectConfigurations.json)
-2. M-x pde-jdtls-import (from a Java buffer in the issue project)
-3. M-x eglot-execute-command -> java.project.refreshDiagnostics
+1) In the issue dir: `touch .projectile`.
+2) Generate metadata: `pde jdtls-init` (writes `./.jdtls-data/projectConfigurations.json`).
+3) Add this to `~/.spacemacs` to pass `projectConfigurations` at initialization:
+
+```elisp
+(defun ben/jdtls--issue-root ()
+  (or (locate-dominating-file default-directory ".jdtls-data")
+      (locate-dominating-file default-directory "config.yaml")
+      (when-let ((project (project-current nil)))
+        (project-root project))))
+
+(defun ben/jdtls--project-configurations (issue-root)
+  (let ((config-file (and issue-root
+                          (expand-file-name ".jdtls-data/projectConfigurations.json" issue-root))))
+    (when (and config-file (file-exists-p config-file))
+      (let ((json-object-type 'plist)
+            (json-array-type 'vector)
+            (json-key-type 'keyword))
+        (json-read-file config-file)))))
+
+(defun ben/jdtls--init-options ()
+  (let* ((issue-root (ben/jdtls--issue-root))
+         (data (and issue-root (ben/jdtls--project-configurations issue-root)))
+         (project-configurations (and data (plist-get data :projectConfigurations))))
+    (when project-configurations
+      (let ((root-paths (plist-get data :rootPaths)))
+        (append
+         (list :projectConfigurations project-configurations)
+         (when root-paths
+           (list :rootPaths root-paths)))))))
+
+(defun ben/jdtls--java-server-p (server)
+  (seq-some (lambda (pair)
+              (memq (car pair) '(java-mode java-ts-mode)))
+            (eglot--languages server)))
+
+(cl-defmethod eglot-initialization-options :around ((server eglot-lsp-server))
+  (let ((base (cl-call-next-method)))
+    (if (ben/jdtls--java-server-p server)
+        (or (ben/jdtls--init-options) base)
+      base)))
 ```
 
-## Slow real-workspace smoke tests
+4) Open a Java file under the issue root, then run `M-x eglot-reconnect`.
+5) Verify import:
 
-This section moved to `docs/jdtls-smoke-tests.md`.
+```elisp
+(eglot-execute-command (eglot-current-server) "java.project.getAll" '())
+```
 
 
 ## Common JDT LS commands
