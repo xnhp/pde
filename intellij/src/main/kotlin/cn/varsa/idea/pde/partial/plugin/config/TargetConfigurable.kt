@@ -144,6 +144,10 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
   )
 
   // Advanced tab components
+  private val autoResolveTargetOnStartup = JBCheckBox(message("config.advanced.autoResolveOnStartup"))
+  private val autoResolveTargetOnStartupDescriptionLabel = JBLabel().apply {
+    text = "<html><div style='width:500px;'>${message("config.advanced.autoResolveOnStartup.description")}</div></html>"
+  }
   private val whitelistModel = DefaultListModel<String>()
   private val whitelistList = JBList(whitelistModel)
 
@@ -251,6 +255,12 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
       text = "<html><div style='width:500px;'>${message("config.advanced.whitelist.description")}</div></html>"
     }
 
+    val advancedHeaderPanel = VerticalBox().apply {
+      add(autoResolveTargetOnStartup)
+      add(autoResolveTargetOnStartupDescriptionLabel)
+      add(whitelistDescriptionLabel)
+    }
+
     whitelistList.apply {
       setEmptyText(message("config.advanced.whitelist.empty"))
       cellRenderer = ColoredListCellRendererWithSpeedSearch<String> { value ->
@@ -273,7 +283,7 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
         message("config.advanced.whitelist.borderHint"), false, JBUI.insetsTop(8)
       ).setShowLine(true)
     ).addToTop(
-      whitelistDescriptionLabel
+      advancedHeaderPanel
     ).addToCenter(
       ToolbarDecorator.createDecorator(whitelistList)
         .setAddAction { addWhitelistItem() }
@@ -321,6 +331,9 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     if (currentWhitelist != preferenceService.libraryWhitelist) {
       return true
     }
+    if (autoResolveTargetOnStartup.isSelected != preferenceService.autoResolveTargetOnStartup) {
+      return true
+    }
 
     ShadowLocationRoot.locations.any { it.isModify }.ifTrue { return true }
 
@@ -344,6 +357,7 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     // Save whitelist preferences
     val preferenceService = PreferenceService.getInstance(project)
     preferenceService.libraryWhitelist = whitelistModel.elements().toList().toSet()
+    preferenceService.autoResolveTargetOnStartup = autoResolveTargetOnStartup.isSelected
 
     ShadowLocationRoot.locations.forEach(ShadowLocation::apply)
 
@@ -374,6 +388,7 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     val preferenceService = PreferenceService.getInstance(project)
     whitelistModel.clear()
     preferenceService.libraryWhitelist.forEach { whitelistModel.addElement(it) }
+    autoResolveTargetOnStartup.isSelected = preferenceService.autoResolveTargetOnStartup
 
     updateComboBox()
     reloadContentList()

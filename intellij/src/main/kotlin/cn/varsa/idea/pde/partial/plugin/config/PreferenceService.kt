@@ -18,6 +18,7 @@ class PreferenceService : PersistentStateComponent<PreferenceService> {
         "org.eclipse.io",
         "org.eclipse.swt"
     )
+    var autoResolveTargetOnStartup: Boolean = true
 
     override fun getState(): PreferenceService = this
 
