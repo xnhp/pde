@@ -26,6 +26,7 @@
     <postStartupActivity order="last" implementation="cn.varsa.idea.pde.partial.plugin.startup.PostStartupActivity"/>
 
     <facetType implementation="cn.varsa.idea.pde.partial.plugin.facet.PDEFacetType"/>
+    <facetType implementation="cn.varsa.idea.pde.partial.plugin.facet.PDELegacyFacetType"/>
     <frameworkSupport implementation="cn.varsa.idea.pde.partial.plugin.framework.TcRacFrameworkSupportProvider"/>
     <framework.detector implementation="cn.varsa.idea.pde.partial.plugin.framework.TcRacFrameworkDetector"/>
 

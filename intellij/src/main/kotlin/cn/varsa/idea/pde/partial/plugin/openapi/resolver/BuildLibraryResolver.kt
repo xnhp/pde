@@ -6,6 +6,6 @@ import com.intellij.openapi.module.*
 interface BuildLibraryResolver : LibraryResolver<Module> {
   companion object EPs {
     val EP_NAME =
-      ExtensionPointName.create<BuildLibraryResolver>("cn.varsa.idea.eclipse.pde.partial.buildLibraryResolver")
+      ExtensionPointName.create<BuildLibraryResolver>("cn.varsa.idea.pde.tools.buildLibraryResolver")
   }
 }

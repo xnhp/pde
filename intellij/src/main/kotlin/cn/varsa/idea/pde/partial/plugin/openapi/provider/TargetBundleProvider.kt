@@ -6,7 +6,7 @@ import java.io.*
 interface TargetBundleProvider {
   companion object EPs {
     val EP_NAME =
-      ExtensionPointName.create<TargetBundleProvider>("cn.varsa.idea.eclipse.pde.partial.targetBundlesProvider")
+      ExtensionPointName.create<TargetBundleProvider>("cn.varsa.idea.pde.tools.targetBundlesProvider")
   }
 
   val type: String

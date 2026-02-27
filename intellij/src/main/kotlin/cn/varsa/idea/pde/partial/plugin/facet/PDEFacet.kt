@@ -16,7 +16,9 @@ class PDEFacet(
   underlyingFacet: Facet<*>?
 ) : Facet<PDEFacetConfiguration>(facetType, module, name, configuration, underlyingFacet) {
   companion object {
-    fun getInstance(module: Module): PDEFacet? = FacetManager.getInstance(module).getFacetByType(PDEFacetType.id)
+    fun getInstance(module: Module): PDEFacet? =
+      FacetManager.getInstance(module).getFacetByType(PDEFacetType.id)
+        ?: FacetManager.getInstance(module).getFacetByType(PDELegacyFacetType.id)
   }
 
   override fun initFacet() {

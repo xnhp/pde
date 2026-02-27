@@ -6,6 +6,6 @@ import com.intellij.openapi.module.*
 interface ManifestLibraryResolver : LibraryResolver<Module> {
   companion object EPs {
     val EP_NAME =
-      ExtensionPointName.create<ManifestLibraryResolver>("cn.varsa.idea.eclipse.pde.partial.manifestLibraryResolver")
+      ExtensionPointName.create<ManifestLibraryResolver>("cn.varsa.idea.pde.tools.manifestLibraryResolver")
   }
 }

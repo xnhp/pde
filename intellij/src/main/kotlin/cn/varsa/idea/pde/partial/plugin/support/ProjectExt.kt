@@ -15,7 +15,11 @@ import com.intellij.openapi.roots.libraries.*
 
 fun Project.allPDEModules(vararg exclude: Module? = emptyArray()): Set<Module> =
   modules.filterNot(exclude::contains).filter { it.isLoaded }
-    .filter { module -> FacetManager.getInstance(module).allFacets.any { it.typeId == PDEFacetType.id } }.toSet()
+    .filter { module ->
+      FacetManager.getInstance(module).allFacets.any {
+        it.typeId == PDEFacetType.id || it.typeId == PDELegacyFacetType.id
+      }
+    }.toSet()
 
 fun Project.allPDEModulesSymbolicName(
   vararg exclude: Module? = emptyArray(), additionalFilter: (BundleManifest) -> Boolean = { true }
