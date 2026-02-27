@@ -70,6 +70,7 @@ object JdtlsInitCommand {
       val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
       val targetIndex = resolveTargetIndex(context)
       val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex)
+      touchProjectile(issueDir)
       println("Generated .project/.classpath for ${result.written} workspace bundles.")
       val projectConfigurationsOutValue = projectConfigurationsOut
       val projectConfigurationsPath = when {
@@ -110,6 +111,13 @@ private data class WorkspaceFolder(
   val uri: String,
   val name: String
 )
+
+private fun touchProjectile(issueDir: Path) {
+  val projectile = issueDir.resolve(".projectile")
+  if (Files.notExists(projectile)) {
+    Files.createFile(projectile)
+  }
+}
 
 private fun writeWorkspaceConfigs(
   context: LaunchConfigContext,

@@ -67,6 +67,7 @@ class JdtlsInitTest {
     val classpathFile = bundleDir.resolve(".classpath")
     assertTrue(Files.exists(projectFile))
     assertTrue(Files.exists(classpathFile))
+    assertTrue(Files.exists(issueDir.resolve(".projectile")))
 
     val projectContents = Files.readString(projectFile)
     assertTrue(projectContents.contains("org.eclipse.pde.PluginNature"))
@@ -433,6 +434,7 @@ class JdtlsInitTest {
 
     val outputPath = baseDir.resolve(".jdtls-data").resolve("projectConfigurations.json")
     assertTrue(Files.exists(outputPath))
+    assertTrue(Files.exists(baseDir.resolve(".projectile")))
 
     val contents = Files.readString(outputPath)
     val expectedRoot = baseDir.toAbsolutePath().normalize()
