@@ -30,8 +30,8 @@ fun main(args: Array<String>) {
     formatMain(args.drop(1).toTypedArray())
     return
   }
-  if (args.isNotEmpty() && args[0] == "clone") {
-    val exitCode = CloneCommand.main(args.drop(1).toTypedArray())
+  if (args.isNotEmpty() && args[0] == "worktrees-init") {
+    val exitCode = WorktreesInitCommand.main(args.drop(1).toTypedArray())
     exitProcess(exitCode)
   }
   if (args.isNotEmpty() && args[0] == "fetch_jars") {
@@ -64,7 +64,7 @@ private fun printHelp() {
   println("  pde <command> [options]")
   println()
   println("Commands:")
-  println("  clone          ${maturityTag("usable")} Clone repos and sparse-checkout bundles")
+  println("  worktrees-init ${maturityTag("usable")} Init worktrees and sparse-checkout bundles")
   println("  fetch_jars     ${maturityTag("WIP")} Run mvn clean package in lib/fetch_jars")
   println("  codegen        ${maturityTag("WIP")} Run gateway code generation")
   println("  issue-new      ${maturityTag("WIP")} Create issue config from template")

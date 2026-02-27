@@ -56,18 +56,18 @@ class PdeCliTest {
   }
 
   @Test
-  fun `clone subcommand is routed through pde launcher`() {
+  fun `worktrees-init subcommand is routed through pde launcher`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("clone", "--help"))
+      main(arrayOf("worktrees-init", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde clone"))
+    assertTrue(output.contains("pde worktrees-init"))
   }
 
   @Test

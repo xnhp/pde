@@ -23,6 +23,7 @@ import kotlin.io.path.inputStream
 data class LaunchConfig(
   val issueId: String? = null,
   val branch: String? = null,
+  val baseReposPath: String? = null,
   val product: String? = null,
   val application: String? = null,
   val productFiles: List<String> = emptyList(),

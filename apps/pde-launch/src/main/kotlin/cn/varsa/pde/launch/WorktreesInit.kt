@@ -12,9 +12,9 @@ import java.nio.file.Paths
 
 private class CliException(message: String) : RuntimeException(message)
 
-object CloneCommand {
+object WorktreesInitCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde clone ${maturityTag("usable")}")
+    val parser = ArgParser("pde worktrees-init ${maturityTag("usable")}")
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",
@@ -35,7 +35,7 @@ object CloneCommand {
 
     return try {
       val context = LaunchConfigLoader.load(configPath, workingDir)
-      cloneFromConfig(context)
+      worktreesInitFromConfig(context)
       0
     } catch (ex: CliException) {
       System.err.println(ex.message)
@@ -44,101 +44,126 @@ object CloneCommand {
   }
 }
 
-private fun cloneFromConfig(context: LaunchConfigContext) {
+private fun worktreesInitFromConfig(context: LaunchConfigContext) {
   val baseDir = context.baseDir
   val config = context.config
   if (config.bundlesPerRepo.isEmpty()) {
     fail("No bundlesPerRepo entries found in ${context.file.fileName}.")
   }
-  val configuredBranch = config.branch?.trim()?.takeIf { it.isNotBlank() }
+  val configuredBranch = requireNonBlank(config.branch, "branch is required for worktrees-init.")
+  val baseReposPath = requireNonBlank(config.baseReposPath, "baseReposPath is required for worktrees-init.")
+  val baseReposDir = resolvePath(baseDir, baseReposPath)
+  if (!Files.exists(baseReposDir)) {
+    fail("Base repos path does not exist: $baseReposDir")
+  }
+  if (!Files.isDirectory(baseReposDir)) {
+    fail("Base repos path is not a directory: $baseReposDir")
+  }
   val nonPdeBundles = config.nonPdeBundles.mapNotNull { it.trim().takeIf { it.isNotBlank() } }
 
   config.bundlesPerRepo.forEach { entry ->
     val entryNonPdeBundles = entry.nonPdeBundles.mapNotNull { it.trim().takeIf { it.isNotBlank() } }
-    cloneRepo(entry, baseDir, configuredBranch, nonPdeBundles + entryNonPdeBundles)
+    worktreeRepo(entry, baseDir, baseReposDir, configuredBranch, nonPdeBundles + entryNonPdeBundles)
   }
 }
 
-private fun cloneRepo(
+private fun worktreeRepo(
   entry: RepoBundles,
   baseDir: Path,
-  configuredBranch: String?,
+  baseReposDir: Path,
+  configuredBranch: String,
   nonPdeBundles: List<String>
 ) {
   val repoPath = Paths.get(entry.repo)
-  val repoDir = if (repoPath.isAbsolute) repoPath else baseDir.resolve(repoPath).normalize()
-  val repoName = repoDir.fileName?.toString()?.takeIf { it.isNotBlank() }
+  val repoName = repoPath.fileName?.toString()?.takeIf { it.isNotBlank() }
     ?: requireNonBlank(entry.repo, "Repo name missing for entry.")
+  val repoDir = baseReposDir.resolve(repoName).normalize()
+  val worktreeDir = baseDir.resolve(repoName).normalize()
   val repoUrl = "git@github.com:knime/$repoName.git"
-  val repoExisted = Files.exists(repoDir)
+  if (!Files.exists(repoDir)) {
+    fail("Base repo not found: $repoDir")
+  }
+  if (!Files.isDirectory(repoDir)) {
+    fail("Base repo path exists but is not a directory: $repoDir")
+  }
+  if (Files.exists(worktreeDir)) {
+    fail("Worktree path already exists: $worktreeDir")
+  }
 
-  if (repoExisted) {
-    if (!Files.isDirectory(repoDir)) {
-      fail("Repo path exists but is not a directory: $repoDir")
-    }
-    ensureGitRepo(baseDir, repoDir, repoName)
-    val originUrl = runGitCapture(
+  ensureGitRepo(baseDir, repoDir, repoName)
+  val originUrl = runGitCapture(
+    baseDir,
+    listOf("-C", repoDir.toString(), "remote", "get-url", "origin"),
+    "Failed to read origin URL for $repoName"
+  )
+  if (originUrl != repoUrl) {
+    fail("Origin URL mismatch for $repoName: expected $repoUrl, got $originUrl")
+  }
+  runGitWithOutput(
+    baseDir,
+    listOf("-C", repoDir.toString(), "fetch", "--prune"),
+    "Git fetch failed for $repoName"
+  )
+
+  val localBranches = parseBranchList(
+    runGitCapture(
       baseDir,
-      listOf("-C", repoDir.toString(), "remote", "get-url", "origin"),
-      "Failed to read origin URL for $repoName"
+      listOf("-C", repoDir.toString(), "branch", "--list"),
+      "Failed to list local branches for $repoName"
     )
-    if (originUrl != repoUrl) {
-      fail("Origin URL mismatch for $repoName: expected $repoUrl, got $originUrl")
-    }
-    runGitWithOutput(
+  )
+  val remoteBranches = parseBranchList(
+    runGitCapture(
       baseDir,
-      listOf("-C", repoDir.toString(), "fetch", "--prune"),
-      "Git fetch failed for $repoName"
+      listOf("-C", repoDir.toString(), "branch", "-r", "--list"),
+      "Failed to list remote branches for $repoName"
     )
-  } else {
-    runGitWithOutput(
+  ).filterNot { it == "origin/HEAD" }
+
+  when (val checkout = selectCheckoutForConfiguredBranch(configuredBranch, localBranches, remoteBranches)) {
+    is ConfiguredBranchCheckout.Local -> runGit(
       baseDir,
-      listOf("clone", "--filter=blob:none", "--no-checkout", repoUrl, repoDir.toString()),
-      "Git clone failed for $repoName"
+      listOf("-C", repoDir.toString(), "worktree", "add", worktreeDir.toString(), checkout.branch),
+      "Failed to create worktree for $repoName"
+    )
+    is ConfiguredBranchCheckout.Remote -> runGit(
+      baseDir,
+      listOf("-C", repoDir.toString(), "worktree", "add", "-b", checkout.localBranch, worktreeDir.toString(), checkout.remoteBranch),
+      "Failed to create worktree for $repoName"
+    )
+    is ConfiguredBranchCheckout.Create -> runGit(
+      baseDir,
+      listOf("-C", repoDir.toString(), "worktree", "add", "-b", checkout.branch, worktreeDir.toString(), "origin/HEAD"),
+      "Failed to create worktree for $repoName"
     )
   }
 
   runGit(
     baseDir,
-    listOf("-C", repoDir.toString(), "sparse-checkout", "init", "--cone"),
+    listOf("-C", worktreeDir.toString(), "sparse-checkout", "init", "--cone"),
     "Failed to init sparse-checkout for $repoName"
   )
 
   val bundleNames = entry.bundles.mapNotNull { it.name.trim().takeIf { name -> name.isNotBlank() } }.distinct()
-  var desiredBundles = (bundleNames + selectExistingNonPdeBundles(baseDir, repoDir, nonPdeBundles)).distinct()
+  var desiredBundles = (bundleNames + selectExistingNonPdeBundles(baseDir, worktreeDir, nonPdeBundles)).distinct()
   if (desiredBundles.isEmpty()) {
     fail("No bundles listed for repo $repoName.")
   }
 
-  updateSparseCheckout(baseDir, repoDir, desiredBundles, repoName)
-  runGit(baseDir, listOf("-C", repoDir.toString(), "checkout"), "Failed to checkout $repoName")
+  updateSparseCheckout(baseDir, worktreeDir, desiredBundles, repoName)
+  runGit(baseDir, listOf("-C", worktreeDir.toString(), "checkout"), "Failed to checkout $repoName")
 
-  if (configuredBranch != null) {
-    checkoutBranch(baseDir, repoDir, repoName, configuredBranch)
-    val refreshedBundles = (bundleNames + selectExistingNonPdeBundles(baseDir, repoDir, nonPdeBundles)).distinct()
-    if (refreshedBundles.isNotEmpty()) {
-      val missing = refreshedBundles.filterNot { desiredBundles.contains(it) }
-      if (missing.isNotEmpty()) {
-        updateSparseCheckout(baseDir, repoDir, refreshedBundles, repoName)
-        runGit(baseDir, listOf("-C", repoDir.toString(), "checkout"), "Failed to checkout $repoName")
-      }
-      desiredBundles = refreshedBundles
+  val refreshedBundles = (bundleNames + selectExistingNonPdeBundles(baseDir, worktreeDir, nonPdeBundles)).distinct()
+  if (refreshedBundles.isNotEmpty()) {
+    val missing = refreshedBundles.filterNot { desiredBundles.contains(it) }
+    if (missing.isNotEmpty()) {
+      updateSparseCheckout(baseDir, worktreeDir, refreshedBundles, repoName)
+      runGit(baseDir, listOf("-C", worktreeDir.toString(), "checkout"), "Failed to checkout $repoName")
     }
+    desiredBundles = refreshedBundles
   }
 
-  if (repoExisted) {
-    if (hasUpstream(baseDir, repoDir)) {
-      runGitWithOutput(
-        baseDir,
-        listOf("-C", repoDir.toString(), "pull", "--ff-only"),
-        "Git pull failed for $repoName"
-      )
-    } else {
-      System.err.println("Skipping git pull for $repoName: current branch has no upstream.")
-    }
-  }
-
-  val missingBundles = desiredBundles.filterNot { Files.isDirectory(repoDir.resolve(it)) }
+  val missingBundles = desiredBundles.filterNot { Files.isDirectory(worktreeDir.resolve(it)) }
   if (missingBundles.isNotEmpty()) {
     fail("Missing bundle directories in $repoName: ${missingBundles.joinToString(", ")}")
   }
@@ -171,41 +196,6 @@ private fun updateSparseCheckout(
       workingDir,
       listOf("-C", repoDir.toString(), "sparse-checkout", "add", "--") + missing,
       "Failed to update sparse checkout for $repoName"
-    )
-  }
-}
-
-private fun checkoutBranch(workingDir: Path, repoDir: Path, repoName: String, branch: String) {
-  val localBranches = parseBranchList(
-    runGitCapture(
-      workingDir,
-      listOf("-C", repoDir.toString(), "branch", "--list"),
-      "Failed to list local branches for $repoName"
-    )
-  )
-  val remoteBranches = parseBranchList(
-    runGitCapture(
-      workingDir,
-      listOf("-C", repoDir.toString(), "branch", "-r", "--list"),
-      "Failed to list remote branches for $repoName"
-    )
-  ).filterNot { it == "origin/HEAD" }
-
-  when (val checkout = selectCheckoutForConfiguredBranch(branch, localBranches, remoteBranches)) {
-    is ConfiguredBranchCheckout.Local -> runGit(
-      workingDir,
-      listOf("-C", repoDir.toString(), "checkout", checkout.branch),
-      "Failed to checkout local branch ${checkout.branch} for $repoName"
-    )
-    is ConfiguredBranchCheckout.Remote -> runGit(
-      workingDir,
-      listOf("-C", repoDir.toString(), "checkout", "-t", checkout.branch),
-      "Failed to checkout remote branch ${checkout.branch} for $repoName"
-    )
-    is ConfiguredBranchCheckout.Create -> runGit(
-      workingDir,
-      listOf("-C", repoDir.toString(), "checkout", "--no-track", "-b", checkout.branch, "origin/HEAD"),
-      "Failed to create branch ${checkout.branch} for $repoName"
     )
   }
 }
@@ -254,16 +244,6 @@ private fun runGitCapture(workingDir: Path, args: List<String>, errorMessage: St
     fail("$errorMessage.$details")
   }
   return output
-}
-
-private fun hasUpstream(workingDir: Path, repoDir: Path): Boolean {
-  val command = listOf("git", "-C", repoDir.toString(), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-  val process = ProcessBuilder(command)
-    .directory(workingDir.toFile())
-    .redirectErrorStream(true)
-    .start()
-  process.inputStream.bufferedReader().readText()
-  return process.waitFor() == 0
 }
 
 private fun parseSparseCheckoutList(output: String): List<String> = output
@@ -332,7 +312,7 @@ private fun selectCheckoutForConfiguredBranch(
   if (local != null) return ConfiguredBranchCheckout.Local(local)
   val remoteName = toOriginBranch(normalized)
   val remote = remoteBranches.firstOrNull { it == remoteName }
-  if (remote != null) return ConfiguredBranchCheckout.Remote(remote)
+  if (remote != null) return ConfiguredBranchCheckout.Remote(remote, normalized)
   return ConfiguredBranchCheckout.Create(normalized)
 }
 
@@ -344,7 +324,7 @@ private fun toOriginBranch(branch: String): String {
 
 private sealed class ConfiguredBranchCheckout {
   data class Local(val branch: String) : ConfiguredBranchCheckout()
-  data class Remote(val branch: String) : ConfiguredBranchCheckout()
+  data class Remote(val remoteBranch: String, val localBranch: String) : ConfiguredBranchCheckout()
   data class Create(val branch: String) : ConfiguredBranchCheckout()
 }
 

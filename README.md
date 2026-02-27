@@ -17,7 +17,7 @@ This projects provides a CLI to facilitate the basic steps for working on PDE pr
 In addition, the CLI offers convenience tools to keep the workspace and
 development setup for different To-Dos (issues) completely isolated.
 
-- `pde clone` -- sparse-checkout bundles from repos
+- `pde worktrees-init` -- create worktrees and sparse-checkout bundles
 - `pde issue-new` -- auto-generate workspace config
 - `pde foreach-repo` -- run shell command in each configured repo
 - `pde ij-init` -- auto-intialise IntelliJ project configuration

@@ -20,7 +20,11 @@ Merge rules:
 Optional string used for labeling/logging.
 
 ### branch
-Optional string used by `pde clone` to select a git branch for each repo (accepts `branch` or `origin/branch`).
+Optional string used by `pde worktrees-init` to select a git branch for each repo (accepts `branch` or `origin/branch`).
+
+### baseReposPath
+Required string for `pde worktrees-init` that points at the base git clones. Worktrees are created from
+`<baseReposPath>/<repo>` into the issue directory.
 
 ### branchName
 Optional string used for labeling/logging.
@@ -116,7 +120,7 @@ bundlesPerRepo:
 - `bundles`: list of bundles. Each entry can be:
   - string: bundle name (uses default class root `bin`)
   - object: `{ name, classes }` where `classes` overrides the dev class roots.
-- `nonPdeBundles`: optional list of bundle directories that should be treated as non-PDE (used by `pde clone` / `pde fetch_jars`; ignored for workspace module resolution).
+- `nonPdeBundles`: optional list of bundle directories that should be treated as non-PDE (used by `pde worktrees-init` / `pde fetch_jars`; ignored for workspace module resolution).
 
 Use the object form when the bundle’s resources live outside the default `bin` (e.g. `org.knime.core` needs `bin/eclipse` for `log4j` resources).
 
