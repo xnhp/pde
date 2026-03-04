@@ -48,6 +48,7 @@ import kotlinx.cli.optional
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.io.File
+import java.net.URI
 import java.net.SocketTimeoutException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -70,6 +71,8 @@ import cn.varsa.pde.resolver.launch.LaunchContext
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val PDE_API_ANALYZER_APPLICATION = "org.eclipse.pde.api.tools.apiAnalyzer"
 internal const val KNIME_API_ANALYZER_APPLICATION = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"
+internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
+internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-resolver-cli")
@@ -175,6 +178,13 @@ internal val apiAnalyzeOptionsRequiringValue = setOf(
   "--dependency-list",
   "--baseline-list",
   "--application"
+)
+internal val targetMirrorOptionsRequiringValue = setOf(
+  "--config",
+  "--log",
+  "--destination",
+  "--write-mode",
+  "-d"
 )
 
 private fun looksLikeYamlFile(arg: String): Boolean {
@@ -282,6 +292,10 @@ private fun buildCompilePlanForWarning(
 fun launchMain(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "target-install") {
     val exit = targetMain(args.drop(1).toTypedArray())
+    exitProcess(exit)
+  }
+  if (args.isNotEmpty() && args[0] == "target-mirror") {
+    val exit = targetMirrorMain(args.drop(1).toTypedArray())
     exitProcess(exit)
   }
   if (args.isNotEmpty() && args[0] == "test") {
@@ -1629,6 +1643,259 @@ internal fun targetMain(args: Array<String>): Int {
     .waitFor()
   if (exit != 0) error("Target installer exited with code $exit")
   return 0
+}
+
+internal fun targetMirrorMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetMirrorOptionsRequiringValue)
+  val parser = ArgParser("pde target-mirror ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  val destinationOpt by parser.option(
+    ArgType.String,
+    fullName = "destination",
+    shortName = "d",
+    description = "Destination repository path or URI"
+  )
+  val writeModeOpt by parser.option(
+    ArgType.String,
+    fullName = "write-mode",
+    description = "Write mode (clean)"
+  )
+  val metadataOnly by parser.option(
+    ArgType.Boolean,
+    fullName = "metadata-only",
+    description = "Mirror metadata only"
+  ).default(false)
+  val artifactsOnly by parser.option(
+    ArgType.Boolean,
+    fullName = "artifacts-only",
+    description = "Mirror artifacts only"
+  ).default(false)
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Logging level (error|warn|info|debug|trace)"
+  )
+  val logFileOpt by parser.option(
+    ArgType.String,
+    fullName = "log",
+    description = "Write application stdout/stderr to log file"
+  )
+  val verbose by parser.option(
+    ArgType.Boolean,
+    fullName = "verbose",
+    shortName = "v",
+    description = "Enable INFO logging"
+  ).default(false)
+  val debug by parser.option(
+    ArgType.Boolean,
+    fullName = "debug",
+    description = "Enable DEBUG logging"
+  ).default(false)
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
+
+  val configPosValue = configPos
+  val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory")
+    return 2
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
+  }
+
+  val issueContext = LaunchConfigLoader.load(discoveredConfig)
+  val targetConfig = issueContext.config.target
+  if (targetConfig == null) {
+    logger.severe(
+      "Missing target config in ${issueContext.file}. " +
+        "Add a target section to config.yaml and see docs/config-yaml.md#target."
+    )
+    return 2
+  }
+
+  if (metadataOnly && artifactsOnly) {
+    logger.severe("Cannot use --metadata-only and --artifacts-only together")
+    return 2
+  }
+
+  val targetDefinition = resolveTargetDefinition(issueContext)
+  if (targetDefinition == null) {
+    logger.severe("Missing target.definition (or a discoverable .target) in ${issueContext.file}")
+    return 2
+  }
+  if (!Files.exists(targetDefinition)) {
+    logger.severe("Target definition does not exist: ${targetDefinition.toAbsolutePath().normalize()}")
+    return 2
+  }
+
+  val repositories = TargetFileParser.parseContents(targetDefinition).repositories
+    .distinct()
+  if (repositories.isEmpty()) {
+    logger.severe("Target definition does not list any repositories: ${targetDefinition.toAbsolutePath().normalize()}")
+    return 2
+  }
+
+  val mirrorConfig = targetConfig.mirror
+  val destinationValue = destinationOpt ?: mirrorConfig?.destination
+  if (destinationValue.isNullOrBlank()) {
+    logger.severe("Missing mirror destination (set target.mirror.destination or pass --destination)")
+    return 2
+  }
+  val destination = resolveMirrorDestination(issueContext.baseDir, destinationValue)
+
+  val includeMetadata = when {
+    metadataOnly -> true
+    artifactsOnly -> false
+    mirrorConfig?.includeMetadata != null -> mirrorConfig.includeMetadata
+    else -> true
+  }
+  val includeArtifacts = when {
+    artifactsOnly -> true
+    metadataOnly -> false
+    mirrorConfig?.includeArtifacts != null -> mirrorConfig.includeArtifacts
+    else -> true
+  }
+  if (!includeMetadata && !includeArtifacts) {
+    logger.severe("Nothing to mirror: both metadata and artifacts are disabled")
+    return 2
+  }
+
+  val writeMode = resolveMirrorWriteMode(writeModeOpt ?: mirrorConfig?.writeMode)
+
+  val installPath = targetConfig.install?.let { issueContext.baseDir.resolve(it).normalize() }
+  val installerPath = targetConfig.installer?.let { issueContext.baseDir.resolve(it).normalize() }
+  val launcherExecutable = resolveP2DirectorLauncher(installPath, installerPath, targetDefinition)
+  if (launcherExecutable == null) {
+    logger.severe("Missing p2 director launcher under target.install or target.installer.")
+    return 2
+  }
+
+  val logFileBase = logFileOpt?.let { Paths.get(it) }
+  if (includeMetadata) {
+    val exit = mirrorRepositories(
+      launcherExecutable = launcherExecutable,
+      applicationId = P2_METADATA_MIRROR_APPLICATION,
+      repositories = repositories,
+      destination = destination,
+      writeMode = writeMode,
+      logFileBase = logFileBase,
+      labelPrefix = "metadata"
+    )
+    if (exit != 0) return exit
+  }
+  if (includeArtifacts) {
+    val exit = mirrorRepositories(
+      launcherExecutable = launcherExecutable,
+      applicationId = P2_ARTIFACT_MIRROR_APPLICATION,
+      repositories = repositories,
+      destination = destination,
+      writeMode = writeMode,
+      logFileBase = logFileBase,
+      labelPrefix = "artifacts"
+    )
+    if (exit != 0) return exit
+  }
+  return 0
+}
+
+internal fun resolveMirrorDestination(baseDir: Path, value: String): URI {
+  val trimmed = value.trim()
+  val uri = runCatching { URI(trimmed) }.getOrNull()
+  if (uri != null && uri.scheme != null) {
+    return uri
+  }
+  val path = baseDir.resolve(trimmed).normalize()
+  return path.toUri()
+}
+
+internal fun resolveMirrorWriteMode(value: String?): String? {
+  val normalized = value?.trim()?.lowercase(Locale.ROOT)
+  if (normalized.isNullOrBlank()) return null
+  if (normalized != "clean") {
+    logger.warning("Unsupported mirror write-mode '$value' (only 'clean' is supported); ignoring.")
+    return null
+  }
+  return "clean"
+}
+
+private fun mirrorRepositories(
+  launcherExecutable: Path,
+  applicationId: String,
+  repositories: List<URI>,
+  destination: URI,
+  writeMode: String?,
+  logFileBase: Path?,
+  labelPrefix: String
+): Int {
+  repositories.forEachIndexed { index, source ->
+    val effectiveWriteMode = if (writeMode == "clean" && index == 0) "clean" else null
+    val logFile = logFileBase?.let { deriveMirrorLogFile(it, "$labelPrefix-${index + 1}") }
+    val exit = runMirrorApplication(
+      launcherExecutable = launcherExecutable,
+      applicationId = applicationId,
+      source = source,
+      destination = destination,
+      writeMode = effectiveWriteMode,
+      logFile = logFile
+    )
+    if (exit != 0) return exit
+  }
+  return 0
+}
+
+internal fun deriveMirrorLogFile(base: Path, label: String): Path {
+  val fileName = base.fileName.toString()
+  val dot = fileName.lastIndexOf('.')
+  val suffix = label.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+  val derived = if (dot > 0) {
+    fileName.substring(0, dot) + "-" + suffix + fileName.substring(dot)
+  } else {
+    fileName + "-" + suffix
+  }
+  return base.parent?.resolve(derived) ?: Paths.get(derived)
+}
+
+private fun runMirrorApplication(
+  launcherExecutable: Path,
+  applicationId: String,
+  source: URI,
+  destination: URI,
+  writeMode: String?,
+  logFile: Path?
+): Int {
+  val command = mutableListOf(
+    launcherExecutable.toString(),
+    "-nosplash",
+    "-consoleLog",
+    "-application",
+    applicationId,
+    "-source",
+    source.toString(),
+    "-destination",
+    destination.toString()
+  )
+  if (writeMode != null) {
+    command += "-writeMode"
+    command += writeMode
+  }
+  logCommand(command)
+  val process = ProcessBuilder(command).apply {
+    redirectErrorStream(true)
+    if (logFile != null) {
+      logFile.parent?.let { Files.createDirectories(it) }
+      redirectOutput(logFile.toFile())
+    } else {
+      inheritIO()
+    }
+  }.start()
+  val exitCode = process.waitFor()
+  if (exitCode != 0) {
+    logger.severe("Mirror application exited with code $exitCode for ${source}")
+  }
+  return exitCode
 }
 
 private fun testMain(args: Array<String>): Int {

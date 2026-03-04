@@ -67,7 +67,19 @@ data class TargetConfig(
   val install: String? = null,
   @JsonAlias("bundle-pool")
   val bundlePool: String? = null,
-  val installer: String? = null
+  val installer: String? = null,
+  val mirror: TargetMirrorConfig? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TargetMirrorConfig(
+  val destination: String? = null,
+  @JsonAlias("write-mode")
+  val writeMode: String? = null,
+  @JsonAlias("include-metadata")
+  val includeMetadata: Boolean? = null,
+  @JsonAlias("include-artifacts")
+  val includeArtifacts: Boolean? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

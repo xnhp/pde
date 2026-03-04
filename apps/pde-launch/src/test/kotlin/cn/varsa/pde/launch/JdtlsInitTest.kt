@@ -60,14 +60,16 @@ class JdtlsInitTest {
       )
     )
 
-    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
+    val exitCode = JdtlsInitCommand.main(
+      arrayOf("--config", configPath.toString(), "--issue-dir", baseDir.toString())
+    )
     assertEquals(0, exitCode)
 
     val projectFile = bundleDir.resolve(".project")
     val classpathFile = bundleDir.resolve(".classpath")
     assertTrue(Files.exists(projectFile))
     assertTrue(Files.exists(classpathFile))
-    assertTrue(Files.exists(issueDir.resolve(".projectile")))
+    assertTrue(Files.exists(baseDir.resolve(".projectile")))
 
     val projectContents = Files.readString(projectFile)
     assertTrue(projectContents.contains("org.eclipse.pde.PluginNature"))

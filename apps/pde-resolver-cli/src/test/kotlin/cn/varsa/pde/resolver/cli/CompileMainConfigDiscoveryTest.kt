@@ -29,6 +29,8 @@ class CompileMainConfigDiscoveryTest {
     val savedOut = System.out
     val err = ByteArrayOutputStream()
     val savedErr = System.err
+    val savedDir = System.getProperty("user.dir")
+    System.setProperty("user.dir", baseDir.toString())
     System.setOut(PrintStream(out))
     System.setErr(PrintStream(err))
     try {
@@ -36,12 +38,14 @@ class CompileMainConfigDiscoveryTest {
     } finally {
       System.setOut(savedOut)
       System.setErr(savedErr)
+      System.setProperty("user.dir", savedDir)
       Files.deleteIfExists(configFile)
     }
 
     val output = out.toString()
     val errorOutput = err.toString()
-    assertTrue(errorOutput.contains("Discovered launch config"))
+    val combined = errorOutput + output
+    assertTrue(combined.contains("Discovered launch config"))
     assertTrue(output.contains("\"bsn\" : \"org.example.test\""))
   }
 

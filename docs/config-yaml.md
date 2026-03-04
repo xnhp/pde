@@ -42,6 +42,10 @@ Fields:
 - `install`: optional install folder (default `./target/install`).
 - `bundle-pool`: optional bundle pool (default `./target/bundle-pool`).
 - `installer`: required for `pde target-install` (path to the target-installer launcher JAR).
+- `mirror.destination`: required for `pde target-mirror` (path or URI of local mirror).
+- `mirror.write-mode`: optional write mode (`clean` supported; otherwise ignored).
+- `mirror.include-metadata`: optional boolean to mirror metadata (default `true`).
+- `mirror.include-artifacts`: optional boolean to mirror artifacts (default `true`).
 
 Notes:
 - `pde target-install` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
@@ -57,6 +61,9 @@ target:
   install: /abs/path/to/install-folder
   bundle-pool: /abs/path/to/bundle-pool
   p2-path: /abs/path/to/install-folder/p2
+  mirror:
+    destination: /abs/path/to/local-mirror
+    write-mode: clean
 ```
 
 ### product
