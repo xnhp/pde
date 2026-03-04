@@ -41,14 +41,14 @@ Fields:
 - `p2-path`: optional path to the p2 area (default `./target/p2`).
 - `install`: optional install folder (default `./target/install`).
 - `bundle-pool`: optional bundle pool (default `./target/bundle-pool`).
-- `installer`: required for `pde target-install` (path to the target-installer launcher JAR).
-- `mirror.destination`: required for `pde target-mirror` (path or URI of local mirror).
+- `installer`: required for `pde target install` (path to the target-installer launcher JAR).
+- `mirror.destination`: required for `pde target mirror` (path or URI of local mirror).
 - `mirror.write-mode`: optional write mode (`clean` supported; otherwise ignored).
 - `mirror.include-metadata`: optional boolean to mirror metadata (default `true`).
 - `mirror.include-artifacts`: optional boolean to mirror artifacts (default `true`).
 
 Notes:
-- `pde target-install` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
+- `pde target install` executes the launcher JAR directly (`java -jar ... --cache=persistent -- ...`).
 - The target installer resolves relative paths against its runtime cache directory, not the CLI working directory, so prefer absolute paths for `target.*` values.
 - `pde jdtls-init` requires a `target` section with a resolved profile (`target.profile-id` + `target.p2-path`). It does not fall back to bundle pools or install roots.
 

@@ -71,7 +71,7 @@ private fun printHelp() {
   println("  foreach-repo   ${maturityTag("usable")} Run a shell command in each configured repo")
   println("  run            ${maturityTag("usable")} Run a launch config")
   println("  compile        ${maturityTag("usable")} Compile PDE Java bundles")
-  println("  target-install ${maturityTag("usable")} Resolve/prepare target platform")
+  println("  target         ${maturityTag("usable")} Target platform commands (install, mirror)")
   println("  format         ${maturityTag("WIP")} Format Java sources via Eclipse formatter")
   println("  test           ${maturityTag("usable")} Run PDE test launch")
   println("  api-analyze    ${maturityTag("WIP")} Run API analysis")

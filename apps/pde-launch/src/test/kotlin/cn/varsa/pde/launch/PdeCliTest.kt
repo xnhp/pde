@@ -38,6 +38,54 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage:"))
     assertTrue(output.contains("run"))
+    assertTrue(output.contains("target"))
+  }
+
+  @Test
+  fun `target command prints target subcommand help`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("target", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde target <subcommand>"))
+    assertTrue(output.contains("install"))
+    assertTrue(output.contains("mirror"))
+  }
+
+  @Test
+  fun `target install subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("target", "install", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde target install"))
+  }
+
+  @Test
+  fun `target mirror subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("target", "mirror", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde target mirror"))
   }
 
   @Test

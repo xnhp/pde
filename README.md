@@ -8,8 +8,8 @@ This repository contains:
 # CLI
 This projects provides a CLI to facilitate the basic steps for working on PDE projects.
 
-- `pde target-install` -- install/update Target Platform state
-- `pde target-mirror` -- mirror update sites from a target definition
+- `pde target install` -- install/update Target Platform state
+- `pde target mirror` -- mirror update sites from a target definition
 - `pde compile` -- compile java sources (with TP/workspace dependency resolution)
 - `pde run` -- start a PDE application (with TP/workspace dependency resolution)
 - `pde test` -- run PDE JUnit-Plug-In tests
