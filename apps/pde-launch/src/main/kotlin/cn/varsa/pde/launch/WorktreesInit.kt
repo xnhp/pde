@@ -87,7 +87,8 @@ private fun worktreeRepo(
     fail("Base repo path exists but is not a directory: $repoDir")
   }
   if (Files.exists(worktreeDir)) {
-    fail("Worktree path already exists: $worktreeDir")
+    System.err.println("Worktree path already exists: $worktreeDir")
+    return
   }
 
   ensureGitRepo(baseDir, repoDir, repoName)
