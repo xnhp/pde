@@ -3,17 +3,24 @@ package cn.varsa.pde.launch
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
 import cn.varsa.pde.resolver.cli.config.RepoBundles
+import cn.varsa.pde.remoterunner.ConsoleTags
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.optional
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.logging.Formatter
+import java.util.logging.Level
+import java.util.logging.LogRecord
+import java.util.logging.Logger
 
 private class CliException(message: String) : RuntimeException(message)
+private val logger = Logger.getLogger(WorktreesInitCommand::class.java.name)
 
 object WorktreesInitCommand {
   fun main(args: Array<String>): Int {
+    configureLogging(Level.INFO, shouldUseColor())
     val parser = ArgParser("pde worktrees-init ${maturityTag("usable")}")
     val configOpt by parser.option(
       ArgType.String,
@@ -87,7 +94,7 @@ private fun worktreeRepo(
     fail("Base repo path exists but is not a directory: $repoDir")
   }
   if (Files.exists(worktreeDir)) {
-    System.err.println("Worktree path already exists: $worktreeDir")
+    logger.info("Worktree path already exists: $worktreeDir")
     return
   }
 
@@ -330,3 +337,39 @@ private sealed class ConfiguredBranchCheckout {
 }
 
 private fun fail(message: String): Nothing = throw CliException(message)
+
+private fun configureLogging(level: Level, useColor: Boolean) {
+  logger.level = level
+  val root = Logger.getLogger("")
+  root.level = level
+  val formatter = createFormatter(useColor)
+  root.handlers?.forEach { handler ->
+    handler.level = level
+    handler.formatter = formatter
+  }
+}
+
+private fun createFormatter(useColor: Boolean) = object : Formatter() {
+  override fun format(record: LogRecord): String {
+    val message = formatMessage(record)
+    val builder = StringBuilder()
+    builder.append(logPrefix(record.level, useColor)).append(' ').append(message).append('\n')
+    record.thrown?.let { thrown ->
+      builder.append(thrown.stackTraceToString())
+    }
+    return builder.toString()
+  }
+}
+
+private fun logPrefix(level: Level, useColor: Boolean): String {
+  val value = level.intValue()
+  return when {
+    value >= Level.SEVERE.intValue() -> ConsoleTags.error(useColor)
+    value >= Level.WARNING.intValue() -> ConsoleTags.warn(useColor)
+    value >= Level.INFO.intValue() -> ConsoleTags.info(useColor)
+    value >= Level.FINE.intValue() -> ConsoleTags.debug(useColor)
+    else -> ConsoleTags.trace(useColor)
+  }
+}
+
+private fun shouldUseColor(): Boolean = System.console() != null
