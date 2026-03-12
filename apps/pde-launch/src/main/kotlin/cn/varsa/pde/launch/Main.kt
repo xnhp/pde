@@ -1,86 +1,144 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.cli.core.CliMain
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
 import pde.format.main as formatMain
-import kotlin.system.exitProcess
+import picocli.CommandLine.Command
+import picocli.CommandLine.Parameters
+import picocli.CommandLine.Spec
+import picocli.CommandLine.Model.CommandSpec
+import java.util.concurrent.Callable
 
-fun main(args: Array<String>) {
-  if (args.isEmpty()) {
-    printHelp()
-    return
+@Command(
+  name = "pde",
+  description = ["PDE tooling CLI"],
+  mixinStandardHelpOptions = true,
+  subcommands = [
+    IjInitSubcommand::class,
+    JdtlsInitSubcommand::class,
+    CompileSubcommand::class,
+    FormatSubcommand::class,
+    WorktreesInitSubcommand::class,
+    FetchJarsSubcommand::class,
+    CodegenSubcommand::class,
+    ForeachRepoSubcommand::class,
+    AddTestSubcommand::class,
+    AddTestHelperSubcommand::class,
+    RunSubcommand::class,
+    TargetSubcommand::class,
+    TestSubcommand::class,
+    ApiAnalyzeSubcommand::class
+  ]
+)
+private class PdeCommand : Runnable {
+  @Spec
+  lateinit var spec: CommandSpec
+
+  override fun run() {
+    spec.commandLine().usage(System.out)
   }
-  if (args.isNotEmpty() && (args[0] == "-h" || args[0] == "--help" || args[0] == "help")) {
-    printHelp()
-    return
-  }
-  if (args.isNotEmpty() && args[0] == "ij-init") {
-    val exitCode = IjInit.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && args[0] == "jdtls-init") {
-    val exitCode = JdtlsInitCommand.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && args[0] == "compile") {
-    val exitCode = compileMain(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && args[0] == "format") {
-    formatMain(args.drop(1).toTypedArray())
-    return
-  }
-  if (args.isNotEmpty() && args[0] == "worktrees-init") {
-    val exitCode = WorktreesInitCommand.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && args[0] == "fetch_jars") {
-    val exitCode = FetchJarsCommand.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && args[0] == "codegen") {
-    val exitCode = CodegenCommand.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && args[0] == "issue-new") {
-    val exitCode = IssueNewCommand.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && args[0] == "foreach-repo") {
-    val exitCode = ForeachRepoCommand.main(args.drop(1).toTypedArray())
-    exitProcess(exitCode)
-  }
-  if (args.isNotEmpty() && (args[0] == "run" || args[0] == "launch")) {
-    launchMain(args.drop(1).toTypedArray())
-    return
-  }
-  launchMain(args)
 }
 
-private fun printHelp() {
-  println("pde - PDE tooling CLI")
-  println()
-  println("Usage:")
-  println("  pde <command> [options]")
-  println()
-  println("Commands:")
-  println("  worktrees-init ${maturityTag("usable")} Init worktrees and sparse-checkout bundles")
-  println("  fetch_jars     ${maturityTag("WIP")} Run mvn clean package in lib/fetch_jars")
-  println("  codegen        ${maturityTag("WIP")} Run gateway code generation")
-  println("  issue-new      ${maturityTag("WIP")} Create issue config from template")
-  println("  foreach-repo   ${maturityTag("usable")} Run a shell command in each configured repo")
-  println("  run            ${maturityTag("usable")} Run a launch config")
-  println("  compile        ${maturityTag("usable")} Compile PDE Java bundles")
-  println("  target         ${maturityTag("usable")} Target platform commands (install, mirror)")
-  println("  format         ${maturityTag("WIP")} Format Java sources via Eclipse formatter")
-  println("  test           ${maturityTag("usable")} Run PDE test launch")
-  println("  api-analyze    ${maturityTag("WIP")} Run API analysis")
-  println("  ij-init        ${maturityTag("usable")} Generate IntelliJ project")
-  println("  jdtls-init     ${maturityTag("WIP")} Generate .project/.classpath for JDT LS")
-  println()
-  println("Run 'pde <command> --help' for command-specific options.")
-  println()
-  println("Maturity:")
-  println("  ${maturityTag("usable")} ready for daily use within limits, may have quirks or known limitations but core functionality is stable")
-  println("  ${maturityTag("WIP")} actively being worked on, might not be functional -- see gh issues")
+@Command(name = "ij-init", description = ["Generate IntelliJ project"], mixinStandardHelpOptions = true) private class IjInitSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = IjInit.main(args.toTypedArray())
+}
+
+@Command(name = "jdtls-init", description = ["Generate .project/.classpath for JDT LS"], mixinStandardHelpOptions = true) private class JdtlsInitSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = JdtlsInitCommand.main(args.toTypedArray())
+}
+
+@Command(name = "compile", description = ["Compile PDE Java bundles"], mixinStandardHelpOptions = true) private class CompileSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = compileMain(args.toTypedArray())
+}
+
+@Command(name = "format", description = ["Format Java sources via Eclipse formatter"], mixinStandardHelpOptions = true) private class FormatSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int {
+    formatMain(args.toTypedArray())
+    return 0
+  }
+}
+
+@Command(name = "worktrees-init", description = ["Init worktrees and sparse-checkout bundles"], mixinStandardHelpOptions = true) private class WorktreesInitSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = WorktreesInitCommand.main(args.toTypedArray())
+}
+
+@Command(name = "fetch_jars", description = ["Run mvn clean package in lib/fetch_jars"], mixinStandardHelpOptions = true) private class FetchJarsSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = FetchJarsCommand.main(args.toTypedArray())
+}
+
+@Command(name = "codegen", description = ["Run gateway code generation"], mixinStandardHelpOptions = true) private class CodegenSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = CodegenCommand.main(args.toTypedArray())
+}
+
+@Command(name = "foreach-repo", description = ["Run a shell command in each configured repo"], mixinStandardHelpOptions = true) private class ForeachRepoSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = ForeachRepoCommand.main(args.toTypedArray())
+}
+
+@Command(name = "add-test", description = ["Append a test entry to launch config"], mixinStandardHelpOptions = true) private class AddTestSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = AddTestCommand.main(args.toTypedArray())
+}
+
+@Command(name = "add-test-helper", description = ["Append a gateway helper test entry"], mixinStandardHelpOptions = true) private class AddTestHelperSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int = AddTestHelperCommand.main(args.toTypedArray())
+}
+
+@Command(name = "run", aliases = ["launch"], description = ["Run a launch config"], mixinStandardHelpOptions = true) private class RunSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int {
+    launchMain(args.toTypedArray())
+    return 0
+  }
+}
+
+@Command(name = "target", description = ["Target platform commands (install, mirror)"], mixinStandardHelpOptions = true) private class TargetSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int {
+    launchMain((listOf("target") + args).toTypedArray())
+    return 0
+  }
+}
+
+@Command(name = "test", description = ["Run PDE test launch"], mixinStandardHelpOptions = true) private class TestSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int {
+    launchMain((listOf("test") + args).toTypedArray())
+    return 0
+  }
+}
+
+@Command(name = "api-analyze", description = ["Run API analysis"], mixinStandardHelpOptions = true) private class ApiAnalyzeSubcommand : Callable<Int> {
+  @Parameters(arity = "0..*")
+  var args: List<String> = emptyList()
+  override fun call(): Int {
+    launchMain((listOf("api-analyze") + args).toTypedArray())
+    return 0
+  }
+}
+
+fun main(args: Array<String>) {
+  CliMain.run(PdeCommand(), args)
 }

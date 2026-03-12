@@ -1,14 +1,11 @@
 package cn.varsa.pde.launch
 
-import cn.varsa.pde.remoterunner.ConsoleTags
+import cn.varsa.cli.core.CliStyle
+import cn.varsa.cli.core.ColorMode
 
-private fun useAnsiColors(): Boolean = System.console() != null
+private fun useAnsiColors(): Boolean = CliStyle.useColor(ColorMode.AUTO)
 
 fun maturityTag(label: String): String {
   val useColor = useAnsiColors()
-  return when (label.lowercase()) {
-    "usable" -> ConsoleTags.success(label, useColor)
-    "wip" -> ConsoleTags.danger(label, useColor)
-    else -> "[$label]"
-  }
+  return CliStyle.maturityTag(label, useColor)
 }

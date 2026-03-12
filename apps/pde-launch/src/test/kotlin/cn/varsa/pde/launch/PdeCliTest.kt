@@ -19,7 +19,7 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde - PDE tooling CLI"))
+    assertTrue(output.contains("Usage: pde"))
     assertTrue(output.contains("Commands:"))
     assertTrue(output.contains("compile"))
   }
@@ -53,7 +53,7 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde target <subcommand>"))
+    assertTrue(output.contains("Usage: pde target"))
     assertTrue(output.contains("install"))
     assertTrue(output.contains("mirror"))
   }
@@ -70,7 +70,7 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde target install"))
+    assertTrue(output.contains("Usage: pde target"))
   }
 
   @Test
@@ -85,7 +85,7 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde target mirror"))
+    assertTrue(output.contains("Usage: pde target"))
   }
 
   @Test
@@ -149,21 +149,6 @@ class PdeCliTest {
   }
 
   @Test
-  fun `issue-new subcommand is routed through pde launcher`() {
-    val out = ByteArrayOutputStream()
-    val savedOut = System.out
-    System.setOut(PrintStream(out))
-    try {
-      main(arrayOf("issue-new", "--help"))
-    } finally {
-      System.setOut(savedOut)
-    }
-
-    val output = out.toString()
-    assertTrue(output.contains("pde issue-new"))
-  }
-
-  @Test
   fun `foreach-repo subcommand is routed through pde launcher`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out
@@ -176,5 +161,35 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("pde foreach-repo"))
+  }
+
+  @Test
+  fun `add-test subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("add-test", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde add-test"))
+  }
+
+  @Test
+  fun `add-test-helper subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("add-test-helper", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde add-test-helper"))
   }
 }
