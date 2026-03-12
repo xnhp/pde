@@ -15,14 +15,11 @@ import java.util.concurrent.Callable
   description = ["PDE tooling CLI"],
   mixinStandardHelpOptions = true,
   subcommands = [
-    IjInitSubcommand::class,
-    JdtlsInitSubcommand::class,
+    IdeInitSubcommand::class,
     CompileSubcommand::class,
     FormatSubcommand::class,
-    WorktreesInitSubcommand::class,
     FetchJarsSubcommand::class,
     CodegenSubcommand::class,
-    ForeachRepoSubcommand::class,
     AddTestSubcommand::class,
     AddTestHelperSubcommand::class,
     RunSubcommand::class,
@@ -40,13 +37,28 @@ private class PdeCommand : Runnable {
   }
 }
 
-@Command(name = "ij-init", description = ["Generate IntelliJ project"], mixinStandardHelpOptions = true) private class IjInitSubcommand : Callable<Int> {
+@Command(
+  name = "ide-init",
+  description = ["Generate IDE project files"],
+  mixinStandardHelpOptions = true,
+  subcommands = [IdeInitIdeaSubcommand::class, IdeInitJdtlsSubcommand::class]
+)
+private class IdeInitSubcommand : Runnable {
+  @Spec
+  lateinit var spec: CommandSpec
+
+  override fun run() {
+    spec.commandLine().usage(System.out)
+  }
+}
+
+@Command(name = "idea", description = ["Generate IntelliJ project"], mixinStandardHelpOptions = true) private class IdeInitIdeaSubcommand : Callable<Int> {
   @Parameters(arity = "0..*")
   var args: List<String> = emptyList()
   override fun call(): Int = IjInit.main(args.toTypedArray())
 }
 
-@Command(name = "jdtls-init", description = ["Generate .project/.classpath for JDT LS"], mixinStandardHelpOptions = true) private class JdtlsInitSubcommand : Callable<Int> {
+@Command(name = "jdtls", description = ["Generate .project/.classpath for JDT LS"], mixinStandardHelpOptions = true) private class IdeInitJdtlsSubcommand : Callable<Int> {
   @Parameters(arity = "0..*")
   var args: List<String> = emptyList()
   override fun call(): Int = JdtlsInitCommand.main(args.toTypedArray())
@@ -67,12 +79,6 @@ private class PdeCommand : Runnable {
   }
 }
 
-@Command(name = "worktrees-init", description = ["Init worktrees and sparse-checkout bundles"], mixinStandardHelpOptions = true) private class WorktreesInitSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = WorktreesInitCommand.main(args.toTypedArray())
-}
-
 @Command(name = "fetch_jars", description = ["Run mvn clean package in lib/fetch_jars"], mixinStandardHelpOptions = true) private class FetchJarsSubcommand : Callable<Int> {
   @Parameters(arity = "0..*")
   var args: List<String> = emptyList()
@@ -83,12 +89,6 @@ private class PdeCommand : Runnable {
   @Parameters(arity = "0..*")
   var args: List<String> = emptyList()
   override fun call(): Int = CodegenCommand.main(args.toTypedArray())
-}
-
-@Command(name = "foreach-repo", description = ["Run a shell command in each configured repo"], mixinStandardHelpOptions = true) private class ForeachRepoSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = ForeachRepoCommand.main(args.toTypedArray())
 }
 
 @Command(name = "add-test", description = ["Append a test entry to launch config"], mixinStandardHelpOptions = true) private class AddTestSubcommand : Callable<Int> {

@@ -104,18 +104,33 @@ class PdeCliTest {
   }
 
   @Test
-  fun `worktrees-init subcommand is routed through pde launcher`() {
+  fun `ide-init idea subcommand is routed through pde launcher`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("worktrees-init", "--help"))
+      main(arrayOf("ide-init", "idea", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde worktrees-init"))
+    assertTrue(output.contains("pde ide-init idea"))
+  }
+
+  @Test
+  fun `ide-init jdtls subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      main(arrayOf("ide-init", "jdtls", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde ide-init jdtls"))
   }
 
   @Test
@@ -146,21 +161,6 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("pde codegen"))
-  }
-
-  @Test
-  fun `foreach-repo subcommand is routed through pde launcher`() {
-    val out = ByteArrayOutputStream()
-    val savedOut = System.out
-    System.setOut(PrintStream(out))
-    try {
-      main(arrayOf("foreach-repo", "--help"))
-    } finally {
-      System.setOut(savedOut)
-    }
-
-    val output = out.toString()
-    assertTrue(output.contains("pde foreach-repo"))
   }
 
   @Test
