@@ -4,6 +4,7 @@ import cn.varsa.cli.core.CliMain
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
 import pde.format.main as formatMain
+import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
 import picocli.CommandLine.Spec
@@ -128,3 +129,5 @@ private class IdeInitSubcommand : Runnable {
 fun main(args: Array<String>) {
   CliMain.run(PdeCommand(), args)
 }
+
+internal fun createPdeCommandLine(): CommandLine = CommandLine(PdeCommand())

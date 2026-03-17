@@ -24,6 +24,9 @@ development setup for different To-Dos (issues) completely isolated.
 - `pde ij-init` -- auto-intialise IntelliJ project configuration
 - `pde jdtls-init` -- generate configuration files to enable LSP integration facilitated by [jdt-ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls)
 
+The full CLI command reference is generated from `--help` output into `docs/cli-reference.md`
+as part of `:pde-launch:installDist`.
+
 
 # Development
 

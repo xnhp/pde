@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.JavaExec
+
 plugins {
   alias(libs.plugins.kotlin)
   application
@@ -24,6 +26,22 @@ dependencies {
 application {
   mainClass = "cn.varsa.pde.launch.MainKt"
   applicationName = "pde"
+}
+
+val generateCliDocs by tasks.registering(JavaExec::class) {
+  group = "documentation"
+  description = "Generate CLI reference markdown from --help output"
+  dependsOn(tasks.named("jar"))
+  classpath = files(tasks.named("jar"), configurations.named("runtimeClasspath"))
+  mainClass.set("cn.varsa.pde.launch.CliDocsGeneratorKt")
+  args(
+    rootProject.layout.projectDirectory.file("docs/cli-reference.md").asFile.absolutePath,
+    rootProject.layout.projectDirectory.asFile.absolutePath
+  )
+}
+
+tasks.named("installDist") {
+  dependsOn(generateCliDocs)
 }
 
 // toolchain/version configured in the root build
