@@ -18,8 +18,6 @@ import java.util.concurrent.Callable
     IdeInitSubcommand::class,
     CompileSubcommand::class,
     FormatSubcommand::class,
-    FetchJarsSubcommand::class,
-    CodegenSubcommand::class,
     AddTestSubcommand::class,
     AddTestHelperSubcommand::class,
     RunSubcommand::class,
@@ -77,18 +75,6 @@ private class IdeInitSubcommand : Runnable {
     formatMain(args.toTypedArray())
     return 0
   }
-}
-
-@Command(name = "fetch_jars", description = ["Run mvn clean package in lib/fetch_jars"], mixinStandardHelpOptions = true) private class FetchJarsSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = FetchJarsCommand.main(args.toTypedArray())
-}
-
-@Command(name = "codegen", description = ["Run gateway code generation"], mixinStandardHelpOptions = true) private class CodegenSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = CodegenCommand.main(args.toTypedArray())
 }
 
 @Command(name = "add-test", description = ["Append a test entry to launch config"], mixinStandardHelpOptions = true) private class AddTestSubcommand : Callable<Int> {
