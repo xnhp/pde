@@ -376,7 +376,7 @@ class JdtlsImportSmokeTest {
     val rootPath = root!!
     val configPath = resolveIssueConfig(rootPath)
     assumeTrue(
-      "Skipping issue workspace import smoke test; config.yaml not found. Set JDTLS_ISSUE_CONFIG to override.",
+      "Skipping issue workspace import smoke test; pde.yaml not found. Set JDTLS_ISSUE_CONFIG to override.",
       configPath != null
     )
     val dataDir = rootPath.resolve(".jdtls-data")
@@ -498,7 +498,7 @@ private fun resolveIssueWorkspaceRoot(): Path? {
 private fun resolveIssueConfig(issueRoot: Path): Path? {
   val env = envPath("JDTLS_ISSUE_CONFIG")
   if (env != null && Files.isRegularFile(env)) return env
-  val default = issueRoot.resolve("config.yaml")
+  val default = issueRoot.resolve("pde.yaml")
   return if (Files.isRegularFile(default)) default else null
 }
 
@@ -1103,7 +1103,7 @@ private fun resolveExistingTargetSpec(workspaceRoot: Path, modulePaths: List<Pat
   if (!Files.isRegularFile(targetFile)) {
     copyTargetDefinition(baseDir)
   }
-  val configFile = baseDir.resolve("config.yaml")
+  val configFile = baseDir.resolve("pde.yaml")
   val bundlePool = System.getenv("JDTLS_BUNDLE_POOL")?.takeIf { it.isNotBlank() }
     ?.let { Paths.get(it) }
     ?: baseDir.resolve("bundle-pool")

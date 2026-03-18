@@ -1,10 +1,10 @@
-# pde-resolver config.yaml
+# pde-resolver pde.yaml
 
 This document describes the YAML configuration consumed by the `pde` CLI (`pde run`, `pde compile`, `pde test`, `pde api-analyze`).
 
 ## File discovery
 
-The CLI looks for a config file path provided on the command line. If omitted, it attempts to discover a `config.yaml`, `launch.yaml`, `pde.yaml`, or `pde-launch.yaml` near the working directory (see logs for the resolved path).
+The CLI looks for a config file path provided on the command line. If omitted, it attempts to discover a `pde.yaml`, `launch.yaml`, `pde.yaml`, or `pde-launch.yaml` near the working directory (see logs for the resolved path).
 
 ## Top-level fields
 
@@ -232,5 +232,5 @@ bundlesPerRepo:
 ```
 
 ```bash
-pde api-analyze --config /abs/path/to/config.yaml --baseline-root /abs/path/to/API-Baseline.target
+pde api-analyze --config /abs/path/to/pde.yaml --baseline-root /abs/path/to/API-Baseline.target
 ```

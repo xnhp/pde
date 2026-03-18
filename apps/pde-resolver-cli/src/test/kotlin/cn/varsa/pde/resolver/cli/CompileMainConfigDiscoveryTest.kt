@@ -21,7 +21,7 @@ class CompileMainConfigDiscoveryTest {
     val configFile = writeConfigFile(
       baseDir,
       workspace,
-      "config.yaml",
+      "pde.yaml",
       p2Path = p2Root.toAbsolutePath().toString()
     )
 

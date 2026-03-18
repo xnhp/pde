@@ -38,7 +38,7 @@ fun createProfileWithFramework(
 fun writeConfigFile(
   baseDir: Path,
   workspace: Path,
-  fileName: String = "config.yaml",
+  fileName: String = "pde.yaml",
   profileId: String = "profile",
   p2Path: String = "target/p2"
 ): Path {

@@ -18,22 +18,22 @@ The binary lives at `apps/pde-launch/build/install/pde/bin/pde`.
 ```bash
 pde jdtls-init
 pde jdtls-init --issue-dir /path/to/workspace
-pde jdtls-init --config /path/to/config.yaml
+pde jdtls-init --config /path/to/pde.yaml
 pde jdtls-init --issue-dir /path/to/workspace \
   --project-configurations-out /path/to/workspace/.jdtls-data/projectConfigurations.json
 ```
 
-`jdtls-init` discovers `config.yaml`, `launch.yaml`, or `pde.yaml` if you omit `--config`.
+`jdtls-init` discovers `pde.yaml`, `launch.yaml`, or `pde.yaml` if you omit `--config`.
 
 Notes:
 - Re-run `jdtls-init` when workspace bundles change.
-- When you run from an issue root that contains `config.yaml`, `jdtls-init` defaults
+- When you run from an issue root that contains `pde.yaml`, `jdtls-init` defaults
   `--issue-dir` to the current directory and writes
   `./.jdtls-data/projectConfigurations.json` if you omit `--project-configurations-out`.
 - Files are written per bundle directory and always overwrite existing metadata.
 - `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations
   for editor integrations that need explicit workspace roots.
-- `jdtls-init` requires a `target` section in `config.yaml` with a resolved profile.
+- `jdtls-init` requires a `target` section in `pde.yaml` with a resolved profile.
 - For issue-dir layouts the default profile path resolves from the issue root,
   e.g. `<issue>/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile`.
 
@@ -79,7 +79,7 @@ jq '.projectConfigurations | map(.projectName)' projectConfigurations.json
 ```elisp
 (defun ben/jdtls--issue-root ()
   (or (locate-dominating-file default-directory ".jdtls-data")
-      (locate-dominating-file default-directory "config.yaml")
+      (locate-dominating-file default-directory "pde.yaml")
       (when-let ((project (project-current nil)))
         (project-root project))))
 

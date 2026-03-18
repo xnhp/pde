@@ -301,12 +301,9 @@ private fun resolveConfigPath(issueDir: Path?, configPath: Path?): Path? {
 
 private fun findConfigPath(startDir: Path): Path? {
     val candidates = listOf(
-        "config.yaml",
-        "config.yml",
+        "pde.yaml",
         "launch.yaml",
         "launch.yml",
-        "pde.yaml",
-        "pde.yml",
         "pde-launch.yaml",
         "pde-launch.yml"
     )

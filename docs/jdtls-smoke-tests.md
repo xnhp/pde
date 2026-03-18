@@ -16,7 +16,7 @@ JDTLS_REAL_WORKSPACE=1 ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.Jd
 The issue-workspace import smoke test is split into its own class and has its own
 opt-in toggle (`JDTLS_IMPORT_REAL`). It validates that `jdtls-init` produces a usable
 `projectConfigurations.json` and that JDT LS can import it. It expects an issue
-directory layout with a `config.yaml` at the root and a `.jdtls-data` directory.
+directory layout with a `pde.yaml` at the root and a `.jdtls-data` directory.
 
 ```bash
 JDTLS_IMPORT_REAL=1 \

@@ -962,7 +962,7 @@ private fun prepareLaunch(
   val workspaceInputs = WorkspaceModuleResolver.resolve(context)
   val profilePath = resolveProfilePath(context)
     ?: error(
-      "Target profile path missing in YAML config. Add a target section to config.yaml " +
+      "Target profile path missing in YAML config. Add a target section to pde.yaml " +
         "(set target.profile-id + target.p2-path) or set profilePath. See docs/config-yaml.md#target."
     )
   if (!Files.exists(profilePath)) {
@@ -1279,12 +1279,9 @@ private fun parseDevProperties(entries: List<String>): Map<String, List<String>>
 
 internal fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()): Path? {
   val candidates = listOf(
-    "config.yaml",
-    "config.yml",
+    "pde.yaml",
     "launch.yaml",
     "launch.yml",
-    "pde.yaml",
-    "pde.yml",
     "pde-launch.yaml",
     "pde-launch.yml"
   )
@@ -1523,7 +1520,7 @@ private fun runTestLaunch(
     val suffix = if (junit4InvalidTests.size > 3) " ... and ${junit4InvalidTests.size - 3} more" else ""
     logger.warning(
       "Hint: JUnit4 reported InvalidTestClassError for $preview$suffix. " +
-        "If these are JUnit 5 tests, set tests[].runner: junit5 in config.yaml."
+        "If these are JUnit 5 tests, set tests[].runner: junit5 in pde.yaml."
     )
   }
 
@@ -1603,7 +1600,7 @@ internal fun targetMain(args: Array<String>): Int {
   if (targetConfig == null) {
     logger.severe(
       "Missing target config in ${issueContext.file}. " +
-        "Add a target section to config.yaml and see docs/config-yaml.md#target."
+        "Add a target section to pde.yaml and see docs/config-yaml.md#target."
     )
     return 2
   }
@@ -1735,7 +1732,7 @@ internal fun targetMirrorMain(args: Array<String>): Int {
   if (targetConfig == null) {
     logger.severe(
       "Missing target config in ${issueContext.file}. " +
-        "Add a target section to config.yaml and see docs/config-yaml.md#target."
+        "Add a target section to pde.yaml and see docs/config-yaml.md#target."
     )
     return 2
   }
@@ -2574,7 +2571,7 @@ fun compileMain(args: Array<String>): Int {
   }
 
   if (configFile == null) {
-    logger.severe("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config.")
+    logger.severe("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml). Use --config.")
   } else {
     logger.severe("Launch config not found at ${Paths.get(configFile).toAbsolutePath()}")
   }

@@ -30,7 +30,7 @@ object JdtlsInitCommand {
     val issueDirOpt by parser.option(
       ArgType.String,
       fullName = "issue-dir",
-      description = "Issue directory containing config.yaml and repos"
+      description = "Issue directory containing pde.yaml and repos"
     )
     val projectConfigurationsOut by parser.option(
       ArgType.String,
@@ -44,7 +44,7 @@ object JdtlsInitCommand {
     parser.parse(args)
 
     val cwd = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
-    val cwdConfig = cwd.resolve("config.yaml")
+    val cwdConfig = cwd.resolve("pde.yaml")
     val hasCwdConfig = Files.exists(cwdConfig) && Files.isRegularFile(cwdConfig)
     val issueDir = issueDirOpt
       ?.let { Paths.get(it).toAbsolutePath().normalize() }
@@ -56,7 +56,7 @@ object JdtlsInitCommand {
       return 1
     }
     if (configPath == null) {
-      System.err.println("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config.")
+      System.err.println("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml). Use --config.")
       return 1
     }
 
@@ -328,12 +328,9 @@ private fun resolvePath(baseDir: Path, raw: String): Path {
 
 private fun findConfigPath(startDir: Path): Path? {
   val candidates = listOf(
-    "config.yaml",
-    "config.yml",
+    "pde.yaml",
     "launch.yaml",
     "launch.yml",
-    "pde.yaml",
-    "pde.yml",
     "pde-launch.yaml",
     "pde-launch.yml"
   )
@@ -384,7 +381,7 @@ private fun isTestBundle(symbolicName: String, moduleDir: Path, hasFragmentHost:
 
 private fun resolveTargetIndex(context: LaunchConfigContext): TargetPlatformIndex {
   val targetConfig = context.config.target
-    ?: fail("Target configuration is required for jdtls-init. Add a target section to config.yaml.")
+    ?: fail("Target configuration is required for jdtls-init. Add a target section to pde.yaml.")
   val profilePath = resolveProfilePath(context, targetConfig)
   if (!Files.exists(profilePath)) {
     fail("Target profile not found at ${profilePath.toAbsolutePath().normalize()}. " +

@@ -46,7 +46,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       configText(
@@ -107,7 +107,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       configText(
@@ -165,7 +165,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val configPath = issueDir.resolve("config.yaml")
+    val configPath = issueDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       configText(
@@ -217,7 +217,7 @@ class JdtlsInitTest {
     Files.writeString(projectFile, "<projectDescription>custom</projectDescription>")
     Files.writeString(classpathFile, "<classpath>custom</classpath>")
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       configText(
@@ -259,7 +259,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       configText(
@@ -312,7 +312,7 @@ class JdtlsInitTest {
       """.trimIndent() + "\n"
     )
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     val targetConfig = writeTargetConfig(
       baseDir,
       profileId = "jdtls-test",
@@ -360,7 +360,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       configText(
@@ -415,7 +415,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       configText(
@@ -466,7 +466,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       listOf(

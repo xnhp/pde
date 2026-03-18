@@ -71,7 +71,7 @@ class IjInitTest {
     Files.createDirectories(configDir)
     val repoDir = configDir.resolve("knime-core").resolve("org.knime.core")
     Files.createDirectories(repoDir.resolve("src"))
-    val configPath = configDir.resolve("config.yaml")
+    val configPath = configDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       """
@@ -102,7 +102,7 @@ class IjInitTest {
   @Test
   fun `initIjProjectFromConfig writes module files`() {
     val baseDir = Files.createTempDirectory("ij-init-config")
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     val repoDir = baseDir.resolve("knime-core").resolve("org.knime.core")
     Files.createDirectories(repoDir.resolve("src"))
     Files.writeString(repoDir.resolve("package.json"), "{}")
@@ -134,7 +134,7 @@ class IjInitTest {
   @Test
   fun `findConfigPath finds config in parent directory`() {
     val baseDir = Files.createTempDirectory("ij-init-find")
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(configPath, "bundlesPerRepo: []\n")
 
     val nestedDir = baseDir.resolve("nested").resolve("child")

@@ -22,7 +22,7 @@ class AddTestHelperCommandTest {
   @Test
   fun `adds helper entry with methods`() {
     val tempDir = Files.createTempDirectory("pde-add-test-helper")
-    val configPath = tempDir.resolve("config.yaml")
+    val configPath = tempDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       """
@@ -63,13 +63,13 @@ class AddTestHelperCommandTest {
       vmArgs
     )
 
-    assertEquals("Added test helper entry to config.yaml\n", stdout.toString())
+    assertEquals("Added test helper entry to pde.yaml\n", stdout.toString())
   }
 
   @Test
   fun `adds helper entry without methods`() {
     val tempDir = Files.createTempDirectory("pde-add-test-helper")
-    val configPath = tempDir.resolve("config.yaml")
+    val configPath = tempDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       """
@@ -103,7 +103,7 @@ class AddTestHelperCommandTest {
       vmArgs
     )
 
-    assertEquals("Added test helper entry to config.yaml\n", stdout.toString())
+    assertEquals("Added test helper entry to pde.yaml\n", stdout.toString())
   }
 
   private fun readYamlMap(contents: String): Map<*, *> {

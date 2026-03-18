@@ -22,7 +22,7 @@ class AddTestCommandTest {
   @Test
   fun `adds test entry to config yaml`() {
     val tempDir = Files.createTempDirectory("pde-add-test")
-    val configPath = tempDir.resolve("config.yaml")
+    val configPath = tempDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       """
@@ -53,7 +53,7 @@ class AddTestCommandTest {
     assertEquals("org.knime.gateway.impl", entry["testpluginname"])
     assertEquals("org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests", entry["classname"])
 
-    assertEquals("Added test entry to config.yaml\n", stdout.toString())
+    assertEquals("Added test entry to pde.yaml\n", stdout.toString())
   }
 
   private fun readYamlMap(contents: String): Map<*, *> {

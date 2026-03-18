@@ -18,7 +18,7 @@ class WorktreesInitTest {
     Files.createDirectories(baseReposDir.resolve("knime-gateway"))
     Files.createDirectories(baseDir.resolve("knime-gateway"))
 
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
       """

@@ -14,7 +14,7 @@ class ForeachRepoTest {
   fun `foreach-repo loads includes and runs command`() {
     val baseDir = Files.createTempDirectory("foreach-repo")
     val includePath = baseDir.resolve("include.yaml")
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
 
     Files.writeString(
       includePath,
@@ -57,7 +57,7 @@ class ForeachRepoTest {
   @Test
   fun `foreach-repo can suppress repo headers`() {
     val baseDir = Files.createTempDirectory("foreach-repo-headers")
-    val configPath = baseDir.resolve("config.yaml")
+    val configPath = baseDir.resolve("pde.yaml")
     val repoDir = Files.createDirectories(baseDir.resolve("repo-one"))
 
     Files.writeString(

@@ -49,7 +49,7 @@ object IjInit {
     val issueDirOpt by parser.option(
       ArgType.String,
       fullName = "issue-dir",
-      description = "Issue directory containing config.yaml and repos"
+      description = "Issue directory containing pde.yaml and repos"
     )
     val configOpt by parser.option(
       ArgType.String,
@@ -269,12 +269,9 @@ object IjInit {
 
   internal fun findConfigPath(startDir: Path): Path? {
     val candidates = listOf(
-      "config.yaml",
-      "config.yml",
+      "pde.yaml",
       "launch.yaml",
       "launch.yml",
-      "pde.yaml",
-      "pde.yml",
       "pde-launch.yaml",
       "pde-launch.yml"
     )

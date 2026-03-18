@@ -62,7 +62,7 @@ object AddTestCommand {
 private fun addTestHelper(testClass: String, testMethods: String?) {
   val cwd = currentWorkingDir()
   val configPath = findConfigPath(cwd)
-    ?: fail("No launch config found (config.yaml/launch.yaml/pde.yaml).")
+    ?: fail("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml).")
 
   val normalizedTestClass = requireNonBlank(testClass, "Test class must be non-empty")
   val normalizedMethods = testMethods?.trim()?.takeIf { it.isNotBlank() }
@@ -90,7 +90,7 @@ private fun addTestHelper(testClass: String, testMethods: String?) {
 private fun addTest(pluginName: String, className: String) {
   val cwd = currentWorkingDir()
   val configPath = findConfigPath(cwd)
-    ?: fail("No launch config found (config.yaml/launch.yaml/pde.yaml).")
+    ?: fail("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml).")
 
   val normalizedPluginName = requireNonBlank(pluginName, "Plugin name must be non-empty")
   val normalizedClassName = requireNonBlank(className, "Class name must be non-empty")
@@ -157,12 +157,9 @@ private fun requireNonBlank(value: String, errorMessage: String): String {
 
 private fun findConfigPath(startDir: Path): Path? {
   val candidates = listOf(
-    "config.yaml",
-    "config.yml",
+    "pde.yaml",
     "launch.yaml",
     "launch.yml",
-    "pde.yaml",
-    "pde.yml",
     "pde-launch.yaml",
     "pde-launch.yml"
   )

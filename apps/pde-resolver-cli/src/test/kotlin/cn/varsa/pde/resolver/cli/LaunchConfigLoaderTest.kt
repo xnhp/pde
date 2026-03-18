@@ -13,7 +13,7 @@ class LaunchConfigLoaderTest {
   @Test
   fun launchEntryOverridesProductAndApplication() {
     val root: Path = tmp.root.toPath()
-    val configFile = root.resolve("config.yaml").toFile()
+    val configFile = root.resolve("pde.yaml").toFile()
     configFile.writeText(
       """
       product: base.product
@@ -40,7 +40,7 @@ class LaunchConfigLoaderTest {
   fun mergesIncludesAndLaunchesByName() {
     val root: Path = tmp.root.toPath()
     val baseFile = root.resolve("base.yaml").toFile()
-    val configFile = root.resolve("config.yaml").toFile()
+    val configFile = root.resolve("pde.yaml").toFile()
 
     baseFile.writeText(
       """
@@ -86,7 +86,7 @@ class LaunchConfigLoaderTest {
   fun loadsLaunchesFromIncludesOnly() {
     val root: Path = tmp.root.toPath()
     val baseFile = root.resolve("launches.yaml").toFile()
-    val configFile = root.resolve("config.yaml").toFile()
+    val configFile = root.resolve("pde.yaml").toFile()
 
     baseFile.writeText(
       """
@@ -118,7 +118,7 @@ class LaunchConfigLoaderTest {
     val root: Path = tmp.root.toPath()
     val baseFile = root.resolve("base.yaml").toFile()
     val extraFile = root.resolve("extra.yaml").toFile()
-    val configFile = root.resolve("config.yaml").toFile()
+    val configFile = root.resolve("pde.yaml").toFile()
 
     baseFile.writeText(
       """

@@ -19,7 +19,7 @@ class TargetInstallMissingTargetTest {
   @Test
   fun `target-install reports missing target config`() {
     val baseDir = tmp.newFolder("cfg").toPath()
-    val configFile = baseDir.resolve("config.yaml")
+    val configFile = baseDir.resolve("pde.yaml")
     Files.writeString(configFile, "bundlesPerRepo: []\n")
 
     val err = ByteArrayOutputStream()

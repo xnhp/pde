@@ -31,7 +31,7 @@ object ForeachRepoCommand {
     val workingDir = Paths.get("").toAbsolutePath()
     val configPath = resolveConfigPath(workingDir, configOpt)
     if (configPath == null) {
-      System.err.println("No launch config found (config.yaml/launch.yaml/pde.yaml). Use --config.")
+      System.err.println("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml). Use --config.")
       return 1
     }
 
@@ -127,12 +127,9 @@ private fun looksLikeYamlFile(value: String): Boolean =
 
 private fun discoverConfigFile(baseDir: Path): Path? {
   val candidates = listOf(
-    "config.yaml",
-    "config.yml",
+    "pde.yaml",
     "launch.yaml",
     "launch.yml",
-    "pde.yaml",
-    "pde.yml",
     "pde-launch.yaml",
     "pde-launch.yml"
   )

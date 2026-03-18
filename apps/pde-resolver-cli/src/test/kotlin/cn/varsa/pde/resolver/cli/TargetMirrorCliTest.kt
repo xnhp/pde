@@ -11,7 +11,7 @@ class TargetMirrorCliTest {
 
   @Test
   fun failsWhenTargetConfigMissing() {
-    val config = tmp.newFile("config.yaml")
+    val config = tmp.newFile("pde.yaml")
     config.writeText("product: example")
 
     val exit = targetMirrorMain(arrayOf("--config", config.absolutePath))
@@ -21,7 +21,7 @@ class TargetMirrorCliTest {
 
   @Test
   fun failsWhenTargetDefinitionMissing() {
-    val config = tmp.newFile("config.yaml")
+    val config = tmp.newFile("pde.yaml")
     config.writeText(
       """
         target:
@@ -49,7 +49,7 @@ class TargetMirrorCliTest {
         </target>
       """.trimIndent()
     )
-    val config = tmp.newFile("config.yaml")
+    val config = tmp.newFile("pde.yaml")
     config.writeText(
       """
         target:
@@ -64,7 +64,7 @@ class TargetMirrorCliTest {
 
   @Test
   fun failsWhenMetadataAndArtifactsOnlyBothSet() {
-    val config = tmp.newFile("config.yaml")
+    val config = tmp.newFile("pde.yaml")
     config.writeText(
       """
         target:

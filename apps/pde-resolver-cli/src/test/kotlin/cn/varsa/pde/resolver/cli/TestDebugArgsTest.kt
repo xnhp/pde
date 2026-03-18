@@ -12,7 +12,7 @@ class TestDebugArgsTest {
   fun `adds jdwp agent when debug is enabled for PDE JUnit app`() {
     val config = LaunchConfig(application = PDE_JUNIT_PLUGIN_TEST_APPLICATION)
     val context = LaunchConfigContext(
-      file = Paths.get("config.yaml"),
+      file = Paths.get("pde.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
       workingDir = Paths.get("").toAbsolutePath(),
@@ -31,7 +31,7 @@ class TestDebugArgsTest {
   fun `skips jdwp agent when already present or non test app`() {
     val config = LaunchConfig(application = "org.example.app")
     val context = LaunchConfigContext(
-      file = Paths.get("config.yaml"),
+      file = Paths.get("pde.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
       workingDir = Paths.get("").toAbsolutePath(),
@@ -51,7 +51,7 @@ class TestDebugArgsTest {
   fun `adds jdwp agent for non test app when not restricted`() {
     val config = LaunchConfig(application = "org.example.app")
     val context = LaunchConfigContext(
-      file = Paths.get("config.yaml"),
+      file = Paths.get("pde.yaml"),
       baseDir = Paths.get("").toAbsolutePath(),
       config = config,
       workingDir = Paths.get("").toAbsolutePath(),
