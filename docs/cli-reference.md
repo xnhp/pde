@@ -1,8 +1,8 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `fc80692`
-Generated date: `2026-03-17`
+Source commit: `6eefc30`
+Generated date: `2026-03-18`
 
 ## `pde`
 

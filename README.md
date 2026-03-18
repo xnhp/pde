@@ -1,30 +1,51 @@
+This project offers tooling to work on Eclipse PDE projects.
+
+# Overview
+
+## CLI
+This projects provides a CLI to facilitate the basic steps for working on PDE projects. Example commands are:
+
+- `pde target install` -- install/update Target Platform state
+- `pde compile` -- compile java sources (with TP/workspace dependency resolution)
+- `pde run` -- start a PDE application (with TP/workspace dependency resolution)
+- `pde test` -- run PDE JUnit-Plug-In tests
+- `pde format` -- (experimental) invoke the Eclipse JDT code formatter
+- `pde api-analyze` -- (experimental) run API analysis
+
+The full CLI command reference is generated from `--help` output into `docs/cli-reference.md`
+as part of `:pde-launch:installDist`.
+
+## IntelliJ integration
+
+Tight integration into IntelliJ, containing all functionality of core/CLI apps, plus:
+- full code navigation, autocomplete, etc
+- linting for MANIFEST.MF files
+- launch configurations
+- GUI to configure target platform root
+- bootstrap an IntelliJ project config based on the PDE project config (`pde ide-init idea`)
+
+
+## LSP integration
+
+To support arbitrary other editors (or agents), `pde ide-init jdtls` bootstraps project configuration to support LSP
+integration using [jdt-ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls). This has been tested only with specific
+project setups and emacs.
+
+
+# Getting Started
+
+(todo)
+
+---
+
+
+# Repository Layout
 
 This repository contains:
 
 - `core/` – reusable libraries (target platform indexing, launch planning, remote test protocol)
 - `apps/` – headless tools built on top of `core/` (`pde`, `pde-resolver-cli`, `pde-test-runner`)
 - `intellij/` – IntelliJ IDEA plugin to support working with PDE projects
-
-# CLI
-This projects provides a CLI to facilitate the basic steps for working on PDE projects.
-
-- `pde target install` -- install/update Target Platform state
-- `pde target mirror` -- mirror update sites from a target definition
-- `pde compile` -- compile java sources (with TP/workspace dependency resolution)
-- `pde run` -- start a PDE application (with TP/workspace dependency resolution)
-- `pde test` -- run PDE JUnit-Plug-In tests
-- `pde format` -- invoke the Eclipse JDT code formatter
-
-In addition, the CLI offers convenience tools for project setup and analysis.
-
-- `pde ide-init idea` -- auto-initialize IntelliJ project configuration
-- `pde ide-init jdtls` -- generate configuration files to enable LSP integration facilitated by [jdt-ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls)
-- `pde add-test` -- append a test entry to launch config
-- `pde add-test-helper` -- append a gateway helper test entry
-- `pde api-analyze` -- run API analysis
-
-The full CLI command reference is generated from `--help` output into `docs/cli-reference.md`
-as part of `:pde-launch:installDist`.
 
 
 # Development
