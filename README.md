@@ -1,6 +1,7 @@
-This project offers tooling to work on Eclipse PDE projects.
 
 # Overview
+
+This project offers tooling to work on Eclipse PDE projects.
 
 ## CLI
 This projects provides a CLI to facilitate the basic steps for working on PDE projects. Example commands are:
@@ -23,7 +24,10 @@ Tight integration into IntelliJ, containing all functionality of core/CLI apps, 
 - launch configurations
 - GUI to configure target platform root
 - bootstrap an IntelliJ project config based on the PDE project config (`pde ide-init idea`)
-
+- Target platform configuration (Eclipse SDK, p2, target definitions, directory bundle roots) with indexing
+- `MANIFEST.MF` language support: header parsing, completion, inspections, quick fixes
+- `plugin.xml`/`.exsd` extension point model with completion and validation
+- Eclipse application run configuration and workspace/module resolve actions
 
 ## LSP integration
 
@@ -59,12 +63,6 @@ This repository contains:
 ## IntelliJ plugin
 
 - Run a sandbox IDE with the plugin: `./gradlew :intellij:runIde`
-- IntelliJ IDEA support for PDE projects, including:
-  - Target platform configuration (Eclipse SDK, p2, target definitions, directory bundle roots) with indexing
-  - PDE facet + module library resolvers for workspace, manifest, and build classpaths
-  - `MANIFEST.MF` language support: header parsing, completion, inspections, quick fixes
-  - `plugin.xml`/`.exsd` extension point model with completion and validation
-  - Eclipse application run configuration and workspace/module resolve actions
 
 ## Headless tools
 
