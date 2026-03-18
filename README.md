@@ -15,14 +15,13 @@ This projects provides a CLI to facilitate the basic steps for working on PDE pr
 - `pde test` -- run PDE JUnit-Plug-In tests
 - `pde format` -- invoke the Eclipse JDT code formatter
 
-In addition, the CLI offers convenience tools to keep the workspace and
-development setup for different To-Dos (issues) completely isolated.
+In addition, the CLI offers convenience tools for project setup and analysis.
 
-- `pde worktrees-init` -- create worktrees and sparse-checkout bundles
-- `pde issue-new` -- auto-generate workspace config
-- `pde foreach-repo` -- run shell command in each configured repo
-- `pde ij-init` -- auto-intialise IntelliJ project configuration
-- `pde jdtls-init` -- generate configuration files to enable LSP integration facilitated by [jdt-ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls)
+- `pde ide-init idea` -- auto-initialize IntelliJ project configuration
+- `pde ide-init jdtls` -- generate configuration files to enable LSP integration facilitated by [jdt-ls](https://github.com/eclipse-jdtls/eclipse.jdt.ls)
+- `pde add-test` -- append a test entry to launch config
+- `pde add-test-helper` -- append a gateway helper test entry
+- `pde api-analyze` -- run API analysis
 
 The full CLI command reference is generated from `--help` output into `docs/cli-reference.md`
 as part of `:pde-launch:installDist`.
@@ -52,8 +51,8 @@ as part of `:pde-launch:installDist`.
   - Binary: `apps/pde-launch/build/install/pde/bin/pde`
 - Build/install the formatter: `./gradlew :pde-format:installDist`
   - Binary: `apps/pde-format/build/install/pde-format/bin/pde-format`
-- IntelliJ/PDE project setup: `pde ij-init`
-- JDT LS project setup: `pde jdtls-init` (Emacs/Eglot guide: `docs/jdtls-eglot.md`)
+- IntelliJ/PDE project setup: `pde ide-init idea`
+- JDT LS project setup: `pde ide-init jdtls` (Emacs/Eglot guide: `docs/jdtls-eglot.md`)
 - Build/install the remote runner: `./gradlew :pde-test-runner:installDist`
 - Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`
 
