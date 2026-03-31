@@ -73,6 +73,7 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("Usage: pde target install"))
+    assertTrue(output.contains("--launch=String"))
   }
 
   @Test
@@ -88,6 +89,7 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("Usage: pde target mirror"))
+    assertTrue(output.contains("--destination=String"))
   }
 
   @Test
@@ -103,6 +105,8 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("Usage: pde launch"))
+    assertTrue(output.contains("--config=String"))
+    assertTrue(output.contains("[launchPos]"))
   }
 
   @Test
@@ -118,6 +122,8 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("Usage: pde test"))
+    assertTrue(output.contains("--report=String"))
+    assertTrue(output.contains("[testPos]"))
   }
 
   @Test
@@ -133,6 +139,38 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("pde compile"))
+    assertTrue(output.contains("--execute"))
+  }
+
+  @Test
+  fun `api analyze subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-analyze", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde api-analyze"))
+    assertTrue(output.contains("--fail-on-error"))
+  }
+
+  @Test
+  fun `api analyzer alias is supported`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-analyzer", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde api-analyze"))
   }
 
   @Test

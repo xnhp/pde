@@ -1855,7 +1855,7 @@ private fun testMain(args: Array<String>): Int {
   val parser = ArgParser("pde test ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
-  val launchPos by parser.argument(ArgType.String, description = "Test name (optional, ignored with --all)").optional()
+  val testPos by parser.argument(ArgType.String, description = "Test name (optional, ignored with --all)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -1909,7 +1909,7 @@ private fun testMain(args: Array<String>): Int {
   val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
   val testName = when {
     configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
-    launchPos != null -> launchPos
+    testPos != null -> testPos
     else -> null
   }
 
