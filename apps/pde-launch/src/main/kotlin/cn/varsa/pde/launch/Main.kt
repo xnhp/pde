@@ -1,133 +1,111 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.cli.core.CliCommandGroup
+import cn.varsa.cli.core.CliCommandLeaf
 import cn.varsa.cli.core.CliMain
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
 import pde.format.main as formatMain
 import picocli.CommandLine
-import picocli.CommandLine.Command
-import picocli.CommandLine.Parameters
-import picocli.CommandLine.Spec
-import picocli.CommandLine.Model.CommandSpec
-import java.util.concurrent.Callable
 
-@Command(
+private fun forwardToLaunch(commandName: String, vararg prefix: String): (Array<String>) -> Int = { args ->
+  launchMain((prefix.toList() + args).toTypedArray(), commandName = commandName)
+  0
+}
+
+private val pdeCommand = CliCommandGroup(
   name = "pde",
-  description = ["PDE tooling CLI"],
-  mixinStandardHelpOptions = true,
-  subcommands = [
-    IdeInitSubcommand::class,
-    CompileSubcommand::class,
-    FormatSubcommand::class,
-    AddTestSubcommand::class,
-    AddTestHelperSubcommand::class,
-    RunSubcommand::class,
-    TargetSubcommand::class,
-    TestSubcommand::class,
-    ApiAnalyzeSubcommand::class
-  ]
+  description = "PDE tooling CLI",
+  children = listOf(
+    CliCommandGroup(
+      name = "ide-init",
+      description = "Generate IDE project files",
+      children = listOf(
+        CliCommandLeaf(
+          name = "idea",
+          description = "Generate IntelliJ project",
+          handler = { args -> IjInit.main(args) }
+        ),
+        CliCommandLeaf(
+          name = "jdtls",
+          description = "Generate .project/.classpath for JDT LS",
+          handler = { args -> JdtlsInitCommand.main(args) }
+        )
+      )
+    ),
+    CliCommandLeaf(
+      name = "compile",
+      description = "Compile PDE Java bundles",
+      handler = { args -> compileMain(args) }
+    ),
+    CliCommandLeaf(
+      name = "format",
+      description = "Format Java sources via Eclipse formatter",
+      handler = { args ->
+        formatMain(args)
+        0
+      }
+    ),
+    CliCommandLeaf(
+      name = "add-test",
+      description = "Append a test entry to launch config",
+      handler = { args -> AddTestCommand.main(args) }
+    ),
+    CliCommandLeaf(
+      name = "add-test-helper",
+      description = "Append a gateway helper test entry",
+      handler = { args -> AddTestHelperCommand.main(args) }
+    ),
+    CliCommandLeaf(
+      name = "run",
+      description = "Run a launch config",
+      handler = forwardToLaunch("pde run")
+    ),
+    CliCommandLeaf(
+      name = "launch",
+      description = "Run a launch config",
+      handler = forwardToLaunch("pde launch")
+    ),
+    CliCommandGroup(
+      name = "target",
+      description = "Target platform commands (install, mirror)",
+      children = listOf(
+        CliCommandLeaf(
+          name = "install",
+          description = "Resolve/prepare target platform state",
+          handler = forwardToLaunch("pde target install", "target", "install")
+        ),
+        CliCommandLeaf(
+          name = "mirror",
+          description = "Mirror update sites from a .target definition",
+          handler = forwardToLaunch("pde target mirror", "target", "mirror")
+        )
+      )
+    ),
+    CliCommandLeaf(
+      name = "test",
+      description = "Run PDE test launch",
+      handler = forwardToLaunch("pde test", "test")
+    ),
+    CliCommandLeaf(
+      name = "api-analyze",
+      description = "Run API analysis",
+      handler = forwardToLaunch("pde api-analyze", "api-analyze")
+    ),
+    CliCommandLeaf(
+      name = "schema",
+      description = "Print the active pde schema path",
+      handler = { args -> SchemaCommand.main(args) }
+    )
+  )
 )
-private class PdeCommand : Runnable {
-  @Spec
-  lateinit var spec: CommandSpec
 
-  override fun run() {
-    spec.commandLine().usage(System.out)
-  }
-}
-
-@Command(
-  name = "ide-init",
-  description = ["Generate IDE project files"],
-  mixinStandardHelpOptions = true,
-  subcommands = [IdeInitIdeaSubcommand::class, IdeInitJdtlsSubcommand::class]
-)
-private class IdeInitSubcommand : Runnable {
-  @Spec
-  lateinit var spec: CommandSpec
-
-  override fun run() {
-    spec.commandLine().usage(System.out)
-  }
-}
-
-@Command(name = "idea", description = ["Generate IntelliJ project"], mixinStandardHelpOptions = true) private class IdeInitIdeaSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = IjInit.main(args.toTypedArray())
-}
-
-@Command(name = "jdtls", description = ["Generate .project/.classpath for JDT LS"], mixinStandardHelpOptions = true) private class IdeInitJdtlsSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = JdtlsInitCommand.main(args.toTypedArray())
-}
-
-@Command(name = "compile", description = ["Compile PDE Java bundles"], mixinStandardHelpOptions = true) private class CompileSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = compileMain(args.toTypedArray())
-}
-
-@Command(name = "format", description = ["Format Java sources via Eclipse formatter"], mixinStandardHelpOptions = true) private class FormatSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int {
-    formatMain(args.toTypedArray())
-    return 0
-  }
-}
-
-@Command(name = "add-test", description = ["Append a test entry to launch config"], mixinStandardHelpOptions = true) private class AddTestSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = AddTestCommand.main(args.toTypedArray())
-}
-
-@Command(name = "add-test-helper", description = ["Append a gateway helper test entry"], mixinStandardHelpOptions = true) private class AddTestHelperSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int = AddTestHelperCommand.main(args.toTypedArray())
-}
-
-@Command(name = "run", aliases = ["launch"], description = ["Run a launch config"], mixinStandardHelpOptions = true) private class RunSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int {
-    launchMain(args.toTypedArray())
-    return 0
-  }
-}
-
-@Command(name = "target", description = ["Target platform commands (install, mirror)"], mixinStandardHelpOptions = true) private class TargetSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int {
-    launchMain((listOf("target") + args).toTypedArray())
-    return 0
-  }
-}
-
-@Command(name = "test", description = ["Run PDE test launch"], mixinStandardHelpOptions = true) private class TestSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int {
-    launchMain((listOf("test") + args).toTypedArray())
-    return 0
-  }
-}
-
-@Command(name = "api-analyze", description = ["Run API analysis"], mixinStandardHelpOptions = true) private class ApiAnalyzeSubcommand : Callable<Int> {
-  @Parameters(arity = "0..*")
-  var args: List<String> = emptyList()
-  override fun call(): Int {
-    launchMain((listOf("api-analyze") + args).toTypedArray())
-    return 0
-  }
+internal fun runPde(args: Array<String>) {
+  CliMain.run(pdeCommand, args)
 }
 
 fun main(args: Array<String>) {
-  CliMain.run(PdeCommand(), args)
+  runPde(args)
 }
 
-internal fun createPdeCommandLine(): CommandLine = CommandLine(PdeCommand())
+internal fun createPdeCommandLine(): CommandLine = CliMain.createCommandLine(pdeCommand)
