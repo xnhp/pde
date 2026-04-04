@@ -48,8 +48,8 @@ object ForeachRepoCommand {
 
 private fun runForeach(context: LaunchConfigContext, command: String, noRepoHeaders: Boolean) {
   val config = context.config
-  if (config.bundlesPerRepo.isEmpty()) {
-    fail("No bundlesPerRepo entries found in ${context.file.fileName}.")
+  if (config.bundles.isEmpty()) {
+    fail("No bundles entries found in ${context.file.fileName}.")
   }
 
   val normalizedCommand = requireNonBlank(command, "Command must be non-empty")
@@ -69,16 +69,18 @@ private fun runForeach(context: LaunchConfigContext, command: String, noRepoHead
 private data class RepoDir(val name: String, val path: Path)
 
 private fun resolveRepoDirs(baseDir: Path, config: LaunchConfig): List<RepoDir> {
-  return config.bundlesPerRepo.map { entry ->
-    val repoPath = Paths.get(entry.repo)
-    val repoDir = if (repoPath.isAbsolute) repoPath else baseDir.resolve(repoPath).normalize()
-    if (!Files.isDirectory(repoDir)) {
-      fail("Repo directory not found for '${entry.repo}': ${repoDir}")
+  val unique = linkedMapOf<Path, RepoDir>()
+  config.bundles.forEach { entry ->
+    val bundlePath = resolvePath(baseDir, entry.path)
+    if (!Files.isDirectory(bundlePath)) {
+      fail("Bundle directory not found for '${entry.path}': ${bundlePath}")
     }
+    val repoDir = bundlePath.parent ?: fail("Bundle path has no parent directory: ${entry.path}")
     val repoName = repoDir.fileName?.toString()?.takeIf { it.isNotBlank() }
-      ?: requireNonBlank(entry.repo, "Repo name missing for entry.")
-    RepoDir(repoName, repoDir)
+      ?: requireNonBlank(repoDir.toString(), "Repo name missing for bundle '${entry.path}'.")
+    unique.putIfAbsent(repoDir, RepoDir(repoName, repoDir))
   }
+  return unique.values.toList()
 }
 
 private fun runShellCommand(workingDir: Path, command: String, errorMessage: String) {

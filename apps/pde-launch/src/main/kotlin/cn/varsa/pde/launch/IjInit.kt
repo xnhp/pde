@@ -93,8 +93,8 @@ object IjInit {
   internal fun initIjProjectFromConfig(configPath: Path, workingDir: Path = configPath.parent ?: configPath): Int {
     val baseDir = configPath.parent ?: fail("Config file has no parent directory: ${configPath}")
     val context = LaunchConfigLoader.load(configPath, workingDir)
-    if (context.config.bundlesPerRepo.isEmpty()) {
-      fail("No bundlesPerRepo entries found in config; add bundlesPerRepo to generate modules.")
+    if (context.config.bundles.isEmpty()) {
+      fail("No bundle entries found in config; add bundles to generate modules.")
     }
     val projectDir = ensureIjProjectDir(baseDir)
     applyIjConfig(context, projectDir)
@@ -131,11 +131,6 @@ object IjInit {
     if (profilePath != null) {
       updateEclipseTargetLocation(projectDir, normalizeProfilePath(profilePath.toString()))
     }
-    val formatterConfigPath = context.config.formatterConfigPath?.trim().orEmpty()
-    if (formatterConfigPath.isNotEmpty()) {
-      val resolved = resolvePath(context.baseDir, formatterConfigPath).toString()
-      updateEclipseFormatterConfig(projectDir, resolved)
-    }
   }
 
   private fun writeIjModules(context: LaunchConfigContext, projectDir: Path): Int {
@@ -144,50 +139,38 @@ object IjInit {
     Files.createDirectories(moduleDir)
     val modules = mutableListOf<String>()
     val vcsMappings = mutableSetOf<String>()
-    val nonPdeBundles = context.config.nonPdeBundles
 
-    context.config.bundlesPerRepo.forEach { repoEntry ->
-      val repoName = repoEntry.repo.trim()
-      if (repoName.isEmpty()) fail("Repository name must not be empty")
-      val repoDir = baseDir.resolve(repoName)
-      if (!Files.exists(repoDir) || !Files.isDirectory(repoDir)) {
-        fail("Repo directory does not exist: ${repoDir}")
+    context.config.bundles.forEach { bundleEntry ->
+      val bundlePath = resolvePath(baseDir, bundleEntry.path)
+      if (!Files.exists(bundlePath) || !Files.isDirectory(bundlePath)) {
+        fail("Bundle directory does not exist: ${bundlePath}")
       }
-      vcsMappings.add(repoName.replace('\\', '/'))
-      val entryNonPdeBundles = repoEntry.nonPdeBundles
-      val bundleNames = allBundles(repoEntry, repoDir, nonPdeBundles + entryNonPdeBundles)
-      if (bundleNames.isEmpty()) fail("No bundles resolved for repo: ${repoName}")
-      bundleNames.forEach { bundle ->
-        val bundleDir = repoDir.resolve(bundle)
-        if (!Files.exists(bundleDir) || !Files.isDirectory(bundleDir)) {
-          fail("Bundle directory does not exist: ${bundleDir}")
+      bundlePath.parent?.let { parent ->
+        val relativeParent = baseDir.relativize(parent.toAbsolutePath().normalize()).toString().replace('\\', '/')
+        if (relativeParent.isNotBlank() && !relativeParent.startsWith("..")) {
+          vcsMappings.add(relativeParent)
         }
-        val sourceRoots = determineSourceRoots(bundleDir)
-        if (sourceRoots.isEmpty()) {
-          logger.warning("Bundle has no source roots: ${bundleDir}; skipping")
-          return@forEach
-        }
-        val moduleFileName = "${bundle}.iml"
-        val moduleFile = moduleDir.resolve(moduleFileName)
-        val contentRoot = normalizeContentRoot(bundleDir.toAbsolutePath().normalize().toUri().toString())
-        val relativeSourceRoots = sourceRoots.map { root ->
-          bundleDir.relativize(root).toString().replace('\\', '/')
-        }
-        val excludeFolders = determineExcludedFolders(bundleDir)
-        writeModuleFile(moduleFile, contentRoot, relativeSourceRoots, excludeFolders)
-        modules.add(moduleFileName)
       }
+      val bundle = bundlePath.fileName?.toString() ?: fail("Bundle path has no final segment: ${bundlePath}")
+      val sourceRoots = determineSourceRoots(bundlePath)
+      if (sourceRoots.isEmpty()) {
+        logger.warning("Bundle has no source roots: ${bundlePath}; skipping")
+        return@forEach
+      }
+      val moduleFileName = "${bundle}.iml"
+      val moduleFile = moduleDir.resolve(moduleFileName)
+      val contentRoot = normalizeContentRoot(bundlePath.toAbsolutePath().normalize().toUri().toString())
+      val relativeSourceRoots = sourceRoots.map { root ->
+        bundlePath.relativize(root).toString().replace('\\', '/')
+      }
+      val excludeFolders = determineExcludedFolders(bundlePath)
+      writeModuleFile(moduleFile, contentRoot, relativeSourceRoots, excludeFolders)
+      modules.add(moduleFileName)
     }
 
     writeModulesXml(projectDir, modules)
     writeVcsXml(projectDir, vcsMappings.sorted())
     return modules.size
-  }
-
-  private fun allBundles(repoEntry: cn.varsa.pde.resolver.cli.config.RepoBundles, repoDir: Path, nonPdeBundles: List<String>): List<String> {
-    val bundles = repoEntry.bundles.map { it.name }
-    val nonPde = nonPdeBundles.filter { name -> Files.isDirectory(repoDir.resolve(name)) }
-    return (bundles + nonPde).distinct()
   }
 
   internal fun updateEclipseTargetLocation(projectDir: Path, profilePath: String) {
@@ -235,10 +218,7 @@ object IjInit {
   private fun resolveProfilePath(context: LaunchConfigContext): Path? {
     val baseDir = context.baseDir
     val targetConfig = context.config.target
-    val legacyProfile = context.config.profilePath?.takeUnless { it.isBlank() }
-      ?.let { resolveProfilePath(baseDir, it) }
-      ?.let { Paths.get(it) }
-    if (targetConfig == null) return legacyProfile
+    if (targetConfig == null) return null
 
     val profileId = targetConfig.profileId ?: "profile"
     val p2Path = targetConfig.p2Path?.let { resolvePath(baseDir, it) }
@@ -250,7 +230,7 @@ object IjInit {
     return when {
       Files.exists(profileFile) -> profileFile
       Files.exists(profileFileLegacy) -> profileFileLegacy
-      else -> legacyProfile
+      else -> null
     }
   }
 

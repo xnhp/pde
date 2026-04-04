@@ -16,8 +16,6 @@ class LaunchConfigLoaderTest {
     val configFile = root.resolve("pde.yaml").toFile()
     configFile.writeText(
       """
-      product: base.product
-      application: base.app
       launches:
         - name: run
           product: launch.product
@@ -27,13 +25,9 @@ class LaunchConfigLoaderTest {
 
     val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
     val launch = loaded.config.launches.single()
-    val patched = loaded.config.copy(
-      product = launch.product ?: loaded.config.product,
-      application = launch.application ?: loaded.config.application
-    )
 
-    assertEquals("launch.product", patched.product)
-    assertEquals("launch.app", patched.application)
+    assertEquals("launch.product", launch.product)
+    assertEquals("launch.app", launch.application)
   }
 
   @Test
@@ -44,8 +38,6 @@ class LaunchConfigLoaderTest {
 
     baseFile.writeText(
       """
-      env:
-        BASE: "1"
       launches:
         - name: AP
           vmArgs:
@@ -60,8 +52,6 @@ class LaunchConfigLoaderTest {
       """
       includes:
         - base.yaml
-      env:
-        OVERRIDE: "2"
       launches:
         - name: AP
           vmArgs:
@@ -73,11 +63,9 @@ class LaunchConfigLoaderTest {
     )
 
     val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
-    val env = loaded.config.env
     val launchNames = loaded.config.launches.map { it.name }
     val apLaunch = loaded.config.launches.first { it.name == "AP" }
 
-    assertEquals(mapOf("BASE" to "1", "OVERRIDE" to "2"), env)
     assertEquals(listOf("AP", "GatewayDevServer", "Extra"), launchNames)
     assertEquals(listOf("-Xmx2048m"), apLaunch.vmArgs)
   }
@@ -114,7 +102,31 @@ class LaunchConfigLoaderTest {
   }
 
   @Test
-  fun concatenatesBundlesPerRepoAcrossIncludes() {
+  fun launchEntryLoadsRuntimeDirectoryOverrides() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      launches:
+        - name: AP
+          product: launch.product
+          application: launch.app
+          dataDir: runtime/data
+          configDir: runtime/config
+          workDir: runtime/work
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val launch = loaded.config.launches.single()
+
+    assertEquals("runtime/data", launch.dataDir)
+    assertEquals("runtime/config", launch.configDir)
+    assertEquals("runtime/work", launch.workDir)
+  }
+
+  @Test
+  fun concatenatesBundlesAcrossIncludes() {
     val root: Path = tmp.root.toPath()
     val baseFile = root.resolve("base.yaml").toFile()
     val extraFile = root.resolve("extra.yaml").toFile()
@@ -122,18 +134,14 @@ class LaunchConfigLoaderTest {
 
     baseFile.writeText(
       """
-      bundlesPerRepo:
-        - repo: repo-a
-          bundles:
-            - bundle-one
+      bundles:
+        - path: repo-a/bundle-one
       """.trimIndent()
     )
     extraFile.writeText(
       """
-      bundlesPerRepo:
-        - repo: repo-b
-          bundles:
-            - bundle-two
+      bundles:
+        - path: repo-b/bundle-two
       """.trimIndent()
     )
     configFile.writeText(
@@ -141,16 +149,14 @@ class LaunchConfigLoaderTest {
       includes:
         - base.yaml
         - extra.yaml
-      bundlesPerRepo:
-        - repo: repo-c
-          bundles:
-            - bundle-three
+      bundles:
+        - path: repo-c/bundle-three
       """.trimIndent()
     )
 
     val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
-    val repos = loaded.config.bundlesPerRepo.map { it.repo }
+    val bundlePaths = loaded.config.bundles.map { it.path }
 
-    assertEquals(listOf("repo-a", "repo-b", "repo-c"), repos)
+    assertEquals(listOf("repo-a/bundle-one", "repo-b/bundle-two", "repo-c/bundle-three"), bundlePaths)
   }
 }

@@ -26,7 +26,7 @@ class AddTestCommandTest {
     Files.writeString(
       configPath,
       """
-      bundlesPerRepo: []
+      bundles: []
       """.trimIndent()
     )
 
@@ -50,8 +50,8 @@ class AddTestCommandTest {
 
     val entry = tests[0] as? Map<*, *>
     assertNotNull(entry)
-    assertEquals("org.knime.gateway.impl", entry["testpluginname"])
-    assertEquals("org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests", entry["classname"])
+    assertEquals("org.knime.gateway.impl", entry["testPluginName"])
+    assertEquals("org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests", entry["className"])
 
     assertEquals("Added test entry to pde.yaml\n", stdout.toString())
   }

@@ -26,8 +26,7 @@ class AddTestHelperCommandTest {
     Files.writeString(
       configPath,
       """
-      issueId: PDE-1
-      bundlesPerRepo: []
+      bundles: []
       """.trimIndent()
     )
 
@@ -51,8 +50,8 @@ class AddTestHelperCommandTest {
 
     val entry = tests[0] as? Map<*, *>
     assertNotNull(entry)
-    assertEquals("org.knime.gateway.impl", entry["testpluginname"])
-    assertEquals("org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests", entry["classname"])
+    assertEquals("org.knime.gateway.impl", entry["testPluginName"])
+    assertEquals("org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests", entry["className"])
     val vmArgs = entry["vmArgs"] as? List<*>
     assertNotNull(vmArgs)
     assertEquals(
@@ -73,7 +72,7 @@ class AddTestHelperCommandTest {
     Files.writeString(
       configPath,
       """
-      bundlesPerRepo: []
+      bundles: []
       """.trimIndent()
     )
 

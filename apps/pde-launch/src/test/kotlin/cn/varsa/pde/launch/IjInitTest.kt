@@ -74,15 +74,13 @@ class IjInitTest {
     val configPath = configDir.resolve("pde.yaml")
     Files.writeString(
       configPath,
-      """
+        """
         target: {}
-        bundlesPerRepo:
-          - repo: knime-core
-            bundles:
-              - org.knime.core
+        bundles:
+          - path: knime-core/org.knime.core
       """.trimIndent()
     )
-    val profileFile = issueDir
+    val profileFile = configDir
       .resolve("target")
       .resolve("p2")
       .resolve("org.eclipse.equinox.p2.engine")
@@ -109,10 +107,8 @@ class IjInitTest {
     Files.writeString(
       configPath,
       """
-        bundlesPerRepo:
-          - repo: knime-core
-            bundles:
-              - org.knime.core
+        bundles:
+          - path: knime-core/org.knime.core
       """.trimIndent()
     )
 
@@ -135,7 +131,7 @@ class IjInitTest {
   fun `findConfigPath finds config in parent directory`() {
     val baseDir = Files.createTempDirectory("ij-init-find")
     val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(configPath, "bundlesPerRepo: []\n")
+    Files.writeString(configPath, "bundles: []\n")
 
     val nestedDir = baseDir.resolve("nested").resolve("child")
     Files.createDirectories(nestedDir)
