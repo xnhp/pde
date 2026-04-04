@@ -1,5 +1,6 @@
 package cn.varsa.pde.launch
 
+import org.junit.Before
 import org.junit.Test
 import org.junit.Assume.assumeTrue
 import java.io.BufferedInputStream
@@ -14,6 +15,14 @@ import kotlin.io.path.name
 import kotlin.test.assertEquals
 
 class JdtlsSmokeTest {
+  @Before
+  fun skipUnlessEnabled() {
+    assumeTrue(
+      "Skipping JDTLS smoke tests: set JDTLS_SMOKE=true to enable",
+      System.getenv("JDTLS_SMOKE") == "true" || System.getProperty("jdtls.smoke") == "true"
+    )
+  }
+
   @Test
   fun `smoke initialize with JDT LS`() {
     val root = envPath("JDTLS_ROOT") ?: createWorkspaceFixture()
