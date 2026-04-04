@@ -5,14 +5,17 @@ import cn.varsa.pde.resolver.launch.WorkspaceInputs
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.logging.Logger
 
 data class WorkspaceModuleDefinition(
   val moduleDir: Path,
-  val classRoots: List<String> = emptyList(),
+  val classRoots: List<String>? = null,
   val manifestOverride: BundleManifest? = null
 )
 
 object WorkspaceModuleBuilder {
+  private val logger = Logger.getLogger(WorkspaceModuleBuilder::class.java.name)
+
   fun build(definitions: List<WorkspaceModuleDefinition>, allowMissingClasses: Boolean = false): WorkspaceInputs {
     val descriptors = mutableListOf<WorkspaceBundleDescriptor>()
     val devProps = linkedMapOf<String, List<String>>()
@@ -27,11 +30,11 @@ object WorkspaceModuleBuilder {
       val descriptor = runCatching { WorkspaceBundleLoader.load(moduleDir) }
         .getOrElse { cause ->
           throw WorkspaceModuleException("Failed to load workspace module at $moduleDir: ${cause.message}")
-        }
+      }
       val manifest = definition.manifestOverride ?: descriptor.manifest
       val bsn = manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
 
-      val classRoots = (definition.classRoots.takeIf { it.isNotEmpty() } ?: WorkspaceDefaults.DEFAULT_CLASS_ROOTS)
+      val classRoots = resolveClassRoots(definition, descriptor, moduleDir)
       val devClassPaths = if (allowMissingClasses) {
         classRoots.map { moduleDir.resolve(it).normalize() }
       } else {
@@ -60,6 +63,42 @@ object WorkspaceModuleBuilder {
       }
     }
     return WorkspaceInputs(descriptors, devProps)
+  }
+
+  private fun resolveClassRoots(
+    definition: WorkspaceModuleDefinition,
+    descriptor: WorkspaceBundleDescriptor,
+    moduleDir: Path
+  ): List<String> {
+    val configured = definition.classRoots
+      ?.map { it.trim() }
+      ?.filter { it.isNotEmpty() }
+      ?.takeIf { it.isNotEmpty() }
+    if (configured != null) return configured
+
+    val derivedRoot = if (descriptor.outputDirectoryFromBuildProperties) {
+      descriptor.outputDirectory?.toRelativeClassRoot(moduleDir)
+    } else {
+      null
+    }
+
+    if (derivedRoot != null) {
+      logger.info("Auto-derived classRoots for ${moduleDir}: [${derivedRoot}] (from build.properties output..)")
+      return listOf(derivedRoot)
+    }
+
+    return WorkspaceDefaults.DEFAULT_CLASS_ROOTS
+  }
+
+  private fun Path.toRelativeClassRoot(moduleDir: Path): String? {
+    val normalizedModule = moduleDir.toAbsolutePath().normalize()
+    val normalizedOutput = toAbsolutePath().normalize()
+    if (!normalizedOutput.startsWith(normalizedModule)) return null
+    val relative = normalizedModule.relativize(normalizedOutput).toString()
+      .replace('\\', '/')
+      .trimEnd('/')
+      .ifEmpty { "." }
+    return relative
   }
 
   private fun containsClasses(classPaths: List<Path>): Boolean =

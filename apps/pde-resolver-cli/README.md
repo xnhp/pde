@@ -15,8 +15,8 @@ shared resolver library and its on‑disk cache.
 
 ### Startup level data
 
-- Provide a `startupLevels.yaml` next to your `launch.yaml` (or point `startupLevelsFile` to
-  another file). Example:
+- Provide a `startupLevels.yaml` next to your config (or include it from your main YAML).
+  Example:
 
   ```yaml
   startupLevels:
@@ -24,30 +24,18 @@ shared resolver library and its on‑disk cache.
     org.eclipse.equinox.common: 2
   ```
 
-- The CLI does **not** read `.idea/eclipse-partial.xml` automatically; explicitly export or
-  copy the desired startup-level configuration into `startupLevels.yaml` if you want parity
-  with your IDE run configuration. Legacy `startupLevels.xml` files are still understood but
-  will eventually be phased out.
+- The CLI does **not** read `.idea/eclipse-partial.xml` automatically; export/copy desired
+  startup-level configuration into YAML for parity with IDE runs.
 
-- Bundle whitelist (“Advanced” tab) can be shared the same way: create a plain text file
-  `whitelist.txt` next to `launch.yaml` (or set `whitelistFile`). Each non-empty, non-comment
-  line should contain one prefix such as `org.eclipse.io`. The CLI unions those entries with
-  the `whitelist` array defined in YAML; if both are missing it falls back to the default
-  trio (`org.eclipse.jdt.annotation`, `org.eclipse.io`, `org.eclipse.swt`).
+- Bundle whitelist handling is now schema-driven from YAML config; see the schema descriptions
+  for supported fields and defaults.
 
 ### Target configuration
 
-- Use the `target` object in `launch.yaml` to describe the target platform:
-  - `target.definition`: path to a `.target` file (optional, auto-discovered if omitted)
-  - `target.profile-id`: profile id (default `profile`)
-  - `target.p2-path`: p2 area path (default `./target/p2`)
-- The CLI reads the `.target` file to pick up VM/program arguments when `inheritTargetArgs`
-  is `true` (default). Set `inheritTargetArgs: false` if you want to ignore the `.target`
-  arguments and rely solely on `additionalVmArgs` / `programArgs` in YAML. For backward
-  compatibility you can still spell it `vmArgs`, but future configs should migrate to
-  `additionalVmArgs`.
-- The profile registry path is derived from `target.p2-path` + `target.profile-id`, so you
-  no longer need to set `profilePath` explicitly.
+- Use `target` in your config to describe target platform resolution and installer/mirror
+  behavior. Property-level details (including defaults) live in the schema.
+- The profile registry path is derived from `target.p2Path` + `target.profileId`.
+- To inspect the active schema path for your local installation, run `pde schema`.
 
 ### Remote debugging PDE tests
 
@@ -63,19 +51,15 @@ shared resolver library and its on‑disk cache.
 Example entry inside `launch.yaml`:
 
 ```
-bundlesPerRepo:
-  - repo: ../workspace
-    bundles:
-      - name: org.example.bundle
-        classes:
-          - build/classes/java/main
-          - build/classes/java/test
+bundles:
+  - path: ../workspace/org.example.bundle
+    classRoots:
+      - build/classes/java/main
+      - build/classes/java/test
 ```
 
-- `repo` points at the repository root; bundle paths are resolved under it.
-- `bundles` entries can be strings or objects with `name` and `classes`.
-- `classes` is optional; if omitted we default to `bin`. This directory must
-  already contain compiled `.class` files—the CLI does not build sources.
+- Workspace-bundle property semantics are documented in the schema descriptions.
+- The CLI does not build sources; class output directories must already contain `.class` files.
 
 - `--root, -r <path>`
   - Root path to scan. Repeatable.

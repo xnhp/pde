@@ -1,7 +1,6 @@
 package cn.varsa.pde.resolver.cli.config
 
 import cn.varsa.pde.resolver.launch.WorkspaceInputs
-import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import cn.varsa.pde.resolver.workspace.WorkspaceModuleBuilder
 import cn.varsa.pde.resolver.workspace.WorkspaceModuleDefinition
 import java.nio.file.Files
@@ -28,18 +27,12 @@ object WorkspaceModuleResolver {
 
   fun resolveDefinitions(context: LaunchConfigContext): List<WorkspaceModuleDefinition> {
     val seen = linkedSetOf<String>()
-    return context.config.bundlesPerRepo.flatMap { repoEntry ->
-      val skipBundles = (context.config.nonPdeBundles + repoEntry.nonPdeBundles).toSet()
-      val repoPath = Paths.get(repoEntry.repo)
-      val repoBase = if (repoPath.isAbsolute) repoPath else context.workingDir.resolve(repoPath)
-      repoEntry.bundles.mapNotNull { bundle ->
-        if (skipBundles.contains(bundle.name)) return@mapNotNull null
-        val modulePath = repoBase.resolve(bundle.name).toAbsolutePath().normalize()
-        val normalized = modulePath.toString()
-        if (!seen.add(normalized)) return@mapNotNull null
-        val classRoots = bundle.classes?.takeIf { it.isNotEmpty() } ?: WorkspaceDefaults.DEFAULT_CLASS_ROOTS
-        WorkspaceModuleDefinition(moduleDir = modulePath, classRoots = classRoots)
-      }
+    return context.config.bundles.mapNotNull { bundle ->
+      val path = Paths.get(bundle.path)
+      val modulePath = (if (path.isAbsolute) path else context.workingDir.resolve(path)).toAbsolutePath().normalize()
+      val normalized = modulePath.toString()
+      if (!seen.add(normalized)) return@mapNotNull null
+      WorkspaceModuleDefinition(moduleDir = modulePath, classRoots = bundle.classRoots)
     }
   }
 }

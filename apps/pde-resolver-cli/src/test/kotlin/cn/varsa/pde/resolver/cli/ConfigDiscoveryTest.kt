@@ -15,8 +15,8 @@ class ConfigDiscoveryTest {
   fun prefersFirstCandidateInOrder() {
     val root: Path = tmp.root.toPath()
     // create two candidates; the first in the ordered list should win
-    root.resolve("pde.yaml").toFile().writeText("application: app")
-    root.resolve("launch.yml").toFile().writeText("application: other")
+    root.resolve("pde.yaml").toFile().writeText("{}")
+    root.resolve("launch.yml").toFile().writeText("{}")
 
     val discovered = discoverConfigFile(root)
 
@@ -36,7 +36,7 @@ class ConfigDiscoveryTest {
   fun positionalConfigArgumentIsAccepted() {
     val root: Path = tmp.root.toPath()
     val config = root.resolve("my-launch.yaml").toFile()
-    config.writeText("application: app")
+    config.writeText("{}")
 
     // Should behave like --config when provided positionally
     launchMain(arrayOf(config.absolutePath, "--dry-run"))

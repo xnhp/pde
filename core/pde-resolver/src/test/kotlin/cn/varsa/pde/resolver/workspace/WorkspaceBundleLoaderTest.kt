@@ -31,6 +31,7 @@ class WorkspaceBundleLoaderTest {
     assertEquals("11", desc.compilerPrefs["org.eclipse.jdt.core.compiler.source"])
     assertEquals("11", desc.compilerPrefs["org.eclipse.jdt.core.compiler.compliance"])
     assertTrue(desc.outputDirectory?.endsWith("bin/test-output") == true)
+    assertTrue(desc.outputDirectoryFromBuildProperties)
   }
 
   @Test
@@ -48,6 +49,7 @@ class WorkspaceBundleLoaderTest {
     assertTrue(desc.compilerPrefs.isEmpty())
     assertNull(desc.executionEnvironment)
     assertNull(desc.outputDirectory)
+    assertEquals(false, desc.outputDirectoryFromBuildProperties)
   }
 
   private fun createDirBundle(dir: Path) {

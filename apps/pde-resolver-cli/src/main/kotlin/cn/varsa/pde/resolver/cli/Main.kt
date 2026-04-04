@@ -27,7 +27,6 @@ import cn.varsa.pde.resolver.compile.CompileExecutor
 import cn.varsa.pde.resolver.compile.CompileService
 import cn.varsa.pde.resolver.compile.CompileSpec
 import cn.varsa.pde.resolver.compile.rewritePlanWithCompiledOutputs
-import cn.varsa.pde.resolver.product.ProductConfigurationParser
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
@@ -39,7 +38,6 @@ import cn.varsa.pde.resolver.cli.config.TargetFileParser
 import cn.varsa.pde.resolver.cli.config.TargetLaunchArgs
 import cn.varsa.pde.resolver.cli.config.TestEntry
 import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
-import cn.varsa.pde.resolver.cli.config.WhitelistFileLoader
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
@@ -158,7 +156,6 @@ internal val testOptionsRequiringValue = setOf(
   "--timeout",
   "--report",
   "--forward-log",
-  "--include",
   "--exclude"
 )
 internal val compileOptionsRequiringValue = setOf(
@@ -289,7 +286,7 @@ private fun buildCompilePlanForWarning(
   return LaunchPlanner.build(env, options)
 }
 
-fun launchMain(args: Array<String>) {
+fun launchMain(args: Array<String>, commandName: String = "pde run") {
   if (args.isNotEmpty() && args[0] == "target") {
     val subcommand = args.getOrNull(1)
     when {
@@ -321,7 +318,7 @@ fun launchMain(args: Array<String>) {
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
 
-  val parser = ArgParser("pde run ${maturityTag("usable")}")
+  val parser = ArgParser("$commandName ${maturityTag("usable")}")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -457,9 +454,10 @@ private fun describeConfig(
   targetArgs: TargetLaunchArgs?
 ) {
   val workspaceCount = WorkspaceModuleResolver.resolveDefinitions(config).size
+  val runtime = config.runtime
   logger.info("Loaded launch config from ${config.file}")
-  logger.info("  product: ${config.config.product?.takeUnless { it.isBlank() } ?: "<unspecified>"}")
-  logger.info("  application: ${config.config.application ?: "<unspecified>"}")
+  logger.info("  product: ${runtime.product?.takeUnless { it.isBlank() } ?: "<unspecified>"}")
+  logger.info("  application: ${runtime.application ?: "<unspecified>"}")
   logger.info("  workspace bundles: $workspaceCount")
   logger.info("  target definition: ${targetDefinition ?: "<unspecified>"}")
   logger.info("  profile path: ${profilePath ?: "<unspecified>"}")
@@ -467,7 +465,7 @@ private fun describeConfig(
   logger.info("  target program args: ${targetArgs?.programArgs?.size ?: 0}")
   if (config.jvmDebug) {
     val requiresTestApp = config.jvmDebugRequiresPdeTestApp
-    val isTestApp = config.config.application?.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true) == true
+    val isTestApp = runtime.application?.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true) == true
     val message = if (!requiresTestApp || isTestApp) {
       "enabled (JDWP on port $DEFAULT_TEST_DEBUG_PORT)"
     } else {
@@ -505,24 +503,23 @@ private fun selectLaunchConfig(
     logger.severe("Launch '$launchName' not found in ${context.file}. Available launches: $available")
     return null
   }
-  val patched = context.config.copy(
-    product = selected.product ?: context.config.product,
-    application = selected.application ?: context.config.application,
+  val runtime = context.runtime.copy(
+    product = selected.product,
+    application = selected.application,
     splash = selected.splash,
-    env = mergeEnv(context.config.env, selected.env),
-    additionalVmArgs = selected.vmArgs,
-    programArgs = selected.programArgs
+    vmArgs = selected.vmArgs,
+    programArgs = selected.programArgs,
+    dataDir = selected.dataDir,
+    configDir = selected.configDir,
+    workDir = selected.workDir
   )
-  if (!context.config.splash.isNullOrBlank()) {
-    logger.warning("Top-level 'splash' is no longer supported; use launches[].splash instead.")
-  }
   if (launchName == null) {
     logger.info("Using default launch '${selected.name}'.")
   } else {
     logger.info("Using launch '${selected.name}'.")
   }
   return context.copy(
-    config = patched,
+    runtime = runtime,
     jvmDebug = selected.debug,
     jvmDebugRequiresPdeTestApp = false
   )
@@ -594,7 +591,7 @@ private fun applyTestEntry(
   testName: String?,
   logSelection: Boolean
 ): LaunchConfigContext {
-  val programArgs = context.config.programArgs.toMutableList()
+  val programArgs = context.runtime.programArgs.toMutableList()
   programArgs.addAll(selected.programArgs)
   if (selected.testPluginName != null && "-testpluginname" !in programArgs) {
     programArgs += listOf("-testpluginname", selected.testPluginName)
@@ -602,7 +599,8 @@ private fun applyTestEntry(
   if (selected.className != null && "-classname" !in programArgs) {
     programArgs += listOf("-classname", selected.className)
   }
-  val normalizedRunner = selected.runner?.trim()?.lowercase() ?: "junit4"
+  val normalizedRunner = selected.runner?.trim()?.lowercase()
+    ?: error("Missing required test runner in config test entry '${testLabel(selected)}'")
   fun hasFlag(flag: String): Boolean = programArgs.indexOf(flag) != -1
   when (normalizedRunner) {
     "junit5" -> {
@@ -621,16 +619,18 @@ private fun applyTestEntry(
         programArgs += listOf("-loaderpluginname", "org.eclipse.jdt.junit4.runtime")
       }
     }
-    else -> logger.warning("Unknown test runner '${selected.runner}', defaulting to junit4.")
+    else -> logger.warning("Unknown test runner '${selected.runner}'.")
   }
-  val vmArgs = context.config.additionalVmArgs + selected.vmArgs
-  val patched = context.config.copy(
-    additionalVmArgs = vmArgs,
-    programArgs = programArgs,
-    env = mergeEnv(context.config.env, selected.env)
+  val vmArgs = context.runtime.vmArgs + selected.vmArgs
+  val runtime = context.runtime.copy(
+    product = null,
+    application = PDE_JUNIT_PLUGIN_TEST_APPLICATION,
+    splash = null,
+    vmArgs = vmArgs,
+    programArgs = programArgs
   )
   val withDebug = context.copy(
-    config = patched,
+    runtime = runtime,
     jvmDebug = selected.debug,
     jvmDebugRequiresPdeTestApp = true
   )
@@ -671,12 +671,6 @@ private fun executeLaunch(
   } else {
     processBuilder.redirectErrorStream(true)
     processBuilder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
-  }
-  if (context.config.env.isNotEmpty()) {
-    val env = processBuilder.environment()
-    context.config.env.forEach { (key, value) ->
-      env[key] = value
-    }
   }
   val process = processBuilder
     .directory(prepared.layout.workDir.toFile())
@@ -917,17 +911,11 @@ private fun logPlanSummary(planResult: LaunchPlanner.PlanResult) {
 
 private fun applyOsgiDebug(context: LaunchConfigContext, osgiDebug: Boolean): LaunchConfigContext {
   if (!osgiDebug) return context
-  val programArgs = context.config.programArgs.toMutableList()
+  val programArgs = context.runtime.programArgs.toMutableList()
   if (!programArgs.contains("-debug")) {
     programArgs += "-debug"
   }
-  return context.copy(config = context.config.copy(programArgs = programArgs))
-}
-
-internal fun mergeEnv(base: Map<String, String>, overrides: Map<String, String>): Map<String, String> {
-  if (overrides.isEmpty()) return base
-  if (base.isEmpty()) return overrides
-  return base + overrides
+  return context.copy(runtime = context.runtime.copy(programArgs = programArgs))
 }
 
 
@@ -963,7 +951,7 @@ private fun prepareLaunch(
   val profilePath = resolveProfilePath(context)
     ?: error(
       "Target profile path missing in YAML config. Add a target section to pde.yaml " +
-        "(set target.profile-id + target.p2-path) or set profilePath. See docs/config-yaml.md#target."
+        "(set target.profileId + target.p2Path). See docs/config-yaml.md#target."
     )
   if (!Files.exists(profilePath)) {
     error("profilePath does not exist: $profilePath (check launch.yaml or export the profile)")
@@ -973,19 +961,13 @@ private fun prepareLaunch(
   warnIfCompileOutOfDate(compilePlan, workspaceInputs.descriptors)
   val layoutResolution = LaunchLayoutResolver.resolve(context)
   val layout = layoutResolution.layout
-  LaunchLayoutResolver.cleanIfRequested(layout, context.config.cleanRuntime)
+  LaunchLayoutResolver.cleanIfRequested(layout, false)
   val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(context)
-  val productStartupLevels = loadProductStartupLevels(context)
-  val requestedStartupLevels = if (context.config.startupLevels.isNotEmpty()) {
-    context.config.startupLevels
-  } else {
-    DEFAULT_STARTUP_LEVELS
-  }
+  val requestedStartupLevels = DEFAULT_STARTUP_LEVELS
   val combinedStartup = DEFAULT_STARTUP_LEVELS +
     targetDefinitionStartupLevels +
-    productStartupLevels +
     requestedStartupLevels
-  val resolverWhitelist = resolveWhitelist(context)
+  val resolverWhitelist = DEFAULT_WHITELIST
   val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
   val workspaceEntries = if (hasWorkspaceModules) {
     workspaceInputs.descriptors
@@ -1015,18 +997,18 @@ private fun prepareLaunch(
     startupLevels = combinedStartup,
     autoStartBundles = combinedStartup.keys.associateWith { true }
   )
-  val productId = context.config.product?.takeUnless { it.isBlank() }
+  val productId = context.runtime.product?.takeUnless { it.isBlank() }
   val options = LauncherOptions(
     product = productId,
-    application = context.config.application,
-    splashBSN = context.config.splash,
+    application = context.runtime.application,
+    splashBSN = context.runtime.splash,
     autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
   warnIfCompileOutOfDate(planResult, workspaceInputs.descriptors)
   val fallbackConfig = loadExistingConfig(profilePath)
   val extraProperties = buildMap {
-    val splash = context.config.splash?.takeIf { it.isNotBlank() }
+    val splash = context.runtime.splash?.takeIf { it.isNotBlank() }
     if (splash != null) {
       val bundle = targetIndex.get(splash)
         ?: targetIndex.get(splash.substringBeforeLast('.', missingDelimiterValue = splash))
@@ -1061,8 +1043,8 @@ private fun assembleCommand(
   includeDevProperties: Boolean = true
 ): List<String> {
   val javaBin = System.getenv("JAVA_HOME")?.let { Path.of(it, "bin", "java").toString() } ?: "java"
-  val configVmArgs = expandArgs(context.config.additionalVmArgs)
-  val configProgramArgs = expandArgs(context.config.programArgs)
+  val configVmArgs = expandArgs(context.runtime.vmArgs)
+  val configProgramArgs = expandArgs(context.runtime.programArgs)
   val vmArgs = mutableListOf<String>().apply {
     addAll(targetArgs?.vmArgs ?: emptyList())
     addAll(configVmArgs)
@@ -1084,13 +1066,13 @@ private fun assembleCommand(
     addAll(stdArgs)
     add("-name")
     add("Eclipse")
-    context.config.splash?.takeIf { it.isNotBlank() }?.let {
+    context.runtime.splash?.takeIf { it.isNotBlank() }?.let {
       add("-showsplash")
       add(it)
     }
     add("-application")
-    add(context.config.application ?: error("application missing"))
-    context.config.product?.takeUnless { it.isBlank() }?.let {
+    add(context.runtime.application ?: error("application missing"))
+    context.runtime.product?.takeUnless { it.isBlank() }?.let {
       add("-product")
       add(it)
     }
@@ -1118,7 +1100,7 @@ private fun assembleCommand(
 internal fun buildDebugVmArgs(context: LaunchConfigContext, existingVmArgs: List<String>): List<String> {
   if (!context.jvmDebug) return emptyList()
   if (context.jvmDebugRequiresPdeTestApp &&
-    !context.config.application.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true)
+    !context.runtime.application.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true)
   ) return emptyList()
   if (existingVmArgs.any { it.contains("jdwp", ignoreCase = true) }) return emptyList()
   return listOf("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:$DEFAULT_TEST_DEBUG_PORT")
@@ -1173,7 +1155,7 @@ private fun syntheticEntry(
   context: LaunchConfigContext,
   targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex
 ): WorkspaceBundleDescriptor? {
-  val bsn = context.config.product ?: context.config.application ?: return null
+  val bsn = context.runtime.product ?: context.runtime.application ?: return null
   val resolved = targetIndex.get(bsn)
     ?: targetIndex.get(bsn.substringBeforeLast('.', missingDelimiterValue = bsn))
     ?: error("Target platform does not contain bundle $bsn required for product/application")
@@ -1209,49 +1191,15 @@ private fun loadWorkspaceDescriptor(root: String): WorkspaceBundleDescriptor {
   return WorkspaceBundleDescriptor(path, manifest)
 }
 
-private fun loadProductStartupLevels(context: LaunchConfigContext): Map<String, Int> {
-  if (context.config.productFiles.isEmpty()) return emptyMap()
-  val productId = context.config.product
-  context.config.productFiles.forEach { entry ->
-    val path = context.baseDir.resolve(entry).normalize()
-    if (Files.exists(path)) {
-      val parsed = ProductConfigurationParser.parseAutoStartPlugins(path, productId)
-      if (parsed != null) return parsed
-    }
-  }
-  return emptyMap()
-}
-
 private fun loadTargetDefinitionStartupLevels(context: LaunchConfigContext): Map<String, Int> {
-  val configured = context.config.startupLevelsFile?.let { context.baseDir.resolve(it).normalize() }
   val defaultYaml = context.baseDir.resolve("startupLevels.yaml")
   val defaultYml = context.baseDir.resolve("startupLevels.yml")
   val legacyXml = context.baseDir.resolve("startupLevels.xml")
-  val candidates = listOfNotNull(configured, defaultYaml, defaultYml, legacyXml).distinct()
+  val candidates = listOf(defaultYaml, defaultYml, legacyXml).distinct()
   candidates.forEach { candidate ->
     TargetDefinitionStartupParser.parse(candidate)?.let { return it }
   }
   return emptyMap()
-}
-
-private fun resolveWhitelist(context: LaunchConfigContext): Set<String> {
-  val defaults = context.config.whitelist.toSet()
-  val fileEntries = loadWhitelistOverrides(context)
-  val combined = when {
-    fileEntries != null -> fileEntries + defaults
-    else -> defaults
-  }
-  return if (combined.isNotEmpty()) combined else DEFAULT_WHITELIST
-}
-
-private fun loadWhitelistOverrides(context: LaunchConfigContext): Set<String>? {
-  val configured = context.config.whitelistFile?.let { context.baseDir.resolve(it).normalize() }
-  val defaultFile = context.baseDir.resolve("whitelist.txt")
-  val candidates = listOfNotNull(configured, defaultFile)
-  candidates.forEach { candidate ->
-    WhitelistFileLoader.load(candidate)?.let { return it }
-  }
-  return null
 }
 
 private val DEFAULT_WHITELIST = setOf(
@@ -1290,24 +1238,17 @@ internal fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()):
     .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
 }
 
-private fun applyTestDefaults(context: LaunchConfigContext): LaunchConfigContext {
-  val patchedConfig = context.config.copy(
-    application = context.config.application?.takeUnless { it.isBlank() } ?: PDE_JUNIT_PLUGIN_TEST_APPLICATION
-  )
-  return context.copy(config = patchedConfig)
-}
-
 private fun resolveTargetArgs(
   context: LaunchConfigContext,
   targetDefinition: Path? = resolveTargetDefinition(context)
 ): TargetLaunchArgs? {
-  val targetArgs = if (context.config.inheritTargetArgs && targetDefinition != null) {
+  val targetArgs = if (targetDefinition != null) {
     runCatching { TargetFileParser.parse(targetDefinition) }
       .onFailure { logger.warning("Failed to parse target file args: ${it.message}") }
       .getOrNull()
   } else null
-  if (context.config.inheritTargetArgs && targetDefinition == null) {
-    logger.warning("inheritTargetArgs=true but target.definition is not set; skipping target argument import.")
+  if (targetDefinition == null) {
+    logger.warning("target.definition is not set; skipping target argument import.")
   }
   return targetArgs
 }
@@ -1318,12 +1259,6 @@ private fun resolveTargetDefinition(context: LaunchConfigContext): Path? {
   val targetDefinition = targetConfig?.definition?.takeUnless { it.isBlank() }
     ?.let { baseDir.resolve(it).normalize() }
   if (targetDefinition != null) return targetDefinition
-  val legacyTargetFile = context.config.targetFile?.takeUnless { it.isBlank() }
-    ?.let { baseDir.resolve(it).normalize() }
-  if (legacyTargetFile != null) {
-    logger.warning("targetFile is deprecated; use target.definition instead.")
-    return legacyTargetFile
-  }
   val discovered = discoverTargetDefinition(baseDir)
   if (discovered != null) {
     logger.info("Discovered target definition at ${discovered.toAbsolutePath()}")
@@ -1346,14 +1281,11 @@ private fun discoverTargetDefinition(baseDir: Path): Path? {
 private fun resolveProfilePath(context: LaunchConfigContext): Path? {
   val baseDir = context.baseDir
   val targetConfig = context.config.target
-  val legacyProfile = context.config.profilePath?.takeUnless { it.isBlank() }
-    ?.let { baseDir.resolve(it).normalize() }
-  if (targetConfig == null) return legacyProfile
-  if (legacyProfile != null) {
-    logger.warning("profilePath is deprecated; using target.profile-id + target.p2-path instead.")
-  }
-  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
-  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
+  if (targetConfig == null) return null
+  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() }
+    ?: error("Missing target.profileId after schema validation")
+  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() }
+    ?: error("Missing target.p2Path after schema validation")
   val registryDir = baseDir.resolve(p2Path)
     .resolve("org.eclipse.equinox.p2.engine/profileRegistry")
     .normalize()
@@ -1367,36 +1299,18 @@ private fun resolveProfilePath(context: LaunchConfigContext): Path? {
   return preferred
 }
 
-private fun removeConfigArg(context: LaunchConfigContext): LaunchConfigContext {
-  val expanded = expandArgs(context.config.programArgs)
-  val stripped = stripConfigArgs(expanded)
-  if (stripped == expanded) return context
-  logger.info("Removed -config argument from installer program args.")
-  return context.copy(config = context.config.copy(programArgs = stripped))
-}
-
-private fun stripConfigArgs(programArgs: List<String>): List<String> {
-  if (programArgs.isEmpty()) return programArgs
-  val result = mutableListOf<String>()
-  var skipNext = false
-  programArgs.forEach { arg ->
-    when {
-      skipNext -> skipNext = false
-      arg == "-config" -> skipNext = true
-      else -> result += arg
-    }
-  }
-  return result
-}
-
 private fun buildTargetInstallerArgs(context: LaunchConfigContext, targetDefinition: Path): List<String> {
   val targetConfig = context.config.target
     ?: error("Missing target config while building installer args. See docs/config-yaml.md#target.")
   val baseDir = context.baseDir
-  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
-  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
-  val installPath = targetConfig.install?.takeUnless { it.isBlank() } ?: "./target/install"
-  val bundlePool = targetConfig.bundlePool?.takeUnless { it.isBlank() } ?: "./target/bundle-pool"
+  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() }
+    ?: error("Missing target.profileId after schema validation")
+  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() }
+    ?: error("Missing target.p2Path after schema validation")
+  val installPath = targetConfig.install?.takeUnless { it.isBlank() }
+    ?: error("Missing target.install after schema validation")
+  val bundlePool = targetConfig.bundlePool?.takeUnless { it.isBlank() }
+    ?: error("Missing target.bundlePool after schema validation")
   val resolvedP2 = baseDir.resolve(p2Path).normalize()
   val resolvedInstall = baseDir.resolve(installPath).normalize()
   val resolvedBundlePool = baseDir.resolve(bundlePool).normalize()
@@ -1651,12 +1565,6 @@ internal fun targetMain(args: Array<String>): Int {
     processBuilder.redirectErrorStream(true)
     processBuilder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
   }
-  if (issueContext.config.env.isNotEmpty()) {
-    val env = processBuilder.environment()
-    issueContext.config.env.forEach { (key, value) ->
-      env[key] = value
-    }
-  }
   val exit = processBuilder
     .directory(issueContext.baseDir.toFile())
     .inheritIO()
@@ -1666,7 +1574,18 @@ internal fun targetMain(args: Array<String>): Int {
   return 0
 }
 
-internal fun targetMirrorMain(args: Array<String>): Int {
+internal fun targetMirrorMain(
+  args: Array<String>,
+  launcherResolver: (installPath: Path?, installerPath: Path?, targetDefinition: Path?) -> Path? = ::resolveP2DirectorLauncher,
+  mirrorRunner: (
+    launcherExecutable: Path,
+    applicationId: String,
+    source: URI,
+    destination: URI,
+    writeMode: String?,
+    logFile: Path?
+  ) -> Int = ::runMirrorApplication
+): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetMirrorOptionsRequiringValue)
   val parser = ArgParser("pde target mirror ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
@@ -1788,7 +1707,7 @@ internal fun targetMirrorMain(args: Array<String>): Int {
 
   val installPath = targetConfig.install?.let { issueContext.baseDir.resolve(it).normalize() }
   val installerPath = targetConfig.installer?.let { issueContext.baseDir.resolve(it).normalize() }
-  val launcherExecutable = resolveP2DirectorLauncher(installPath, installerPath, targetDefinition)
+  val launcherExecutable = launcherResolver(installPath, installerPath, targetDefinition)
   if (launcherExecutable == null) {
     logger.severe("Missing p2 director launcher under target.install or target.installer.")
     return 2
@@ -1803,7 +1722,8 @@ internal fun targetMirrorMain(args: Array<String>): Int {
       destination = destination,
       writeMode = writeMode,
       logFileBase = logFileBase,
-      labelPrefix = "metadata"
+      labelPrefix = "metadata",
+      mirrorRunner = mirrorRunner
     )
     if (exit != 0) return exit
   }
@@ -1815,7 +1735,8 @@ internal fun targetMirrorMain(args: Array<String>): Int {
       destination = destination,
       writeMode = writeMode,
       logFileBase = logFileBase,
-      labelPrefix = "artifacts"
+      labelPrefix = "artifacts",
+      mirrorRunner = mirrorRunner
     )
     if (exit != 0) return exit
   }
@@ -1849,18 +1770,26 @@ private fun mirrorRepositories(
   destination: URI,
   writeMode: String?,
   logFileBase: Path?,
-  labelPrefix: String
+  labelPrefix: String,
+  mirrorRunner: (
+    launcherExecutable: Path,
+    applicationId: String,
+    source: URI,
+    destination: URI,
+    writeMode: String?,
+    logFile: Path?
+  ) -> Int
 ): Int {
   repositories.forEachIndexed { index, source ->
     val effectiveWriteMode = if (writeMode == "clean" && index == 0) "clean" else null
     val logFile = logFileBase?.let { deriveMirrorLogFile(it, "$labelPrefix-${index + 1}") }
-    val exit = runMirrorApplication(
-      launcherExecutable = launcherExecutable,
-      applicationId = applicationId,
-      source = source,
-      destination = destination,
-      writeMode = effectiveWriteMode,
-      logFile = logFile
+    val exit = mirrorRunner(
+      launcherExecutable,
+      applicationId,
+      source,
+      destination,
+      effectiveWriteMode,
+      logFile
     )
     if (exit != 0) return exit
   }
@@ -1925,7 +1854,7 @@ private fun testMain(args: Array<String>): Int {
   val parser = ArgParser("pde test ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
-  val launchPos by parser.argument(ArgType.String, description = "Test name (optional, ignored with --all)").optional()
+  val testPos by parser.argument(ArgType.String, description = "Test name (optional, defaults to first tests entry)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -1957,18 +1886,12 @@ private fun testMain(args: Array<String>): Int {
     fullName = "debugJVM",
     description = "Enable JDWP for test JVM (equivalent to tests[].debug=true)"
   ).default(false)
-  val runAll by parser.option(
-    ArgType.Boolean,
-    fullName = "all",
-    description = "Run all tests defined in the config in sequence (ignores test name)"
-  ).default(false)
   val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
   val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
   val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
   val timeoutSeconds by parser.option(ArgType.Int, fullName = "timeout", description = "Seconds to wait for PDE connection").default(180)
   val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
   val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Forward log in form label=path").multiple()
-  val includePatterns by parser.option(ArgType.String, fullName = "include", description = "Regex filter to include tests").multiple()
   val excludePatterns by parser.option(ArgType.String, fullName = "exclude", description = "Regex filter to exclude tests").multiple()
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
   val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
@@ -1979,7 +1902,7 @@ private fun testMain(args: Array<String>): Int {
   val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
   val testName = when {
     configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
-    launchPos != null -> launchPos
+    testPos != null -> testPos
     else -> null
   }
 
@@ -1994,9 +1917,6 @@ private fun testMain(args: Array<String>): Int {
 
   val loaded = LaunchConfigLoader.load(discoveredConfig)
   val logFile = logFileOpt?.let { Paths.get(it) }
-  if (runAll && testName != null) {
-    logger.warning("Ignoring test name '$testName' because --all was specified.")
-  }
 
   val reports = runCatching { reportValues.map(::parseReportTarget) }
     .getOrElse { error ->
@@ -2008,63 +1928,15 @@ private fun testMain(args: Array<String>): Int {
       logger.severe("Invalid --forward-log value: ${error.message}")
       return 2
     }
-  val includes = runCatching { includePatterns.map(::Regex) }
-    .getOrElse { error ->
-      logger.severe("Invalid --include regex: ${error.message}")
-      return 2
-    }
   val excludes = runCatching { excludePatterns.map(::Regex) }
     .getOrElse { error ->
       logger.severe("Invalid --exclude regex: ${error.message}")
       return 2
     }
 
-  if (runAll) {
-    if (loaded.config.tests.isEmpty()) {
-      logger.severe("No tests defined in ${loaded.file}. Add a 'tests' entry or pass a legacy launch.yaml.")
-      return 2
-    }
-    var failures = 0
-    loaded.config.tests.forEachIndexed { index, entry ->
-      val label = testLabel(entry)
-      logger.info("Running test ${index + 1}/${loaded.config.tests.size}: $label")
-      val configured = applyTestEntry(loaded, entry, testName = null, logSelection = false)
-      val configContext = applyTestDefaults(configured).let { ctx ->
-        if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
-      }.let { applyOsgiDebug(it, osgiDebug) }
-      val targetArgs = resolveTargetArgs(configContext)
-      val exitCode = runTestLaunch(
-        configContext = configContext,
-        targetArgs = targetArgs,
-        listenHost = listenHost,
-        listenPort = listenPort,
-        portRangeSpec = portRangeSpec,
-        timeoutSeconds = timeoutSeconds,
-        reports = reports,
-        forwardSpecs = forwardSpecs,
-        includes = includes,
-        excludes = excludes,
-        quiet = quiet,
-        noColor = noColor,
-        logFile = logFile,
-        debug = debug
-      )
-      if (exitCode != 0) {
-        failures += 1
-        logger.severe("Test '$label' failed with exit code $exitCode")
-      }
-    }
-    if (failures > 0) {
-      logger.severe("Completed ${loaded.config.tests.size} tests with $failures failures.")
-      return 1
-    }
-    logger.info("Completed ${loaded.config.tests.size} tests successfully.")
-    return 0
-  }
-
   val selected = selectTestConfig(loaded, testName)
   if (selected == null) return 2
-  val configContext = applyTestDefaults(selected).let { ctx ->
+  val configContext = selected.let { ctx ->
     if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
   }.let { applyOsgiDebug(it, osgiDebug) }
   val targetArgs = resolveTargetArgs(configContext)
@@ -2077,7 +1949,7 @@ private fun testMain(args: Array<String>): Int {
     timeoutSeconds = timeoutSeconds,
     reports = reports,
     forwardSpecs = forwardSpecs,
-    includes = includes,
+    includes = emptyList(),
     excludes = excludes,
     quiet = quiet,
     noColor = noColor,
@@ -2170,7 +2042,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   val outputRoot = baseContext.file.parent?.resolve("api-analyzer") ?: Paths.get("api-analyzer")
   val applicationId = applicationOpt
   val apiContext = baseContext.copy(
-    config = baseContext.config.copy(
+    runtime = baseContext.runtime.copy(
       application = applicationId,
       product = null,
       splash = null,
@@ -2206,7 +2078,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   }
   val workspaceInputs = WorkspaceModuleResolver.resolve(apiContext, allowMissingClasses = true)
   if (workspaceInputs.descriptors.isEmpty()) {
-    logger.severe("No workspace bundles resolved from config; add bundlesPerRepo.")
+    logger.severe("No workspace bundles resolved from config; add bundles.")
     return 2
   }
   val workspaceDescriptors = workspaceInputs.descriptors
@@ -2243,11 +2115,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   val baselineIndex = TargetPlatformCache.buildWithCache(listOf(baselineRootPath))
 
   val baselineWorkspace = baselineTargetDefinition?.let { prepareBaselineWorkspace(outputRoot, it) }
-  val dataDirOverride = when {
-    baseContext.config.dataDir != null -> baseContext.config.dataDir
-    baselineWorkspace != null -> baselineWorkspace.first.toString()
-    else -> outputRoot.resolve("workspace").toString()
-  }
+  val dataDirOverride = baselineWorkspace?.first?.toString() ?: outputRoot.resolve("workspace").toString()
   if (baselineWorkspace != null) {
     logger.info("Using baseline workspace for API analysis: ${baselineWorkspace.first.toAbsolutePath().normalize()}")
   }
@@ -2422,12 +2290,12 @@ fun compileMain(args: Array<String>): Int {
     val configContext = LaunchConfigLoader.load(discoveredConfig)
     val profilePath = resolveProfilePath(configContext)
     if (profilePath == null) {
-      logger.severe("target profile path missing in YAML config; set target.profile-id + target.p2-path (or legacy profilePath).")
+      logger.severe("target profile path missing in YAML config; set target.profileId + target.p2Path.")
       return 0
     }
     if (!Files.exists(profilePath)) {
       logger.severe(
-        "target profile registry does not exist: $profilePath (check target.profile-id/target.p2-path or run pde target install)"
+        "target profile registry does not exist: $profilePath (check target.profileId/target.p2Path or run pde target install)"
       )
       return 0
     }

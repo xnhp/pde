@@ -276,12 +276,11 @@ Options:
   --include <globs>    Comma-separated globs (default: **/*.java)
   --ignore <text>      Ignore files whose full path contains this text
   --verbose            Print progress and details
-  --config <yaml>      Launch config (uses formatter-config-path)
+  --config <yaml>      Launch config path (discovery base only)
   --issue-dir <dir>    Base directory for config discovery
 
 Config:
-  formatter-config-path in launch config points to org.eclipse.jdt.core.prefs.
-  If not set and --profile is omitted, a bundled KNIME formatter profile is used.
+  If --profile is omitted, a bundled KNIME formatter profile is used.
 """.trimIndent()
         }
     }
@@ -321,12 +320,8 @@ private fun findConfigPath(startDir: Path): Path? {
 
 private fun resolveFormatterConfigPath(configPath: Path?): Path? {
     if (configPath == null || !Files.exists(configPath)) return null
-    val baseDir = configPath.parent ?: configPath
-    val context = LaunchConfigLoader.load(configPath, baseDir)
-    val raw = context.config.formatterConfigPath?.trim().orEmpty()
-    if (raw.isBlank()) return null
-    val path = Paths.get(raw)
-    return if (path.isAbsolute) path else baseDir.resolve(path).normalize()
+    LaunchConfigLoader.load(configPath, configPath.parent ?: configPath)
+    return null
 }
 
 private fun maturityTag(label: String): String {

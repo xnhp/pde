@@ -33,17 +33,17 @@ object LaunchLayoutResolver {
     val tempPaths = mutableListOf<Path>()
     val tempNotices = mutableListOf<String>()
 
-    val data = context.config.dataDir?.let { base.resolve(it) }
+    val data = context.runtime.dataDir?.let { base.resolve(it) }
       ?: createTempDirectory("pde-data-").also {
         tempPaths.add(it)
         tempNotices += "dataDir=$it"
       }
-    val config = context.config.configDir?.let { base.resolve(it) }
+    val config = context.runtime.configDir?.let { base.resolve(it) }
       ?: createTempDirectory("pde-config-").also {
         tempPaths.add(it)
         tempNotices += "configDir=$it"
       }
-    val work = context.config.workDir?.let { base.resolve(it) }
+    val work = context.runtime.workDir?.let { base.resolve(it) }
       ?: createTempDirectory("pde-work-").also {
         tempPaths.add(it)
         tempNotices += "workDir=$it"

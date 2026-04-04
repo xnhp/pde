@@ -1110,21 +1110,19 @@ private fun resolveExistingTargetSpec(workspaceRoot: Path, modulePaths: List<Pat
   val root = workspaceRoot.toAbsolutePath().normalize()
   val modulesYaml = modulePaths.joinToString("\n") { path ->
     val normalized = path.toAbsolutePath().normalize()
-    val relative = if (normalized.startsWith(root)) root.relativize(normalized).toString() else normalized.fileName.toString()
-    "            - $relative"
+    val relative = if (normalized.startsWith(root)) root.relativize(normalized).toString() else normalized.toString()
+    "        - path: $relative"
   }
   Files.writeString(
     configFile,
     """
       target:
         definition: ${targetFile.toAbsolutePath()}
-        profile-id: jdtls-test
-        p2-path: ${baseDir.resolve("p2")}
-        bundle-pool: ${bundlePool}
+        profileId: jdtls-test
+        p2Path: ${baseDir.resolve("p2")}
+        bundlePool: ${bundlePool}
         install: ${baseDir.resolve("install")}
-      bundlesPerRepo:
-        - repo: ${workspaceRoot.toAbsolutePath()}
-          bundles:
+      bundles:
 ${modulesYaml}
     """.trimIndent()
   )

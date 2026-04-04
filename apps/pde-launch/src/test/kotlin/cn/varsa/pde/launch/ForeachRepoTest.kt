@@ -18,14 +18,10 @@ class ForeachRepoTest {
 
     Files.writeString(
       includePath,
-      """
-        bundlesPerRepo:
-          - repo: repo-a
-            bundles:
-              - bundle-a
-          - repo: repo-b
-            bundles:
-              - bundle-b
+        """
+        bundles:
+          - path: repo-a/bundle-a
+          - path: repo-b/bundle-b
       """.trimIndent()
     )
     Files.writeString(
@@ -38,6 +34,8 @@ class ForeachRepoTest {
 
     val repoA = Files.createDirectories(baseDir.resolve("repo-a"))
     val repoB = Files.createDirectories(baseDir.resolve("repo-b"))
+    Files.createDirectories(repoA.resolve("bundle-a"))
+    Files.createDirectories(repoB.resolve("bundle-b"))
 
     val out = ByteArrayOutputStream()
     val savedOut = System.out
@@ -62,13 +60,12 @@ class ForeachRepoTest {
 
     Files.writeString(
       configPath,
-      """
-        bundlesPerRepo:
-          - repo: repo-one
-            bundles:
-              - bundle-one
+        """
+        bundles:
+          - path: repo-one/bundle-one
       """.trimIndent()
     )
+    Files.createDirectories(repoDir.resolve("bundle-one"))
 
     val out = ByteArrayOutputStream()
     val savedOut = System.out

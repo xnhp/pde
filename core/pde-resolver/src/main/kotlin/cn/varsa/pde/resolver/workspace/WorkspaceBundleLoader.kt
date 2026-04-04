@@ -28,7 +28,7 @@ object WorkspaceBundleLoader {
     val resources = computeResourceRules(buildProps)
     val compilerPrefs = if (file.isDirectory) loadCompilerPrefs(file) else emptyMap()
     val executionEnvironment = manifest[org.osgi.framework.Constants.BUNDLE_REQUIREDEXECUTIONENVIRONMENT]
-    val outputDir = if (file.isDirectory) computeOutputDir(absolute, buildProps) else null
+    val outputInfo = if (file.isDirectory) computeOutputDir(absolute, buildProps) else null
     val fragmentHost = manifest.fragmentHost?.let { entry ->
       WorkspaceBundleDescriptor.FragmentHost(
         symbolicName = entry.key,
@@ -46,9 +46,15 @@ object WorkspaceBundleLoader {
       resourceExcludes = resources.second,
       compilerPrefs = compilerPrefs,
       executionEnvironment = executionEnvironment,
-      outputDirectory = outputDir
+      outputDirectory = outputInfo?.directory,
+      outputDirectoryFromBuildProperties = outputInfo?.fromBuildProperties ?: false
     )
   }
+
+  private data class OutputDirInfo(
+    val directory: Path,
+    val fromBuildProperties: Boolean
+  )
 
   private fun loadDirectoryManifest(dir: File): BundleManifest {
     val manifestFile = File(dir, "META-INF/MANIFEST.MF")
@@ -112,11 +118,15 @@ object WorkspaceBundleLoader {
       .entries.associate { it.key.toString() to it.value.toString() }
   }
 
-  private fun computeOutputDir(base: Path, props: Properties?): Path {
+  private fun computeOutputDir(base: Path, props: Properties?): OutputDirInfo {
     val output = props?.getProperty("output..")
       ?.split(',')
       ?.map { it.trim() }
       ?.firstOrNull { it.isNotEmpty() }
-    return if (output != null) base.resolve(output).normalize() else base.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
+    return if (output != null) {
+      OutputDirInfo(base.resolve(output).normalize(), true)
+    } else {
+      OutputDirInfo(base.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR), false)
+    }
   }
 }
