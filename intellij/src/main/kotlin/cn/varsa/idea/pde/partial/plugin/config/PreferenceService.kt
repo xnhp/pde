@@ -9,8 +9,8 @@ import com.intellij.util.xmlb.XmlSerializerUtil
  */
 @Service(Service.Level.PROJECT)
 @State(
-    name = "EclipsePDEPartialPreferences",
-    storages = [Storage("eclipsePdePartialPlugin.xml")]
+    name = "EclipsePDEPreferences",
+    storages = [Storage("eclipsePdePlugin.xml"), Storage(value = "eclipsePdePartialPlugin.xml", deprecated = true)]
 )
 class PreferenceService : PersistentStateComponent<PreferenceService> {
     var libraryWhitelist: Set<String> = setOf(

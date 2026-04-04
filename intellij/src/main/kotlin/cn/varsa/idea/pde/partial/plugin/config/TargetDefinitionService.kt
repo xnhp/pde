@@ -17,7 +17,7 @@ import com.intellij.util.xmlb.annotations.*
 import java.io.*
 
 @Service(Service.Level.PROJECT)
-@State(name = "TcRacTargetDefinitions", storages = [Storage("eclipse-partial.xml")])
+@State(name = "TcRacTargetDefinitions", storages = [Storage("eclipse-pde.xml"), Storage(value = "eclipse-partial.xml", deprecated = true)])
 class TargetDefinitionService : PersistentStateComponent<TargetDefinitionService>, BackgroundResolvable {
   @XCollection(elementName = "locations", style = XCollection.Style.v2) val locations =
     mutableListOf<TargetLocationDefinition>()
