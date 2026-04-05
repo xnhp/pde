@@ -340,7 +340,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     shortName = "v",
     description = "Enable INFO logging"
   ).default(false)
-  val debugJvm by parser.option(
+  val debug by parser.option(
     ArgType.Boolean,
     fullName = "debug",
     description = "Enable JDWP for launch JVM"
@@ -386,7 +386,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
       logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig)
-    val selected = selectLaunchConfig(configContext, launchName, debugJvm)
+    val selected = selectLaunchConfig(configContext, launchName, debug)
     if (selected == null) return
     val osgiContext = applyOsgiDebug(selected, osgiDebug)
     val targetDefinition = resolveTargetDefinition(osgiContext)
@@ -398,7 +398,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
       return
     }
     val logFile = logFileOpt?.let { Paths.get(it) }
-    executeLaunch(osgiContext, targetArgs, showDebugLogs = debugJvm, logFile = logFile)
+    executeLaunch(osgiContext, targetArgs, showLogPathWhenDebugging = debug, logFile = logFile)
     return
   }
 
@@ -649,7 +649,7 @@ private fun applyTestEntry(
 private fun executeLaunch(
   context: LaunchConfigContext,
   targetArgs: TargetLaunchArgs?,
-  showDebugLogs: Boolean,
+  showLogPathWhenDebugging: Boolean,
   logFile: Path?,
   extraProgramArgs: List<String> = emptyList(),
   includeDevProperties: Boolean = true,
@@ -658,7 +658,7 @@ private fun executeLaunch(
   val prepared = prepareLaunch(context, targetArgs, extraProgramArgs, includeDevProperties)
   preLaunch?.invoke(prepared)
   logPlanSummary(prepared.planResult)
-  if (showDebugLogs) {
+  if (showLogPathWhenDebugging) {
     val logPath = prepared.layout.dataDir.resolve(".metadata").resolve(".log").toAbsolutePath().normalize()
     logger.info("OSGi log path: $logPath")
   }
