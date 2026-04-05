@@ -4,13 +4,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class EclipseRuntimeBootstrapTest {
+  @get:Rule
+  val tempDirRule = TemporaryFolder()
+
   @Test
   fun cacheKeyChangesWhenManifestChanges() {
     val base = RuntimeManifest(
@@ -44,7 +49,7 @@ class EclipseRuntimeBootstrapTest {
 
   @Test
   fun resolveExtractsAndReusesCachedRuntime() {
-    val tempDir = Files.createTempDirectory("runtime-bootstrap-test")
+    val tempDir = tempDirRule.newFolder("runtime-bootstrap-test").toPath()
     val runtimeZip = tempDir.resolve("runtime.zip")
     writeRuntimeZip(runtimeZip)
     val cacheRoot = tempDir.resolve("cache")
@@ -65,17 +70,12 @@ class EclipseRuntimeBootstrapTest {
     } finally {
       restoreSystemProperty("pde.eclipse.runtime.zip", previousZip)
       restoreSystemProperty("pde.eclipse.runtime.zip.sha256", previousSha)
-      try {
-        tempDir.toFile().deleteRecursively()
-      } catch (_: Exception) {
-        // best-effort cleanup
-      }
     }
   }
 
   @Test
   fun resolveSupportsFilesystemPathSetting() {
-    val tempDir = Files.createTempDirectory("runtime-bootstrap-path-test")
+    val tempDir = tempDirRule.newFolder("runtime-bootstrap-path-test").toPath()
     val runtimeZip = tempDir.resolve("runtime.zip")
     writeRuntimeZip(runtimeZip)
     val cacheRoot = tempDir.resolve("cache")
@@ -91,17 +91,12 @@ class EclipseRuntimeBootstrapTest {
     } finally {
       restoreSystemProperty("pde.eclipse.runtime.zip", previousZip)
       restoreSystemProperty("pde.eclipse.runtime.zip.sha256", previousSha)
-      try {
-        tempDir.toFile().deleteRecursively()
-      } catch (_: Exception) {
-        // best-effort cleanup
-      }
     }
   }
 
   @Test
   fun resolveFailsOnChecksumMismatch() {
-    val tempDir = Files.createTempDirectory("runtime-bootstrap-sha-test")
+    val tempDir = tempDirRule.newFolder("runtime-bootstrap-sha-test").toPath()
     val runtimeZip = tempDir.resolve("runtime.zip")
     writeRuntimeZip(runtimeZip)
     val cacheRoot = tempDir.resolve("cache")
@@ -121,11 +116,6 @@ class EclipseRuntimeBootstrapTest {
     } finally {
       restoreSystemProperty("pde.eclipse.runtime.zip", previousZip)
       restoreSystemProperty("pde.eclipse.runtime.zip.sha256", previousSha)
-      try {
-        tempDir.toFile().deleteRecursively()
-      } catch (_: Exception) {
-        // best-effort cleanup
-      }
     }
   }
 
