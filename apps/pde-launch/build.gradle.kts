@@ -13,7 +13,7 @@ dependencies {
   implementation(kotlin("stdlib"))
   implementation("info.picocli:picocli:4.7.6")
   implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
-  implementation("org.yaml:snakeyaml:2.5")
+  implementation("org.yaml:snakeyaml:2.6")
   implementation("cn.varsa:cli-core:0.1.0-SNAPSHOT")
   implementation(project(":remote-test-runner"))
   implementation(project(":pde-test-runner"))
