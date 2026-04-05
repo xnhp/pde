@@ -159,4 +159,32 @@ class LaunchConfigLoaderTest {
 
     assertEquals(listOf("repo-a/bundle-one", "repo-b/bundle-two", "repo-c/bundle-three"), bundlePaths)
   }
+
+  @Test
+  fun targetSupportsRuntimeBootstrapFields() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      target:
+        definition: sample.target
+        eclipseRuntimeCache: .cache/eclipse-runtime
+        p2Repositories:
+          - https://download.eclipse.org/releases/2024-12
+          - https://download.eclipse.org/tools/orbit
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val target = loaded.config.target
+
+    assertEquals(".cache/eclipse-runtime", target?.eclipseRuntimeCache)
+    assertEquals(
+      listOf(
+        "https://download.eclipse.org/releases/2024-12",
+        "https://download.eclipse.org/tools/orbit"
+      ),
+      target?.p2Repositories
+    )
+  }
 }

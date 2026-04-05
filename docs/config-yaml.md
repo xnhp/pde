@@ -28,6 +28,9 @@ If `--config` is omitted, the CLI discovers a nearby config file using these nam
 ```yaml
 target:
   definition: /abs/path/to/knime.target
+  eclipseRuntimeCache: .cache/eclipse-runtime
+  p2Repositories:
+    - https://download.eclipse.org/releases/2024-12
 
 bundles:
   - path: /abs/path/to/knime/org.knime.gateway.impl
@@ -60,6 +63,8 @@ tests:
 ## Practical notes
 
 - `pde run` and `pde test` require compiled `.class` files in configured class roots.
+- `target.eclipseRuntimeCache` can pin where ad-hoc Eclipse runtime archives are cached.
+- `target.p2Repositories` can provide p2 source repositories used by runtime bootstrap provisioning.
 - If `bundles[].classRoots` is omitted, `pde run/test` first infers roots from
   bundle `build.properties` `output..`, then falls back to `bin`.
 - `pde compile` is the explicit ECJ-based compile step.

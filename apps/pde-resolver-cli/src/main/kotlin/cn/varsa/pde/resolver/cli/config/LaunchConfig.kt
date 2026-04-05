@@ -27,6 +27,8 @@ data class TargetConfig(
   val install: String? = null,
   val bundlePool: String? = null,
   val installer: String? = null,
+  val eclipseRuntimeCache: String? = null,
+  val p2Repositories: List<String>? = null,
   val mirror: TargetMirrorConfig? = null
 )
 

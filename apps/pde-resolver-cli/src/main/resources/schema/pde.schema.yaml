@@ -164,6 +164,18 @@ $defs:
       installer:
         type: string
         description: Path to target-installer launcher JAR used by `pde target install`.
+      eclipseRuntimeCache:
+        type: string
+        description: >-
+          Optional cache root for downloaded Eclipse runtime bootstrap artifacts.
+          Relative paths resolve from the config directory.
+      p2Repositories:
+        type: array
+        items:
+          type: string
+        description: >-
+          Optional list of p2 repositories used when provisioning Eclipse runtime
+          artifacts from update sites.
       mirror:
         $ref: "#/$defs/targetMirror"
         description: Mirror options used by `pde target mirror`.

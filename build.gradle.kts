@@ -30,8 +30,9 @@ tasks.register<Exec>("buildTargetInstallerLauncher") {
   description = "Build the standalone target-installer launcher jar"
   group = "build"
   workingDir = file("tools/target-installer")
-  environment("ECLIPSE_SDK", providers.gradleProperty("eclipseSdk").get())
-  environment("P2_REPOSITORIES", providers.gradleProperty("p2Repositories").get())
+  providers.gradleProperty("eclipseSdk").orNull?.let { environment("ECLIPSE_SDK", it) }
+  providers.gradleProperty("p2Repositories").orNull?.let { environment("P2_REPOSITORIES", it) }
+  providers.gradleProperty("runtimeZip").orNull?.let { environment("RUNTIME_ZIP", it) }
   commandLine("bash", "scripts/build-launcher.sh")
   outputs.file(file("tools/target-installer/dist/target-installer-launcher.jar"))
 }

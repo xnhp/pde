@@ -2,6 +2,7 @@ package pde.format
 
 import cn.varsa.pde.remoterunner.ConsoleTags
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
+import cn.varsa.pde.resolver.runtime.EclipseRuntimeBootstrap
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -139,9 +140,8 @@ class CliParser(
         if (formatterConfigPath != null && !Files.exists(formatterConfigPath)) {
             error("Formatter config not found: ${formatterConfigPath.toAbsolutePath()}")
         }
-        if (eclipseHome == null) {
-            error("--eclipse-home is required")
-        }
+        val resolvedEclipseHome = eclipseHome
+            ?: resolveBootstrapRuntimeHome(resolvedConfig)
 
         if (inputFile == null && repoDir == null && stdinPaths.isEmpty()) {
             if (System.console() == null && positional.isEmpty()) {
@@ -189,7 +189,7 @@ class CliParser(
 
         val options = Options(
             mode = mode,
-            eclipseHome = eclipseHome,
+            eclipseHome = resolvedEclipseHome,
             profile = resolvedProfile,
             sourceLevel = sourceLevel,
             lineSeparator = lineSeparator,
@@ -258,13 +258,13 @@ class CliParser(
     companion object {
         fun usage(): String {
             return """
-pde format ${maturityTag("WIP")}
+  pde format ${maturityTag("WIP")}
 
 Usage:
-  pde-format fix    --eclipse-home <path> [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --in <file> [--range start:end] [--in-place | --out <path>]
-  pde-format fix    --eclipse-home <path> [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --repo <dir> [--include <glob,...>] [--in-place]
-  pde-format check  --eclipse-home <path> [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --in <file> [--range start:end]
-  pde-format check  --eclipse-home <path> [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --repo <dir> [--include <glob,...>]
+  pde-format fix    [--eclipse-home <path>] [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --in <file> [--range start:end] [--in-place | --out <path>]
+  pde-format fix    [--eclipse-home <path>] [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --repo <dir> [--include <glob,...>] [--in-place]
+  pde-format check  [--eclipse-home <path>] [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --in <file> [--range start:end]
+  pde-format check  [--eclipse-home <path>] [--profile <path>] [--config <yaml>] [--issue-dir <dir>] --repo <dir> [--include <glob,...>]
   pde-format fix    <file-or-dir>
   pde-format check  <file-or-dir>
   pde-format fix    < paths.txt
@@ -281,6 +281,7 @@ Options:
 
 Config:
   If --profile is omitted, a bundled KNIME formatter profile is used.
+  If --eclipse-home is omitted, runtime bootstrap uses target.eclipseRuntimeCache and target.p2Repositories from config when available.
 """.trimIndent()
         }
     }
@@ -322,6 +323,22 @@ private fun resolveFormatterConfigPath(configPath: Path?): Path? {
     if (configPath == null || !Files.exists(configPath)) return null
     LaunchConfigLoader.load(configPath, configPath.parent ?: configPath)
     return null
+}
+
+private fun resolveBootstrapRuntimeHome(configPath: Path?): Path {
+    val context = configPath
+        ?.takeIf { Files.exists(it) }
+        ?.let { LaunchConfigLoader.load(it, it.parent ?: it) }
+    val baseDir = context?.baseDir ?: Paths.get("").toAbsolutePath().normalize()
+    val target = context?.config?.target
+    val cacheOverride = target?.eclipseRuntimeCache
+        ?.takeIf { it.isNotBlank() }
+        ?.let { raw ->
+            val path = Path.of(raw)
+            if (path.isAbsolute) path else (baseDir.resolve(path).normalize())
+        }
+    val repos = target?.p2Repositories ?: emptyList()
+    return EclipseRuntimeBootstrap.resolve(cacheOverride, repos)
 }
 
 private fun maturityTag(label: String): String {
