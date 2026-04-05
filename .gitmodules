@@ -1,0 +1,3 @@
+[submodule "libs/cli-core"]
+	path = libs/cli-core
+	url = https://github.com/xnhp/cli-core

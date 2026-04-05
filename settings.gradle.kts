@@ -4,6 +4,13 @@ plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
+// cli-core is included as a Git submodule in libs/cli-core.
+// Run `git submodule update --init` to populate it.
+// Gradle will substitute the cn.varsa:cli-core Maven coordinate with this local build.
+if (file("libs/cli-core").exists()) {
+  includeBuild("libs/cli-core")
+}
+
 include(":intellij")
 
 // Core resolver module for target platform parsing/indexing
