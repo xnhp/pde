@@ -25,7 +25,7 @@ private val launchOptions = listOf(
   CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log"), "Write application stdout/stderr to log file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),
-  CliOption(listOf("--debug"), "Enable DEBUG logging"),
+  CliOption(listOf("--debug"), "Enable JDWP for launch JVM"),
   CliOption(listOf("--osgiDebug"), "Enable OSGi debug output (-debug)"),
   CliOption(listOf("--dry-run"), "Parse configuration only"),
   CliOption(listOf("--target-root", "-t"), "Target root (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),

@@ -343,7 +343,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
   val debug by parser.option(
     ArgType.Boolean,
     fullName = "debug",
-    description = "Enable DEBUG logging"
+    description = "Enable JDWP for launch JVM"
   ).default(false)
   val osgiDebug by parser.option(
     ArgType.Boolean,
@@ -369,7 +369,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
   val outputDirOpt by parser.option(ArgType.String, fullName = "output", shortName = "o", description = "Output directory for config.ini/bundles.info/dev.properties")
 
   parser.parse(normalizedArgs)
-  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, false), shouldUseColor())
 
   val configPosValue = configPos
   val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
@@ -386,7 +386,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
       logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig)
-    val selected = selectLaunchConfig(configContext, launchName)
+    val selected = selectLaunchConfig(configContext, launchName, debug)
     if (selected == null) return
     val osgiContext = applyOsgiDebug(selected, osgiDebug)
     val targetDefinition = resolveTargetDefinition(osgiContext)
@@ -398,7 +398,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
       return
     }
     val logFile = logFileOpt?.let { Paths.get(it) }
-    executeLaunch(osgiContext, targetArgs, showDebugLogs = debug, logFile = logFile)
+    executeLaunch(osgiContext, targetArgs, showLogPathWhenDebugging = debug, logFile = logFile)
     return
   }
 
@@ -477,7 +477,8 @@ private fun describeConfig(
 
 private fun selectLaunchConfig(
   context: LaunchConfigContext,
-  launchName: String?
+  launchName: String?,
+  debugJvm: Boolean
 ): LaunchConfigContext? {
   if (context.config.launches.isEmpty()) {
     logger.severe("No launches defined in ${context.file}. Add a 'launches' entry or pass a legacy launch.yaml.")
@@ -520,7 +521,7 @@ private fun selectLaunchConfig(
   }
   return context.copy(
     runtime = runtime,
-    jvmDebug = selected.debug,
+    jvmDebug = debugJvm,
     jvmDebugRequiresPdeTestApp = false
   )
 }
@@ -648,7 +649,7 @@ private fun applyTestEntry(
 private fun executeLaunch(
   context: LaunchConfigContext,
   targetArgs: TargetLaunchArgs?,
-  showDebugLogs: Boolean,
+  showLogPathWhenDebugging: Boolean,
   logFile: Path?,
   extraProgramArgs: List<String> = emptyList(),
   includeDevProperties: Boolean = true,
@@ -657,7 +658,7 @@ private fun executeLaunch(
   val prepared = prepareLaunch(context, targetArgs, extraProgramArgs, includeDevProperties)
   preLaunch?.invoke(prepared)
   logPlanSummary(prepared.planResult)
-  if (showDebugLogs) {
+  if (showLogPathWhenDebugging) {
     val logPath = prepared.layout.dataDir.resolve(".metadata").resolve(".log").toAbsolutePath().normalize()
     logger.info("OSGi log path: $logPath")
   }

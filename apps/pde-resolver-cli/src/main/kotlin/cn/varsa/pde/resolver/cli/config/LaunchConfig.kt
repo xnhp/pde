@@ -47,7 +47,6 @@ data class LaunchEntry(
   val product: String? = null,
   val application: String? = null,
   val splash: String? = null,
-  val debug: Boolean = false,
   val programArgs: List<String> = emptyList(),
   val vmArgs: List<String> = emptyList(),
   val dataDir: String? = null,
