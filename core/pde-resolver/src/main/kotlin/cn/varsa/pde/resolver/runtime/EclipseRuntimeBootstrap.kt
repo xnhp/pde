@@ -101,13 +101,13 @@ object EclipseRuntimeBootstrap {
   }
 
   private fun runtimeZipUri(manifest: RuntimeManifest): URI {
-    val explicit = System.getProperty("pde.eclipse.runtime.zip").orEmpty().trim()
+    val runtimeZipLocation = System.getProperty("pde.eclipse.runtime.zip").orEmpty().trim()
       .ifBlank { System.getenv("PDE_ECLIPSE_RUNTIME_ZIP").orEmpty().trim() }
       .ifBlank { manifest.defaultRuntimeZip.orEmpty().trim() }
-    require(explicit.isNotBlank()) {
+    require(runtimeZipLocation.isNotBlank()) {
       "No Eclipse runtime archive configured. Set pde.eclipse.runtime.zip or PDE_ECLIPSE_RUNTIME_ZIP."
     }
-    return runCatching { URI(explicit) }.getOrElse { Paths.get(explicit).toUri() }
+    return runCatching { URI.create(runtimeZipLocation) }.getOrElse { Paths.get(runtimeZipLocation).toUri() }
   }
 
   private fun runtimeZipSha256(manifest: RuntimeManifest): String? {
@@ -131,7 +131,7 @@ object EclipseRuntimeBootstrap {
       return
     }
     val actual = sha256(archive)
-    require(actual.equals(expected.lowercase(), ignoreCase = true)) {
+    require(actual.equals(expected, ignoreCase = true)) {
       "Eclipse runtime checksum mismatch for $archive: expected=$expected actual=$actual"
     }
   }

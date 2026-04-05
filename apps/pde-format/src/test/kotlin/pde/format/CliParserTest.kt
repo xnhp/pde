@@ -104,8 +104,16 @@ class CliParserTest {
             ).parse()
             assertEquals(true, Files.isDirectory(result.options.eclipseHome.resolve("plugins")))
         } finally {
-            if (prevZip == null) System.clearProperty("pde.eclipse.runtime.zip") else System.setProperty("pde.eclipse.runtime.zip", prevZip)
-            if (prevSha == null) System.clearProperty("pde.eclipse.runtime.zip.sha256") else System.setProperty("pde.eclipse.runtime.zip.sha256", prevSha)
+            restoreSystemProperty("pde.eclipse.runtime.zip", prevZip)
+            restoreSystemProperty("pde.eclipse.runtime.zip.sha256", prevSha)
+        }
+    }
+
+    private fun restoreSystemProperty(name: String, value: String?) {
+        if (value == null) {
+            System.clearProperty(name)
+        } else {
+            System.setProperty(name, value)
         }
     }
 

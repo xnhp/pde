@@ -377,21 +377,37 @@ public final class Bootstrap {
       if (expectedSha == null || expectedSha.isBlank()) {
         return in;
       }
-      byte[] content;
-      try (InputStream verify = in) {
-        content = verify.readAllBytes();
-      }
+      Path temp = Files.createTempFile("pde-runtime-", ".zip");
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      digest.update(content);
+      try (InputStream source = in) {
+        try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(temp))) {
+          byte[] buffer = new byte[8192];
+          int read;
+          while ((read = source.read(buffer)) >= 0) {
+            digest.update(buffer, 0, read);
+            out.write(buffer, 0, read);
+          }
+        }
+      }
       byte[] bytes = digest.digest();
       StringBuilder actual = new StringBuilder(bytes.length * 2);
       for (byte b : bytes) {
         actual.append(String.format("%02x", b));
       }
       if (!actual.toString().equalsIgnoreCase(expectedSha.trim())) {
+        Files.deleteIfExists(temp);
         throw new IOException("Runtime zip checksum mismatch for " + configured);
       }
-      return new java.io.ByteArrayInputStream(content);
+      return new java.io.FilterInputStream(new BufferedInputStream(Files.newInputStream(temp))) {
+        @Override
+        public void close() throws IOException {
+          try {
+            super.close();
+          } finally {
+            Files.deleteIfExists(temp);
+          }
+        }
+      };
     } catch (IOException ex) {
       throw ex;
     } catch (Exception ex) {

@@ -66,7 +66,7 @@ jar cfm "$PLUGIN_DIR/org.knime.targetinstaller_1.0.0.jar" \
 
 if [[ -n "$RUNTIME_ZIP" ]]; then
   echo "Using prebuilt runtime archive: $RUNTIME_ZIP"
-  unzip -q "$RUNTIME_ZIP" -d "$RUNTIME_DIR"
+  cp -R "$BOOTSTRAP_RUNTIME_DIR"/. "$RUNTIME_DIR"/
   LAUNCHER_JAR=$(ls "$RUNTIME_DIR"/plugins/org.eclipse.equinox.launcher_*.jar | head -n 1)
   if [[ -z "$LAUNCHER_JAR" ]]; then
     echo "Unable to locate org.eclipse.equinox.launcher in $RUNTIME_ZIP" >&2
