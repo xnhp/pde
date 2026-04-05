@@ -121,6 +121,7 @@ class IjInitTest {
     assertTrue(moduleContents.contains("content url=\"${expectedRoot}\""))
     assertTrue(moduleContents.contains("sourceFolder url=\"${expectedRoot}/src\""))
     assertTrue(moduleContents.contains("excludeFolder url=\"${expectedRoot}/node_modules\""))
+    assertTrue(moduleContents.contains("name=\"Eclipse PDE\""))
     assertTrue(!moduleContents.contains("//src"))
     assertTrue(!moduleContents.contains("//node_modules"))
     val modulesXml = Files.readString(baseDir.resolve("ij-project/.idea/modules.xml"))
