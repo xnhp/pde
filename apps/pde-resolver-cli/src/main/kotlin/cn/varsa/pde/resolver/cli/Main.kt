@@ -1332,7 +1332,6 @@ private fun runTestLaunch(
   timeoutSeconds: Int,
   reports: List<ReportTarget>,
   forwardSpecs: List<cn.varsa.pde.remoterunner.ForwardLogSpec>,
-  includes: List<Regex>,
   excludes: List<Regex>,
   quiet: Boolean,
   noColor: Boolean,
@@ -1403,7 +1402,7 @@ private fun runTestLaunch(
 
   val listeners = mutableListOf<RemoteTestListener>()
   if (!quiet) {
-    listeners += LoggingRemoteTestListener(System.out, includes, excludes, color = useColor)
+    listeners += LoggingRemoteTestListener(System.out, emptyList(), excludes, color = useColor)
   }
   val recorder = RecordingRemoteTestListener()
   listeners += recorder
@@ -1949,7 +1948,6 @@ private fun testMain(args: Array<String>): Int {
     timeoutSeconds = timeoutSeconds,
     reports = reports,
     forwardSpecs = forwardSpecs,
-    includes = emptyList(),
     excludes = excludes,
     quiet = quiet,
     noColor = noColor,
