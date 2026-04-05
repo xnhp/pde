@@ -48,12 +48,10 @@ fun writeConfigFile(
   configFile.writeText(
     """
       target:
-        profile-id: $profileId
-        p2-path: $p2Path
-      bundlesPerRepo:
-        - repo: ${repoDir.toAbsolutePath()}
-          bundles:
-            - $bundleName
+        profileId: $profileId
+        p2Path: $p2Path
+      bundles:
+        - path: ${repoDir.toAbsolutePath()}/$bundleName
     """.trimIndent()
   )
   return configFile

@@ -52,10 +52,8 @@ class JdtlsInitTest {
       configText(
         writeTargetConfig(baseDir),
         listOf(
-          "bundlesPerRepo:",
-          "  - repo: knime-gateway",
-          "    bundles:",
-          "      - org.knime.gateway.api.tests"
+          "bundles:",
+          "  - path: knime-gateway/org.knime.gateway.api.tests"
         )
       )
     )
@@ -113,10 +111,8 @@ class JdtlsInitTest {
       configText(
         writeTargetConfig(baseDir),
         listOf(
-          "bundlesPerRepo:",
-          "  - repo: knime-gateway",
-          "    bundles:",
-          "      - org.knime.gateway.impl"
+          "bundles:",
+          "  - path: knime-gateway/org.knime.gateway.impl"
         )
       )
     )
@@ -158,10 +154,8 @@ class JdtlsInitTest {
     Files.writeString(
       includePath,
       """
-        bundlesPerRepo:
-          - repo: knime-gateway
-            bundles:
-              - org.knime.gateway.api
+        bundles:
+          - path: knime-gateway/org.knime.gateway.api
       """.trimIndent()
     )
 
@@ -223,10 +217,8 @@ class JdtlsInitTest {
       configText(
         writeTargetConfig(baseDir),
         listOf(
-          "bundlesPerRepo:",
-          "  - repo: knime-gateway",
-          "    bundles:",
-          "      - org.knime.gateway.api"
+          "bundles:",
+          "  - path: knime-gateway/org.knime.gateway.api"
         )
       )
     )
@@ -265,10 +257,8 @@ class JdtlsInitTest {
       configText(
         writeTargetConfig(baseDir),
         listOf(
-          "bundlesPerRepo:",
-          "  - repo: knime-gateway",
-          "    bundles:",
-          "      - org.knime.gateway.json"
+          "bundles:",
+          "  - path: knime-gateway/org.knime.gateway.json"
         )
       )
     )
@@ -323,10 +313,8 @@ class JdtlsInitTest {
       configText(
         targetConfig,
         listOf(
-          "bundlesPerRepo:",
-          "  - repo: ${bundleDir.parent.toAbsolutePath()}",
-          "    bundles:",
-          "      - ${bundleDir.fileName}"
+          "bundles:",
+          "  - path: ${bundleDir.toAbsolutePath()}"
         )
       )
     )
@@ -366,10 +354,8 @@ class JdtlsInitTest {
       configText(
         writeTargetConfig(baseDir),
         listOf(
-          "bundlesPerRepo:",
-          "  - repo: knime-gateway",
-          "    bundles:",
-          "      - org.knime.gateway.api"
+          "bundles:",
+          "  - path: knime-gateway/org.knime.gateway.api"
         )
       )
     )
@@ -421,10 +407,8 @@ class JdtlsInitTest {
       configText(
         writeTargetConfig(baseDir),
         listOf(
-          "bundlesPerRepo:",
-          "  - repo: knime-gateway",
-          "    bundles:",
-          "      - org.knime.gateway.api"
+          "bundles:",
+          "  - path: knime-gateway/org.knime.gateway.api"
         )
       )
     )
@@ -470,10 +454,8 @@ class JdtlsInitTest {
     Files.writeString(
       configPath,
       listOf(
-        "bundlesPerRepo:",
-        "  - repo: knime-gateway",
-        "    bundles:",
-        "      - org.knime.gateway.api"
+        "bundles:",
+        "  - path: knime-gateway/org.knime.gateway.api"
       ).joinToString("\n")
     )
 
@@ -524,8 +506,8 @@ class JdtlsInitTest {
     Files.writeString(profileFile, profileXml)
     return listOf(
       "target:",
-      "  profile-id: $profileId",
-      "  p2-path: target/p2"
+      "  profileId: $profileId",
+      "  p2Path: target/p2"
     ).joinToString("\n")
   }
 

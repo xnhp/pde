@@ -51,10 +51,10 @@ triggers `pde compile` automatically.
 ### Using JDT LS outputs for `pde run`
 
 `pde run` expects compiled classes in the class roots configured for each
-workspace bundle. Those roots come from `bundlesPerRepo[].classes` (default
-`bin`) and must match the output directory that JDT LS is writing to. If a
+workspace bundle (see schema description for `bundles[].classRoots`).
+Those roots must match the output directory that JDT LS is writing to. If a
 bundle uses `build.properties` with `output..=bin/eclipse` and your config
-still uses `classes: [bin]`, `pde run` will report missing classes.
+still uses `classRoots: [bin]`, `pde run` will report missing classes.
 
 JDT LS only writes `.class` files. It does not copy non-Java resources into the
 output directory. This is fine for interactive `pde run` because the bundle

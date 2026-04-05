@@ -77,8 +77,8 @@ private fun addTestHelper(testClass: String, testMethods: String?) {
   }
 
   val entry = linkedMapOf<String, Any?>(
-    "testpluginname" to "org.knime.gateway.impl",
-    "classname" to helperTestClass,
+    "testPluginName" to "org.knime.gateway.impl",
+    "className" to helperTestClass,
     "vmArgs" to vmArgs
   )
   tests.add(entry)
@@ -99,8 +99,8 @@ private fun addTest(pluginName: String, className: String) {
   val tests = ensureTestsList(rootMap)
 
   val entry = linkedMapOf<String, Any?>(
-    "testpluginname" to normalizedPluginName,
-    "classname" to normalizedClassName
+    "testPluginName" to normalizedPluginName,
+    "className" to normalizedClassName
   )
   tests.add(entry)
 

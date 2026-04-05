@@ -1,0 +1,204 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://example.local/schemas/pde-config.schema.yaml"
+
+title: PDE CLI config (strict)
+description: >-
+  Strict configuration for the pde CLI. Unknown keys are rejected.
+  Paths are interpreted by command-specific logic (typically relative to the config file
+  unless documented otherwise).
+type: object
+additionalProperties: false
+
+$defs:
+  nonEmptyString:
+    type: string
+    description: Non-empty string value.
+    minLength: 1
+  stringArray:
+    type: array
+    description: Ordered list of strings.
+    items:
+      type: string
+  workspaceBundle:
+    type: object
+    description: Workspace bundle declaration.
+    additionalProperties: false
+    properties:
+      path:
+        $ref: "#/$defs/nonEmptyString"
+        description: >-
+          Absolute or relative path to the bundle base directory
+          (for example `~/repos/knime-core/org.knime.core`).
+      classRoots:
+        $ref: "#/$defs/stringArray"
+        description: >-
+          Relative class output roots inside the bundle directory.
+          When omitted, roots are inferred from `build.properties` `output..`
+          if present; otherwise defaults to `bin`.
+    required: [path]
+  launchEntry:
+    type: object
+    description: >-
+      Named launch preset used by `pde run`. When multiple launches are defined,
+      the first entry is used by default unless the user selects another launch.
+    additionalProperties: false
+    properties:
+      name:
+        $ref: "#/$defs/nonEmptyString"
+        description: Launch preset name.
+      product:
+        type: string
+        description: Eclipse PDE product id to launch.
+      application:
+        type: string
+        description: Eclipse PDE application id to launch.
+      splash:
+        type: string
+        description: Splash bundle path override.
+      debug:
+        type: boolean
+        default: false
+        description: >-
+          Enable JVM debug mode for this launch preset.
+      programArgs:
+        $ref: "#/$defs/stringArray"
+        default: []
+        description: Additional OSGi/application arguments appended to the launch command.
+      vmArgs:
+        $ref: "#/$defs/stringArray"
+        default: []
+        description: Additional JVM arguments appended to the Java command.
+      dataDir:
+        type: string
+        description: >-
+          Launch data workspace directory override for this launch preset.
+          If omitted, a temporary data directory is created.
+      configDir:
+        type: string
+        description: >-
+          Launch runtime configuration directory override for this launch preset.
+          If omitted, a temporary config directory is created.
+      workDir:
+        type: string
+        description: >-
+          Launch working directory override for this launch preset.
+          If omitted, a temporary working directory is created.
+    required: [name]
+  testEntry:
+    type: object
+    description: >-
+      Named PDE/JUnit test preset used by `pde test`. When multiple tests are
+      defined, the first entry is used by default unless the user selects another test.
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: Test preset name used for selection and include merging.
+      testPluginName:
+        type: string
+        description: The name of the _host_ plugin (not the test fragment). Passed to PDE as `-testpluginname`.
+      className:
+        type: string
+        description: Qualified name of the class containing the tests to be run. Value passed to PDE as `-classname`.
+      runner:
+        type: string
+        enum: [junit4, junit5]
+        default: junit5
+        description: >-
+          Test runner profile. `junit5` adds JUnit 5 PDE loader flags;
+          `junit4` adds JUnit 4 PDE loader flags.
+      debug:
+        type: boolean
+        default: false
+        description: Enable JVM debug mode for this test preset.
+      programArgs:
+        $ref: "#/$defs/stringArray"
+        default: []
+        description: Additional PDE test program arguments.
+      vmArgs:
+        $ref: "#/$defs/stringArray"
+        default: []
+        description: Additional JVM arguments for the test runtime.
+  targetMirror:
+    type: object
+    description: Options for `pde target mirror`.
+    additionalProperties: false
+    properties:
+      destination:
+        type: string
+        description: Destination path or URI for mirrored metadata/artifacts.
+      writeMode:
+        type: string
+        description: >-
+          Mirror write strategy. `clean` is supported; other values are accepted
+          but ignored by current mirror execution.
+      includeMetadata:
+        type: boolean
+        description: Include repository metadata when mirroring (defaults to true at runtime).
+      includeArtifacts:
+        type: boolean
+        description: Include repository artifacts when mirroring (defaults to true at runtime).
+  targetConfig:
+    type: object
+    description: Target platform resolution and install settings.
+    additionalProperties: false
+    properties:
+      definition:
+        type: string
+        description: >-
+          Path to `.target` file. If omitted, the CLI tries to discover exactly one
+          `.target` file in the config directory.
+      profileId:
+        type: string
+        default: profile
+        description: >-
+          ID of p2 profile to use. Together with `p2Path`, this resolves the profile
+          registry directory.
+      p2Path:
+        type: string
+        default: ./target/p2
+        description: Path to p2 area (relative paths resolve from the config directory).
+      install:
+        type: string
+        default: ./target/install
+        description: Path to install root (relative paths resolve from the config directory).
+      bundlePool:
+        type: string
+        default: ./target/bundle-pool
+        description: Path to bundle pool (relative paths resolve from the config directory).
+      installer:
+        type: string
+        description: Path to target-installer launcher JAR used by `pde target install`.
+      mirror:
+        $ref: "#/$defs/targetMirror"
+        description: Mirror options used by `pde target mirror`.
+
+properties:
+  includes:
+    description: >-
+      Include one or more YAML files before applying the current file.
+      Merge behavior is key-aware: object properties merge by key, `launches` and
+      `tests` merge by `name`, `bundles` entries are concatenated, and all
+      other scalar/array values are replaced by later files.
+      Include paths resolve relative to the current config file.
+    type: array
+    items:
+      type: string
+  target:
+    $ref: "#/$defs/targetConfig"
+    description: Target platform and installer configuration.
+  bundles:
+    type: array
+    description: Workspace bundles to resolve from local sources.
+    items:
+      $ref: "#/$defs/workspaceBundle"
+  launches:
+    type: array
+    description: Named launch presets for `pde run`.
+    items:
+      $ref: "#/$defs/launchEntry"
+  tests:
+    type: array
+    description: Named test presets for `pde test`.
+    items:
+      $ref: "#/$defs/testEntry"

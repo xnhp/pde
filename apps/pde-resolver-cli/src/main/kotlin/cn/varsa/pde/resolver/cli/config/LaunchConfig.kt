@@ -1,125 +1,79 @@
 package cn.varsa.pde.resolver.cli.config
 
-import com.fasterxml.jackson.annotation.JsonAlias
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.core.JsonToken
-import com.fasterxml.jackson.databind.DeserializationContext
+import cn.varsa.cli.core.config.YamlConfig
+import cn.varsa.cli.core.config.YamlSchema
 import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.JsonDeserializer
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import java.nio.file.Path
 import java.nio.file.Paths
 import kotlin.io.path.inputStream
 
-@JsonIgnoreProperties(ignoreUnknown = true)
 data class LaunchConfig(
-  val issueId: String? = null,
-  val branch: String? = null,
-  val baseReposPath: String? = null,
-  val product: String? = null,
-  val application: String? = null,
-  val productFiles: List<String> = emptyList(),
-  val startupLevelsFile: String? = null,
   val target: TargetConfig? = null,
-  val targetFile: String? = null,
-  val inheritTargetArgs: Boolean = true,
-  val whitelistFile: String? = null,
-  val splash: String? = null,
-  val env: Map<String, String> = emptyMap(),
-  val dataDir: String? = null,
-  val configDir: String? = null,
-  val workDir: String? = null,
-  val cleanRuntime: Boolean = false,
-  val targetModules: List<String> = emptyList(),
-  val bundlesPerRepo: List<RepoBundles> = emptyList(),
-  val nonPdeBundles: List<String> = emptyList(),
+  val bundles: List<WorkspaceBundleConfig> = emptyList(),
   val launches: List<LaunchEntry> = emptyList(),
-  val tests: List<TestEntry> = emptyList(),
-  @JsonAlias("vmArgs")
-  val additionalVmArgs: List<String> = emptyList(),
-  val programArgs: List<String> = emptyList(),
-  val profilePath: String? = null,
-  @JsonAlias("formatter-config-path")
-  val formatterConfigPath: String? = null,
-  val startupLevels: Map<String, Int> = emptyMap(),
-  val whitelist: List<String> = listOf(
-    "org.eclipse.jdt.annotation",
-    "org.eclipse.io",
-    "org.eclipse.swt"
-  )
+  val tests: List<TestEntry> = emptyList()
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
 data class TargetConfig(
   val definition: String? = null,
-  @JsonAlias("profile-id")
   val profileId: String? = null,
-  @JsonAlias("p2-path")
   val p2Path: String? = null,
   val install: String? = null,
-  @JsonAlias("bundle-pool")
   val bundlePool: String? = null,
   val installer: String? = null,
   val mirror: TargetMirrorConfig? = null
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
 data class TargetMirrorConfig(
   val destination: String? = null,
-  @JsonAlias("write-mode")
   val writeMode: String? = null,
-  @JsonAlias("include-metadata")
   val includeMetadata: Boolean? = null,
-  @JsonAlias("include-artifacts")
   val includeArtifacts: Boolean? = null
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class RepoBundles(
-  val repo: String,
-  @JsonDeserialize(contentUsing = BundleRefDeserializer::class)
-  val bundles: List<BundleRef> = emptyList(),
-  val nonPdeBundles: List<String> = emptyList()
+data class WorkspaceBundleConfig(
+  val path: String,
+  val classRoots: List<String>? = null
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class BundleRef(
-  val name: String,
-  val classes: List<String>? = null
-)
-
-@JsonIgnoreProperties(ignoreUnknown = true)
 data class LaunchEntry(
   val name: String,
   val product: String? = null,
   val application: String? = null,
   val splash: String? = null,
   val debug: Boolean = false,
-  val env: Map<String, String> = emptyMap(),
+  val programArgs: List<String> = emptyList(),
+  val vmArgs: List<String> = emptyList(),
+  val dataDir: String? = null,
+  val configDir: String? = null,
+  val workDir: String? = null
+)
+
+data class TestEntry(
+  val name: String? = null,
+  val testPluginName: String? = null,
+  val className: String? = null,
+  val runner: String? = null,
+  val debug: Boolean = false,
   val programArgs: List<String> = emptyList(),
   val vmArgs: List<String> = emptyList()
 )
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class TestEntry(
-  val name: String? = null,
-  @JsonAlias("testpluginname")
-  val testPluginName: String? = null,
-  @JsonAlias("classname")
-  val className: String? = null,
-  val runner: String? = null,
-  val debug: Boolean = false,
-  val env: Map<String, String> = emptyMap(),
+data class LaunchRuntime(
+  val product: String? = null,
+  val application: String? = null,
+  val splash: String? = null,
   val programArgs: List<String> = emptyList(),
-  val vmArgs: List<String> = emptyList()
+  val vmArgs: List<String> = emptyList(),
+  val dataDir: String? = null,
+  val configDir: String? = null,
+  val workDir: String? = null
 )
 
 data class LaunchConfigContext(
@@ -127,6 +81,7 @@ data class LaunchConfigContext(
   val baseDir: Path,
   val config: LaunchConfig,
   val workingDir: Path,
+  val runtime: LaunchRuntime = LaunchRuntime(),
   val jvmDebug: Boolean = false,
   val jvmDebugRequiresPdeTestApp: Boolean = false
 )
@@ -135,11 +90,20 @@ object LaunchConfigLoader {
   private val mapper = ObjectMapper(YAMLFactory())
     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     .registerModule(KotlinModule.Builder().build())
+  private val schema: YamlSchema = LaunchConfigLoader::class.java.classLoader
+    .getResourceAsStream("schema/pde.schema.yaml")
+    ?.use { YamlConfig.loadSchema(it) }
+    ?: error("Missing schema resource: schema/pde.schema.yaml")
 
   fun load(path: Path, workingDir: Path = Paths.get("").toAbsolutePath()): LaunchConfigContext {
     val normalized = path.toAbsolutePath().normalize()
     val mergedNode = loadMergedNode(normalized, mutableSetOf())
-    val config: LaunchConfig = mapper.treeToValue(mergedNode, LaunchConfig::class.java)
+    val mergedContent = mapper.writeValueAsString(mergedNode)
+    val config: LaunchConfig = try {
+      YamlConfig.decodeValidated(mergedContent, schema, LaunchConfig::class.java)
+    } catch (ex: IllegalArgumentException) {
+      error("Invalid config ${normalized}:\n${ex.message}")
+    }
     val base = normalized.parent ?: normalized
     val resolvedWorkingDir = workingDir.toAbsolutePath().normalize()
     return LaunchConfigContext(file = normalized, baseDir = base, config = config, workingDir = resolvedWorkingDir)
@@ -184,7 +148,7 @@ object LaunchConfigLoader {
       val baseValue = merged.get(key)
       val nextValue: JsonNode = when {
         key == "launches" || key == "tests" -> mergeListByName(baseValue as? ArrayNode, overrideValue as? ArrayNode)
-        key == "bundlesPerRepo" -> mergeArrayConcat(baseValue as? ArrayNode, overrideValue as? ArrayNode)
+        key == "bundles" -> mergeArrayConcat(baseValue as? ArrayNode, overrideValue as? ArrayNode)
         baseValue is ObjectNode && overrideValue is ObjectNode -> mergeObjectNodes(baseValue, overrideValue)
         overrideValue is ArrayNode -> overrideValue.deepCopy() as ArrayNode
         else -> overrideValue.deepCopy()
@@ -247,17 +211,6 @@ object LaunchConfigLoader {
       merged.add(node.deepCopy())
     }
     return merged
-  }
-
-}
-
-private class BundleRefDeserializer : JsonDeserializer<BundleRef>() {
-  override fun deserialize(parser: JsonParser, ctxt: DeserializationContext): BundleRef {
-    return when (parser.currentToken) {
-      JsonToken.VALUE_STRING -> BundleRef(name = parser.valueAsString)
-      JsonToken.START_OBJECT -> parser.codec.readValue(parser, BundleRef::class.java)
-      else -> throw ctxt.reportInputMismatch(BundleRef::class.java, "Expected string or object for bundle entry")
-    }
   }
 }
 

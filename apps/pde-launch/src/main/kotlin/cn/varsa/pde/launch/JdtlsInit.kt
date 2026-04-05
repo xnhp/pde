@@ -126,7 +126,7 @@ private fun writeWorkspaceConfigs(
 ): WorkspaceConfigResult {
   val moduleDefinitions = WorkspaceModuleResolver.resolveDefinitions(context)
   if (moduleDefinitions.isEmpty()) {
-    fail("No workspace bundles resolved from config; add bundlesPerRepo.")
+    fail("No workspace bundles resolved from config; add bundles.")
   }
   val descriptorByPath = workspaceDescriptors.associateBy { it.path.toAbsolutePath().normalize() }
   val projectNameByBsn = workspaceDescriptors.associate {
@@ -385,7 +385,7 @@ private fun resolveTargetIndex(context: LaunchConfigContext): TargetPlatformInde
   val profilePath = resolveProfilePath(context, targetConfig)
   if (!Files.exists(profilePath)) {
     fail("Target profile not found at ${profilePath.toAbsolutePath().normalize()}. " +
-      "Update target.profile-id/target.p2-path or run target installer.")
+      "Update target.profileId/target.p2Path or run target installer.")
   }
   return TargetPlatformCache.buildWithCache(listOf(profilePath))
 }

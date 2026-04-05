@@ -1,7 +1,12 @@
 # pde-config-filename Specification
 
 ## Purpose
-TBD - created by archiving change rename-config-yaml-to-pde-yaml. Update Purpose after archive.
+Define an unambiguous default filename contract for PDE configuration discovery so all tools behave consistently and users get clear guidance.
+
+## Scope
+- This spec applies to **automatic configuration discovery** (when no explicit config path is provided).
+- This spec does **not** redefine behavior for explicit file paths passed via CLI options such as `--config`.
+
 ## Requirements
 ### Requirement: PDE configuration file name
 The system SHALL use `pde.yaml` as the only supported default configuration filename for PDE tooling configuration discovery.
@@ -15,7 +20,8 @@ The system MUST NOT treat `config.yaml` as a valid default configuration filenam
 
 #### Scenario: Discovery with only legacy filename fails
 - **WHEN** a tool performs configuration discovery in a working directory that contains `config.yaml` and does not contain `pde.yaml`
-- **THEN** it MUST fail configuration discovery and report that `pde.yaml` is required
+- **THEN** it MUST fail configuration discovery
+- **AND** it MUST report that `pde.yaml` is required
 
 ### Requirement: User-facing references use pde.yaml
 All user-facing references to the default configuration filename SHALL use `pde.yaml`.
@@ -24,3 +30,6 @@ All user-facing references to the default configuration filename SHALL use `pde.
 - **WHEN** a tool emits help text, usage examples, or error messages about the default config filename
 - **THEN** the message MUST reference `pde.yaml` and MUST NOT present `config.yaml` as supported
 
+#### Scenario: Discovery error names required filename
+- **WHEN** configuration discovery fails because no supported default filename is found
+- **THEN** the error message MUST include `pde.yaml`

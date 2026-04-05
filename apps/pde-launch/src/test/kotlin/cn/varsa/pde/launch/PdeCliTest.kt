@@ -13,7 +13,7 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(emptyArray())
+      runPde(emptyArray())
     } finally {
       System.setOut(savedOut)
     }
@@ -30,7 +30,7 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("--help"))
+      runPde(arrayOf("--help"))
     } finally {
       System.setOut(savedOut)
     }
@@ -39,6 +39,7 @@ class PdeCliTest {
     assertTrue(output.contains("Usage:"))
     assertTrue(output.contains("run"))
     assertTrue(output.contains("target"))
+    assertTrue(output.contains("schema"))
   }
 
   @Test
@@ -47,13 +48,14 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("target", "--help"))
+      runPde(arrayOf("target", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
     assertTrue(output.contains("Usage: pde target"))
+    assertTrue(output.contains("Commands:"))
     assertTrue(output.contains("install"))
     assertTrue(output.contains("mirror"))
   }
@@ -64,13 +66,14 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("target", "install", "--help"))
+      runPde(arrayOf("target", "install", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains("Usage: pde target"))
+    assertTrue(output.contains("Usage: pde target install"))
+    assertTrue(output.contains("--launch=String"))
   }
 
   @Test
@@ -79,13 +82,50 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("target", "mirror", "--help"))
+      runPde(arrayOf("target", "mirror", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains("Usage: pde target"))
+    assertTrue(output.contains("Usage: pde target mirror"))
+    assertTrue(output.contains("--destination=String"))
+  }
+
+  @Test
+  fun `launch subcommand help uses launch command name`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("launch", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde launch"))
+    assertTrue(output.contains("--config=String"))
+    assertTrue(output.contains("[launchPos]"))
+  }
+
+  @Test
+  fun `test subcommand help uses test command name`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("test", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde test"))
+    assertTrue(output.contains("--report=String"))
+    assertTrue(!output.contains("--all"))
+    assertTrue(!output.contains("--include"))
+    assertTrue(output.contains("[testPos]"))
   }
 
   @Test
@@ -94,13 +134,45 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("compile", "--help"))
+      runPde(arrayOf("compile", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
     assertTrue(output.contains("pde compile"))
+    assertTrue(output.contains("--execute"))
+  }
+
+  @Test
+  fun `api analyze subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-analyze", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde api-analyze"))
+    assertTrue(output.contains("--fail-on-error"))
+  }
+
+  @Test
+  fun `api analyzer alias is supported`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-analyzer", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde api-analyze"))
   }
 
   @Test
@@ -109,7 +181,7 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("ide-init", "idea", "--help"))
+      runPde(arrayOf("ide-init", "idea", "--help"))
     } finally {
       System.setOut(savedOut)
     }
@@ -124,7 +196,7 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("ide-init", "jdtls", "--help"))
+      runPde(arrayOf("ide-init", "jdtls", "--help"))
     } finally {
       System.setOut(savedOut)
     }
@@ -139,7 +211,7 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("add-test", "--help"))
+      runPde(arrayOf("add-test", "--help"))
     } finally {
       System.setOut(savedOut)
     }
@@ -154,7 +226,7 @@ class PdeCliTest {
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      main(arrayOf("add-test-helper", "--help"))
+      runPde(arrayOf("add-test-helper", "--help"))
     } finally {
       System.setOut(savedOut)
     }
