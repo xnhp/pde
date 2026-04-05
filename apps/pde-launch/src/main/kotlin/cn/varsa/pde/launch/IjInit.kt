@@ -335,7 +335,7 @@ object IjInit {
     builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
     builder.appendLine("<module type=\"JAVA_MODULE\" version=\"4\">")
     builder.appendLine("  <component name=\"FacetManager\">")
-    builder.appendLine("    <facet type=\"cn.varsa.idea.pde.partial.plugin\" name=\"Eclipse PDE Partial\">")
+    builder.appendLine("    <facet type=\"cn.varsa.idea.pde.partial.plugin\" name=\"Eclipse PDE\">")
     builder.appendLine("      <configuration />")
     builder.appendLine("    </facet>")
     builder.appendLine("  </component>")
