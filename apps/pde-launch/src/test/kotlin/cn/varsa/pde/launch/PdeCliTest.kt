@@ -106,6 +106,7 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage: pde launch"))
     assertTrue(output.contains("--config=String"))
+    assertTrue(output.contains("Enable JDWP for launch JVM"))
     assertTrue(output.contains("[launchPos]"))
   }
 

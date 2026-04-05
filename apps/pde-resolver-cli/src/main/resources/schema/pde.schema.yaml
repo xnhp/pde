@@ -55,11 +55,6 @@ $defs:
       splash:
         type: string
         description: Splash bundle path override.
-      debug:
-        type: boolean
-        default: false
-        description: >-
-          Enable JVM debug mode for this launch preset.
       programArgs:
         $ref: "#/$defs/stringArray"
         default: []

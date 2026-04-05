@@ -147,7 +147,7 @@ Run a launch config
       [launchPos]            Launch name (optional, from launches entry)
       --application=String   Application identifier
       --config=String        YAML launch configuration (supports launches/tests)
-      --debug                Enable DEBUG logging
+      --debug                Enable JDWP for launch JVM
       --dev-prop=String      Dev properties entry in form bsn=path1,path2
       --dry-run              Parse configuration only
       --framework=String     Framework BSN
@@ -178,7 +178,7 @@ Run a launch config
       [launchPos]            Launch name (optional, from launches entry)
       --application=String   Application identifier
       --config=String        YAML launch configuration (supports launches/tests)
-      --debug                Enable DEBUG logging
+      --debug                Enable JDWP for launch JVM
       --dev-prop=String      Dev properties entry in form bsn=path1,path2
       --dry-run              Parse configuration only
       --framework=String     Framework BSN
@@ -286,4 +286,3 @@ Run PDE test launch
   -v, --verbose              Enable INFO logging
   -V, --version              Print version information and exit.
 ```
-

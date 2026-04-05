@@ -6,6 +6,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class LaunchConfigLoaderTest {
   @Rule @JvmField val tmp = TemporaryFolder()
@@ -123,6 +124,23 @@ class LaunchConfigLoaderTest {
     assertEquals("runtime/data", launch.dataDir)
     assertEquals("runtime/config", launch.configDir)
     assertEquals("runtime/work", launch.workDir)
+  }
+
+  @Test
+  fun launchEntryRejectsRemovedDebugField() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      launches:
+        - name: AP
+          debug: true
+      """.trimIndent()
+    )
+
+    assertFailsWith<IllegalStateException> {
+      LaunchConfigLoader.load(configFile.toPath(), root)
+    }
   }
 
   @Test
