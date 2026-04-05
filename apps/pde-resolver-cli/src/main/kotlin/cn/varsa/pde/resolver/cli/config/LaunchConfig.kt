@@ -97,9 +97,6 @@ object LaunchConfigLoader {
   fun load(path: Path, workingDir: Path = Paths.get("").toAbsolutePath()): LaunchConfigContext {
     val normalized = path.toAbsolutePath().normalize()
     val mergedNode = loadMergedNode(normalized, mutableSetOf())
-    require(!containsLegacyLaunchDebug(mergedNode)) {
-      "Invalid config $normalized:\nlaunches[].debug is no longer supported; use pde run --debug or pde launch --debug."
-    }
     val mergedContent = mapper.writeValueAsString(mergedNode)
     val config: LaunchConfig = try {
       YamlConfig.decodeValidated(mergedContent, schema, LaunchConfig::class.java)
@@ -127,13 +124,6 @@ object LaunchConfigLoader {
     merged.remove("includes")
     visited.remove(normalized)
     return merged
-  }
-
-  private fun containsLegacyLaunchDebug(node: ObjectNode): Boolean {
-    val launches = node.get("launches") as? ArrayNode ?: return false
-    return launches.any { launch ->
-      launch is ObjectNode && launch.has("debug")
-    }
   }
 
   private fun parseIncludes(node: ObjectNode, baseDir: Path): List<Path> {

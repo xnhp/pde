@@ -6,8 +6,6 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Path
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 class LaunchConfigLoaderTest {
   @Rule @JvmField val tmp = TemporaryFolder()
@@ -125,24 +123,6 @@ class LaunchConfigLoaderTest {
     assertEquals("runtime/data", launch.dataDir)
     assertEquals("runtime/config", launch.configDir)
     assertEquals("runtime/work", launch.workDir)
-  }
-
-  @Test
-  fun launchEntryRejectsRemovedDebugField() {
-    val root: Path = tmp.root.toPath()
-    val configFile = root.resolve("pde.yaml").toFile()
-    configFile.writeText(
-      """
-      launches:
-        - name: AP
-          debug: true
-      """.trimIndent()
-    )
-
-    val error = assertFailsWith<IllegalArgumentException> {
-      LaunchConfigLoader.load(configFile.toPath(), root)
-    }
-    assertTrue(error.message?.contains("launches[].debug is no longer supported") == true)
   }
 
   @Test
