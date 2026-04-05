@@ -366,7 +366,12 @@ public final class Bootstrap {
           "Missing runtime resource " + RUNTIME_RESOURCE + " and no " + RUNTIME_ZIP_ENV + " / -D" + RUNTIME_ZIP_PROP + " configured");
     }
     try {
-      URI uri = URI.create(configured);
+      URI uri;
+      try {
+        uri = URI.create(configured);
+      } catch (IllegalArgumentException invalidUri) {
+        uri = Paths.get(configured).toUri();
+      }
       InputStream in = uri.toURL().openStream();
       String expectedSha = runtimeZipSha256();
       if (expectedSha == null || expectedSha.isBlank()) {

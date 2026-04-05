@@ -6,6 +6,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.zip.ZipInputStream
@@ -106,7 +107,7 @@ object EclipseRuntimeBootstrap {
     require(explicit.isNotBlank()) {
       "No Eclipse runtime archive configured. Set pde.eclipse.runtime.zip or PDE_ECLIPSE_RUNTIME_ZIP."
     }
-    return URI(explicit)
+    return runCatching { URI(explicit) }.getOrElse { Paths.get(explicit).toUri() }
   }
 
   private fun runtimeZipSha256(manifest: RuntimeManifest): String? {
