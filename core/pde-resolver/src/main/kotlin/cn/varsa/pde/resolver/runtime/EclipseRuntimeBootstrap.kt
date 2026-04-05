@@ -107,7 +107,11 @@ object EclipseRuntimeBootstrap {
     require(runtimeZipLocation.isNotBlank()) {
       "No Eclipse runtime archive configured. Set pde.eclipse.runtime.zip or PDE_ECLIPSE_RUNTIME_ZIP."
     }
-    return runCatching { URI.create(runtimeZipLocation) }.getOrElse { Paths.get(runtimeZipLocation).toUri() }
+    val asUri = runCatching { URI.create(runtimeZipLocation) }.getOrNull()
+    if (asUri != null && asUri.scheme != null) {
+      return asUri
+    }
+    return Paths.get(runtimeZipLocation).toUri()
   }
 
   private fun runtimeZipSha256(manifest: RuntimeManifest): String? {
