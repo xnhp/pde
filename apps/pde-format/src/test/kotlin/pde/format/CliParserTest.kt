@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class CliParserTest {
     @Test
@@ -79,6 +81,32 @@ class CliParserTest {
         assertEquals(listOf(file), result.options.stdinPaths)
         assertNull(result.options.inputFile)
         assertNull(result.options.repoDir)
+    }
+
+    @Test
+    fun `eclipse home defaults to bootstrap runtime when omitted`() {
+        val tempDir = Files.createTempDirectory("pde-format-test")
+        val file = Files.createTempFile(tempDir, "Input", ".java")
+        val profile = Files.createTempFile(tempDir, "profile", ".prefs")
+        val runtimeZip = tempDir.resolve("runtime.zip")
+        ZipOutputStream(Files.newOutputStream(runtimeZip)).use { zip ->
+            zip.putNextEntry(ZipEntry("plugins/"))
+            zip.closeEntry()
+        }
+
+        val prevZip = System.getProperty("pde.eclipse.runtime.zip")
+        val prevSha = System.getProperty("pde.eclipse.runtime.zip.sha256")
+        try {
+            System.setProperty("pde.eclipse.runtime.zip", runtimeZip.toUri().toString())
+            System.clearProperty("pde.eclipse.runtime.zip.sha256")
+            val result = CliParser(
+                arrayOf("check", "--profile", profile.toString(), "--in", file.toString())
+            ).parse()
+            assertEquals(true, Files.isDirectory(result.options.eclipseHome.resolve("plugins")))
+        } finally {
+            if (prevZip == null) System.clearProperty("pde.eclipse.runtime.zip") else System.setProperty("pde.eclipse.runtime.zip", prevZip)
+            if (prevSha == null) System.clearProperty("pde.eclipse.runtime.zip.sha256") else System.setProperty("pde.eclipse.runtime.zip.sha256", prevSha)
+        }
     }
 
     private fun baseArgs(vararg args: String): Array<String> {

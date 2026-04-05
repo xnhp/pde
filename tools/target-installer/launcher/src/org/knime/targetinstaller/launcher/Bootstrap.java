@@ -22,6 +22,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.security.MessageDigest;
+import java.net.URI;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -29,6 +30,10 @@ public final class Bootstrap {
   private static final String APP_ID = "org.knime.targetinstaller.target_installer_application_id";
   private static final String RUNTIME_RESOURCE = "/runtime.zip";
   private static final String MARKER_FILE = ".installed";
+  private static final String RUNTIME_ZIP_PROP = "pde.eclipse.runtime.zip";
+  private static final String RUNTIME_ZIP_ENV = "PDE_ECLIPSE_RUNTIME_ZIP";
+  private static final String RUNTIME_ZIP_SHA_PROP = "pde.eclipse.runtime.zip.sha256";
+  private static final String RUNTIME_ZIP_SHA_ENV = "PDE_ECLIPSE_RUNTIME_ZIP_SHA256";
 
   private Bootstrap() {}
 
@@ -83,6 +88,8 @@ public final class Bootstrap {
     System.out.println("  --cache-dir=PATH              Override cache directory");
     System.out.println("  --log-dir=PATH                Persist logs to PATH");
     System.out.println("  --help                        Show this help");
+    System.out.println("Runtime fallback:");
+    System.out.println("  If embedded runtime.zip is absent, set " + RUNTIME_ZIP_ENV + " (or -D" + RUNTIME_ZIP_PROP + ") to a runtime.zip URI.");
     System.out.println("Defaults:");
     System.out.println("  If -install-folder is provided, -bundle-pool and -p2Path default under it");
   }
@@ -275,10 +282,7 @@ public final class Bootstrap {
   private static void extractRuntime(Path runtimeRoot) throws IOException {
     deleteRecursively(runtimeRoot);
     Files.createDirectories(runtimeRoot);
-    try (InputStream raw = Bootstrap.class.getResourceAsStream(RUNTIME_RESOURCE)) {
-      if (raw == null) {
-        throw new IOException("Missing runtime resource: " + RUNTIME_RESOURCE);
-      }
+    try (InputStream raw = openRuntimeZipStream()) {
       try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(raw))) {
         ZipEntry entry;
         while ((entry = zip.getNextEntry()) != null) {
@@ -301,6 +305,23 @@ public final class Bootstrap {
   }
 
   private static String runtimeHash() throws IOException {
+    String descriptor = runtimeDescriptorIfExternal();
+    if (descriptor != null) {
+      MessageDigest digest;
+      try {
+        digest = MessageDigest.getInstance("SHA-256");
+      } catch (Exception ex) {
+        throw new IOException("Missing SHA-256 support", ex);
+      }
+      digest.update(descriptor.getBytes(StandardCharsets.UTF_8));
+      byte[] bytes = digest.digest();
+      StringBuilder sb = new StringBuilder(bytes.length * 2);
+      for (byte b : bytes) {
+        sb.append(String.format("%02x", b));
+      }
+      return sb.toString();
+    }
+
     MessageDigest digest;
     try {
       digest = MessageDigest.getInstance("SHA-256");
@@ -323,6 +344,78 @@ public final class Bootstrap {
       sb.append(String.format("%02x", b));
     }
     return sb.toString();
+  }
+
+  private static String runtimeDescriptorIfExternal() {
+    if (Bootstrap.class.getResourceAsStream(RUNTIME_RESOURCE) != null) {
+      return null;
+    }
+    String uri = runtimeZipUri();
+    String sha = runtimeZipSha256();
+    return uri + "|" + (sha == null ? "" : sha);
+  }
+
+  private static InputStream openRuntimeZipStream() throws IOException {
+    InputStream embedded = Bootstrap.class.getResourceAsStream(RUNTIME_RESOURCE);
+    if (embedded != null) {
+      return embedded;
+    }
+    String configured = runtimeZipUri();
+    if (configured == null || configured.isBlank()) {
+      throw new IOException(
+          "Missing runtime resource " + RUNTIME_RESOURCE + " and no " + RUNTIME_ZIP_ENV + " / -D" + RUNTIME_ZIP_PROP + " configured");
+    }
+    try {
+      URI uri = URI.create(configured);
+      InputStream in = uri.toURL().openStream();
+      String expectedSha = runtimeZipSha256();
+      if (expectedSha == null || expectedSha.isBlank()) {
+        return in;
+      }
+      byte[] content;
+      try (InputStream verify = in) {
+        content = verify.readAllBytes();
+      }
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      digest.update(content);
+      byte[] bytes = digest.digest();
+      StringBuilder actual = new StringBuilder(bytes.length * 2);
+      for (byte b : bytes) {
+        actual.append(String.format("%02x", b));
+      }
+      if (!actual.toString().equalsIgnoreCase(expectedSha.trim())) {
+        throw new IOException("Runtime zip checksum mismatch for " + configured);
+      }
+      return new java.io.ByteArrayInputStream(content);
+    } catch (IOException ex) {
+      throw ex;
+    } catch (Exception ex) {
+      throw new IOException("Failed to open runtime zip from " + configured, ex);
+    }
+  }
+
+  private static String runtimeZipUri() {
+    String prop = System.getProperty(RUNTIME_ZIP_PROP);
+    if (prop != null && !prop.isBlank()) {
+      return prop;
+    }
+    String env = System.getenv(RUNTIME_ZIP_ENV);
+    if (env != null && !env.isBlank()) {
+      return env;
+    }
+    return null;
+  }
+
+  private static String runtimeZipSha256() {
+    String prop = System.getProperty(RUNTIME_ZIP_SHA_PROP);
+    if (prop != null && !prop.isBlank()) {
+      return prop;
+    }
+    String env = System.getenv(RUNTIME_ZIP_SHA_ENV);
+    if (env != null && !env.isBlank()) {
+      return env;
+    }
+    return null;
   }
 
   private static Path findLauncherJar(Path pluginsDir) throws IOException {

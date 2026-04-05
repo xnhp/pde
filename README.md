@@ -152,8 +152,10 @@ This repository contains:
 The standalone target-installer lives under `tools/target-installer`.
 
 - Build the launcher jar: `./gradlew buildTargetInstallerLauncher`
-  - Requires Gradle properties in `~/.gradle/gradle.properties`:
-    - `eclipseSdk=/path/to/eclipse-sdk`
+  - Configure either:
+    - `runtimeZip=/path/to/eclipse-runtime.zip` (preferred; no local Eclipse SDK required), or
+    - `eclipseSdk=/path/to/eclipse-sdk` (fallback)
+  - Optional:
     - `p2Repositories=https://download.eclipse.org/releases/2024-12`
   - Output: `tools/target-installer/dist/target-installer-launcher.jar`
 

@@ -10,6 +10,7 @@ repositories {
 dependencies {
   implementation(kotlin("stdlib"))
   implementation(project(":remote-test-runner"))
+  implementation(project(":pde-resolver"))
   implementation(project(":pde-resolver-cli"))
   testImplementation(kotlin("test"))
   testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
