@@ -20,7 +20,7 @@ dependencies {
   implementation(project(":pde-resolver"))
   implementation(project(":pde-resolver-cli"))
   implementation(project(":pde-format"))
-  runtimeOnly("org.slf4j:slf4j-simple:2.0.16")
+  runtimeOnly("org.slf4j:slf4j-simple:2.0.17")
   testImplementation(kotlin("test"))
 }
 
