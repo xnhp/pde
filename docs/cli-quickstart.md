@@ -3,7 +3,7 @@
 
 Configuration is documented exhaustively in a json-schema at the path returned by `pde schema`.
 
-[Here](docs/config-yaml.md) are some non-exhaustive examples.
+[Here](config-yaml.md) are some non-exhaustive examples.
 
 
 ## Install target platform state: `pde target install`
