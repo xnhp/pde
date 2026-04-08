@@ -38,17 +38,10 @@ project setups and emacs.
 
 # Getting Started
 
-Download release artifacts from the GitHub [releases](releases) page.
+Download release artifacts from the GitHub [releases](https://github.com/xnhp/pde/releases) page.
 
-See [CLI Quickstart](docs/cli-quickstart.md)
-
-
----
-
-# Skill/--help notes
-- how to set up and run unit tests
-
----
+- CLI: See [CLI Quickstart](docs/cli-quickstart.md)
+- IntelliJ Plugin: "Install plugin from disk" and select zip from releases page. More documentation can be provided if there is interest.
 
 
 # Repository Layout
