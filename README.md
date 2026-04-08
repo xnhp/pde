@@ -1,10 +1,47 @@
 
 # Overview
 
-This project offers tooling to work on Eclipse PDE projects.
+This project offers tooling to work on Eclipse PDE projects. Works well with an ["issue directory"](https://github.com/xnhp/issue) approach.
 
 ## CLI
-This projects provides a CLI to facilitate the basic steps for working on PDE projects. Example commands are:
+This projects provides a CLI to facilitate the basic steps for working on PDE projects.
+
+Basic configuration is put into `pde.yaml`:
+```
+target:
+  definition: /home/ben/Desktop/ap-dev-setup/target/KNIME-AP-internal.target
+  installer: /home/ben/repos/pde/tools/target-installer/dist/target-installer-launcher.jar
+  bundlePool: /home/ben/Desktop/issues/bundle-pool/
+
+includes:
+    - ../launches.yaml
+bundles:
+    - path: knime-com-gateway/com.knime.gateway.executor
+    - path: knime-com-gateway/com.knime.gateway.executor.tests
+    - path: knime-core-ui/org.knime.core.ui
+    - path: knime-core-ui/org.knime.core.ui.tests
+      classRoots:
+          - bin/eclipse
+launches:
+    - name: AP
+      product: org.knime.product.KNIME_PRODUCT
+      application: org.knime.product.KNIME_APPLICATION
+      splash: org.knime.product
+      vmArgs:
+        - -ea
+        - [...]
+tests:
+    - className: com.knime.gateway.executor.server.GatewayServerTest
+      debug: false
+      name: GatewayServerTest
+      programArgs: []
+      runner: junit5
+      testPluginName: com.knime.gateway.executor
+      vmArgs: []
+
+```
+
+Example commands are:
 
 - `pde target install` -- install/update Target Platform state
 - `pde compile` -- compile java sources (with TP/workspace dependency resolution)
