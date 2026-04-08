@@ -38,8 +38,8 @@ internal object SchemaCommand {
     var current: Path? = start
     while (current != null) {
       val candidates = listOf(
-        current.resolve("apps/pde-resolver-cli/src/main/resources/schema/pde.schema.yaml"),
-        current.resolve("apps/pde-resolver-cli/build/resources/main/schema/pde.schema.yaml")
+        current.resolve("core/pde-launch-engine/src/main/resources/schema/pde.schema.yaml"),
+        current.resolve("core/pde-launch-engine/build/resources/main/schema/pde.schema.yaml")
       )
       val found = candidates.firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
       if (found != null) return found.toAbsolutePath().normalize()

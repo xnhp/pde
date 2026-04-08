@@ -26,7 +26,7 @@ class TargetInstallMissingTargetTest {
     val savedErr = System.err
     val out = ByteArrayOutputStream()
     val savedOut = System.out
-    val logger = Logger.getLogger("pde-resolver-cli")
+    val logger = Logger.getLogger("pde-launch-engine")
     val buffer = StringBuilder()
     val handler = object : Handler() {
       override fun publish(record: LogRecord) {

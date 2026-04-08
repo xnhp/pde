@@ -1,17 +1,14 @@
-# pde-test-runner
+# pde-remote-test-runtime (internal module)
 
-Helper CLI that mirrors Eclipse's `RemoteTestRunnerClient` so headless PDE launches can
+Helper runtime that mirrors Eclipse's `RemoteTestRunnerClient` so headless PDE launches can
 stream test events back into local logs or CI reporters. The tool binds to a localhost
 port, prints JSON + human instructions with the selected port, then waits for the
 PDE runtime to connect using the standard `-port <value>` argument.
 
-## Build and Usage
+## Usage
 
-- Run via Gradle:
-  - `./gradlew :pde-test-runner:run --args "--report teamcity --timeout 60"`
-- Install standalone script:
-  - `./gradlew :pde-test-runner:installDist`
-  - `./apps/pde-test-runner/build/install/pde-test-runner/bin/pde-test-runner --listen-host 0.0.0.0`
+- This module is not distributed as a standalone CLI.
+- Use it via the public `pde` CLI (`pde test`, `pde run`).
 - Typical workflow:
   1. Start the helper and capture the emitted JSON payload to learn the selected port.
 2. Launch `pde run ... --programArg "-port <port>"` (or add to `launch.yaml`). The PDE

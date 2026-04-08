@@ -7,8 +7,8 @@ skipped by default unless you opt in.
 ## Enable real-workspace smoke tests
 
 ```bash
-JDTLS_REAL_WORKSPACE=1 ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsSmokeTest
-./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsSmokeTest -Djdtls.real.workspace=true
+JDTLS_REAL_WORKSPACE=1 ./gradlew :pde-cli:test --tests cn.varsa.pde.launch.JdtlsSmokeTest
+./gradlew :pde-cli:test --tests cn.varsa.pde.launch.JdtlsSmokeTest -Djdtls.real.workspace=true
 ```
 
 ## Issue-workspace import smoke test
@@ -21,7 +21,7 @@ directory layout with a `pde.yaml` at the root and a `.jdtls-data` directory.
 ```bash
 JDTLS_IMPORT_REAL=1 \
   JDTLS_ISSUE_ROOT=~/issues/td-123456 \
-  ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsImportSmokeTest
+  ./gradlew :pde-cli:test --tests cn.varsa.pde.launch.JdtlsImportSmokeTest
 ```
 
 ### Optional overrides
@@ -49,5 +49,5 @@ JDTLS_IMPORT_REAL=1 \
   JDTLS_IMPORT_NAV_FILE=knime-gateway/org.knime.gateway.impl/src/org/knime/gateway/impl/space/LocalSpaceProvider.java \
   JDTLS_IMPORT_NAV_SYMBOL=SpaceProvider \
   JDTLS_IMPORT_NAV_EXPECT=org.knime.gateway.api/src/ \
-  ./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsImportSmokeTest
+  ./gradlew :pde-cli:test --tests cn.varsa.pde.launch.JdtlsImportSmokeTest
 ```

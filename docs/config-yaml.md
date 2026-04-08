@@ -6,7 +6,7 @@ The schema is the single source of truth for property-level semantics, defaults,
 ## Schema-first reference
 
 - Show the active schema path for your build/runtime: `pde schema`
-- Main schema file in this repo: `apps/pde-resolver-cli/src/main/resources/schema/pde.schema.yaml`
+- Main schema file in this repo: `core/pde-launch-engine/src/main/resources/schema/pde.schema.yaml`
 - Candidate/editing copy: `pde-candidate.schema.yaml`
 
 When docs and schema differ, treat the schema as authoritative.

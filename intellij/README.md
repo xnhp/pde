@@ -55,17 +55,15 @@ instance of IntelliJ IDEA with the plugin installed
 ### CLI launcher
 
 Use the `pde` binary for headless executions of `.yaml` launch configs. Build it with
-`./gradlew :pde-launch:installDist`, then run
+`./gradlew :pde-cli:installDist`, then run
 `./apps/pde-launch/build/install/pde/bin/pde run --config /path/to/launch.yaml` to stage a
 runtime.
 
 ### Remote PDE test helper CLI
 
-Headless PDE launches can mirror IntelliJ's remote JUnit client by using the new
-`pde-test-runner` module. Build it with `./gradlew :pde-test-runner:installDist` and run the
-generated script before invoking `pde`. The helper prints a JSON blob with the
-allocated port, streams test progress to the console (with optional TeamCity or JUnit XML
-reports), and exits with a non-zero code whenever the remote test suite reports failures.
+Headless PDE launches can mirror IntelliJ's remote JUnit client via the integrated `pde test`
+workflow. The remote helper implementation now lives in internal modules and is distributed
+through the `pde` CLI.
 
 ## Comparison
 

@@ -6,18 +6,16 @@ resolving Eclipse target platforms, planning launches, and running remote tests.
 ## Architecture and main contents
 
 - `intellij/`: IntelliJ IDEA plugin implementation (PDE Tools).
-- `core/`: shared libraries for target platform indexing, launch planning, and the remote test protocol.
-- `apps/`: headless CLI tools built on `core/`:
-  - `pde`: launch planning/runtime assembly for PDE-style runs.
-  - `pde-resolver-cli`: target platform resolver and config-driven inputs.
-  - `pde-test-runner`: remote test runner (protocol in `core`).
+- `core/`: shared libraries for target platform indexing, launch planning, and the remote test protocol,
+  plus internal CLI engine/runtime modules (`:pde-launch-engine`, `:pde-remote-test-runtime`).
+- `apps/`: headless CLI entrypoints (`:pde-cli` public, `:pde-format` internal).
 - `docs/`: documentation, including `config-yaml.md` for resolver configuration.
 - Gradle build: root `build.gradle.kts`, `settings.gradle.kts`.
 
 ## Typical use-cases
 
 - Run and debug the IntelliJ plugin in a sandbox IDE.
-- Resolve and validate an Eclipse target platform using `pde-resolver-cli`.
+- Resolve and validate an Eclipse target platform using `pde target ...` commands.
 - Launch an Eclipse/OSGi application with specific bundles and startup levels.
 - Run PDE/JUnit-style tests via the remote runner.
 - Integrate local workspace bundles with target platform resolution.
@@ -27,10 +25,8 @@ resolving Eclipse target platforms, planning launches, and running remote tests.
 - Build everything: `./gradlew build`
 - Run unit tests: `./gradlew check`
 - Run IntelliJ sandbox IDE: `./gradlew :intellij:runIde`
-- Install headless tools:
-  - `./gradlew :pde-launch:installDist`
-  - `./gradlew :pde-resolver-cli:installDist`
-  - `./gradlew :pde-test-runner:installDist`
+- Install public headless CLI:
+  - `./gradlew :pde-cli:installDist`
 
 ## Key configs and docs
 

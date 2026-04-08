@@ -14,7 +14,7 @@ This projects provides a CLI to facilitate the basic steps for working on PDE pr
 - `pde api-analyze` -- (experimental) run API analysis
 
 The full CLI command reference is generated from `--help` output into `docs/cli-reference.md`
-as part of `:pde-launch:installDist`.
+as part of `:pde-cli:installDist`.
 
 ## IntelliJ integration
 
@@ -120,7 +120,8 @@ and observe nice output:
 This repository contains:
 
 - `core/` – reusable libraries (target platform indexing, launch planning, remote test protocol)
-- `apps/` – headless tools built on top of `core/` (`pde`, `pde-resolver-cli`, `pde-test-runner`)
+  plus internal CLI engine/runtime modules (`:pde-launch-engine`, `:pde-remote-test-runtime`)
+- `apps/` – headless CLI entrypoints (`:pde-cli` public, `:pde-format` internal)
 - `intellij/` – IntelliJ IDEA plugin to support working with PDE projects
 
 
@@ -130,7 +131,7 @@ This repository contains:
 
 - Build everything: `./gradlew build`
 - Run unit tests: `./gradlew check`
-- Run a single `pde-launch` test: `./gradlew :pde-launch:test --tests cn.varsa.pde.launch.JdtlsInitTest`
+- Run a single `pde-cli` test: `./gradlew :pde-cli:test --tests cn.varsa.pde.launch.JdtlsInitTest`
 
 ## IntelliJ plugin
 
@@ -138,14 +139,10 @@ This repository contains:
 
 ## Headless tools
 
-- Build/install the launch tool: `./gradlew :pde-launch:installDist`
+- Build/install the CLI: `./gradlew :pde-cli:installDist`
   - Binary: `apps/pde-launch/build/install/pde/bin/pde`
-- Build/install the formatter: `./gradlew :pde-format:installDist`
-  - Binary: `apps/pde-format/build/install/pde-format/bin/pde-format`
 - IntelliJ/PDE project setup: `pde ide-init idea`
 - JDT LS project setup: `pde ide-init jdtls` (Emacs/Eglot guide: `docs/jdtls-eglot.md`)
-- Build/install the remote runner: `./gradlew :pde-test-runner:installDist`
-- Build/install the resolver CLI: `./gradlew :pde-resolver-cli:installDist`
 
 ## Target installer
 
@@ -162,3 +159,25 @@ The standalone target-installer lives under `tools/target-installer`.
 ## Versioning
 
 All published artifacts in this repo use semantic versioning via the `pluginVersion` Gradle property.
+
+## Runtime requirements
+
+- The `pde` CLI requires a Java 21 runtime (JRE or JDK) available on `PATH` (or via `JAVA_HOME`).
+
+## Release (GitHub Releases)
+
+This repo currently publishes releases to GitHub Releases only.
+
+1. Pick a version and update `pluginVersion` in `gradle.properties`.
+2. Build and test artifacts:
+   - `./gradlew check :pde-cli:distZip :intellij:buildPlugin`
+3. Create a tag:
+   - CLI release: `cli/vX.Y.Z`
+   - IntelliJ plugin release: `ij/vX.Y.Z`
+4. Create a GitHub Release for that tag and upload assets:
+   - CLI zip from `apps/pde-launch/build/distributions/`
+   - IntelliJ plugin zip from `intellij/build/distributions/`
+
+Notes:
+- For now, ZIP artifacts are sufficient (no TAR packaging required).
+- CLI and plugin tags are separate so they can be released independently.

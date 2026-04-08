@@ -8,7 +8,7 @@ Eglot can use those directly; no extra protocol integration is required.
 1. Build the `pde` CLI if needed:
 
 ```bash
-./gradlew :pde-launch:installDist
+./gradlew :pde-cli:installDist
 ```
 
 The binary lives at `apps/pde-launch/build/install/pde/bin/pde`.

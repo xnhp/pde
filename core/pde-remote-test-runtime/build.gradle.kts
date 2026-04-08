@@ -1,6 +1,5 @@
 plugins {
   alias(libs.plugins.kotlin)
-  application
 }
 
 repositories {
@@ -14,10 +13,6 @@ dependencies {
   implementation("com.fasterxml.jackson.core:jackson-databind:2.21.2")
   implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.21.1")
   testImplementation(kotlin("test"))
-}
-
-application {
-  mainClass = "cn.varsa.pde.remoterunner.MainKt"
 }
 
 // toolchain/version configured in the root build

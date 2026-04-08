@@ -73,7 +73,7 @@ internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.meta
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
-private val logger: Logger = Logger.getLogger("pde-resolver-cli")
+private val logger: Logger = Logger.getLogger("pde-launch-engine")
 private fun createFormatter(useColor: Boolean) = object : Formatter() {
   override fun format(record: LogRecord): String {
     val message = formatMessage(record)
