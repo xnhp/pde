@@ -903,11 +903,43 @@ private fun logPlanSummary(planResult: LaunchPlanner.PlanResult) {
           appendLine("  - [${p.type}] ${p.symbol}${p.range?.let { " $it" } ?: ""}: ${p.message}")
         }
       }
+      val hints = buildResolutionHints(planResult)
+      if (hints.isNotEmpty()) {
+        appendLine("Potential root causes:")
+        hints.forEach { hint -> appendLine("  - $hint") }
+      }
     }
     logger.warning(
       ("Launch plan has unresolved bundles/dependencies; continuing anyway.\n$details").trim()
     )
   }
+}
+
+private fun buildResolutionHints(planResult: LaunchPlanner.PlanResult): List<String> {
+  val workspaceByBsn = planResult.selectedBundles
+    .filter { it.isWorkspace }
+    .associateBy { it.bsn }
+  if (workspaceByBsn.isEmpty()) return emptyList()
+
+  val hints = linkedSetOf<String>()
+  planResult.problemsByScope.forEach { (scope, problems) ->
+    problems.forEach { problem ->
+      val workspaceBundle = workspaceByBsn[problem.symbol] ?: return@forEach
+      val requestedRange = problem.range ?: return@forEach
+      if (!requestedRange.includes(workspaceBundle.version)) {
+        val firstHop = when {
+          scope == "Launch Plan" -> ""
+          scope == problem.symbol -> ""
+          else -> "First hop: $scope -> ${problem.symbol} $requestedRange. "
+        }
+        hints +=
+          firstHop +
+            "Workspace override for ${problem.symbol} in scope '$scope' does not satisfy $requestedRange " +
+            "(selected ${workspaceBundle.version} from ${workspaceBundle.path})."
+      }
+    }
+  }
+  return hints.toList()
 }
 
 private fun applyOsgiDebug(context: LaunchConfigContext, osgiDebug: Boolean): LaunchConfigContext {
