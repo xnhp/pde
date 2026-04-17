@@ -1,8 +1,8 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `275af84`
-Generated date: `2026-04-01`
+Source commit: `3226e9d`
+Generated date: `2026-04-16`
 
 ## `pde`
 
@@ -286,3 +286,4 @@ Run PDE test launch
   -v, --verbose              Enable INFO logging
   -V, --version              Print version information and exit.
 ```
+
