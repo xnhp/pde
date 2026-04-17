@@ -105,7 +105,7 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
 
   private val contentTree = CheckboxTree(object : CheckboxTree.CheckboxTreeCellRenderer(true) {
     override fun customizeRenderer(
-      tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean
+      tree: JTree, value: Any, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean
     ) {
       when (value) {
         is ShadowLocation -> {
@@ -679,9 +679,9 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     private val treeModel = DefaultTreeModel(root)
     private val tree = CheckboxTree(object : CheckboxTree.CheckboxTreeCellRenderer(true) {
       override fun customizeRenderer(
-        tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean
+        tree: JTree, value: Any, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean
       ) {
-        value?.toString()?.also { textRenderer.append(it) }
+        textRenderer.append(value.toString())
         SpeedSearchUtil.applySpeedSearchHighlighting(tree, textRenderer, false, selected)
       }
     }, null).apply { model = treeModel }
