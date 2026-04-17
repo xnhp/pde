@@ -13,15 +13,15 @@ target:
   installer: /home/ben/repos/pde/tools/target-installer/dist/target-installer-launcher.jar
   bundlePool: /home/ben/Desktop/issues/bundle-pool/
 
-includes:
-    - ../launches.yaml
+# the "workspace"
 bundles:
     - path: knime-com-gateway/com.knime.gateway.executor
     - path: knime-com-gateway/com.knime.gateway.executor.tests
     - path: knime-core-ui/org.knime.core.ui
     - path: knime-core-ui/org.knime.core.ui.tests
-      classRoots:
+      classRoots: # can override if needed
           - bin/eclipse
+# corresponds to a PDE launch configuration
 launches:
     - name: AP
       product: org.knime.product.KNIME_PRODUCT
@@ -30,9 +30,9 @@ launches:
       vmArgs:
         - -ea
         - [...]
+# run JUnit Plug-In tests
 tests:
     - className: com.knime.gateway.executor.server.GatewayServerTest
-      debug: false
       name: GatewayServerTest
       programArgs: []
       runner: junit5
@@ -80,6 +80,10 @@ Download release artifacts from the GitHub [releases](https://github.com/xnhp/pd
 - CLI: See [CLI Quickstart](docs/cli-quickstart.md)
 - IntelliJ Plugin: "Install plugin from disk" and select zip from releases page. More documentation can be provided if there is interest.
 
+# See Also
+
+- [Jetbrains feature request](https://youtrack.jetbrains.com/issue/IDEA-124520) for PDE support
+- [Eclipse PDE repository](https://github.com/eclipse-pde/eclipse.pde)
 
 # Repository Layout
 
