@@ -1,8 +1,8 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `3226e9d`
-Generated date: `2026-04-16`
+Source commit: `93174cd`
+Generated date: `2026-04-23`
 
 ## `pde`
 
@@ -53,8 +53,8 @@ Run API analysis
       --baseline-list=String Baseline list output path (defaults to
                                api-analyzer/baseline-list.txt)
       --baseline-root=String Baseline target root, profile path, or .target
-                               file (defaults to target.install, target.p2Path,
-                               or target profile)
+                               file (defaults to target.apiBaselineRoot, target.
+                               install, target.p2Path, or target profile)
       --config=String        Path to launch config YAML
       --debug                Enable debug logging
       --dependency-list=String

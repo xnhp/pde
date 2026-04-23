@@ -168,6 +168,7 @@ class LaunchConfigLoaderTest {
       """
       target:
         definition: sample.target
+        apiBaselineRoot: baseline/API-Baseline.target
         eclipseRuntimeCache: .cache/eclipse-runtime
         p2Repositories:
           - https://download.eclipse.org/releases/2024-12
@@ -178,6 +179,7 @@ class LaunchConfigLoaderTest {
     val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
     val target = loaded.config.target
 
+    assertEquals("baseline/API-Baseline.target", target?.apiBaselineRoot)
     assertEquals(".cache/eclipse-runtime", target?.eclipseRuntimeCache)
     assertEquals(
       listOf(

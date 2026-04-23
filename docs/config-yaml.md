@@ -28,6 +28,7 @@ If `--config` is omitted, the CLI discovers a nearby config file using these nam
 ```yaml
 target:
   definition: /abs/path/to/knime.target
+  apiBaselineRoot: /abs/path/to/API-Baseline.target
   eclipseRuntimeCache: .cache/eclipse-runtime
   p2Repositories:
     - https://download.eclipse.org/releases/2024-12
@@ -70,6 +71,7 @@ tests:
 - `pde compile` is the explicit ECJ-based compile step.
 - `pde jdtls-init` generates metadata only; it does not compile sources.
 - `pde api-analyze` reads workspace bundles from config and supports `--baseline-root` overrides.
+- `target.apiBaselineRoot` is used by `pde api-analyze` when `--baseline-root` is omitted.
 
 ## Related docs
 

@@ -119,11 +119,11 @@ private val apiAnalyzeOptions = listOf(
   CliOption(listOf("--log"), "Redirect launcher output to file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable verbose logging"),
   CliOption(listOf("--debug"), "Enable debug logging"),
-  CliOption(listOf("--baseline-root"), "Baseline target root, profile path, or .target file (defaults to target.install, target.p2Path, or target profile)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--baseline-root"), "Baseline target root, profile path, or .target file (defaults to target.apiBaselineRoot, target.install, target.p2Path, or target profile)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--dependency-list"), "Dependency list output path (defaults to api-analyzer/dependencies-list.txt)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--baseline-list"), "Baseline list output path (defaults to api-analyzer/baseline-list.txt)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--jdt-compliance"), "Override JDT compliance (uses temp project copy)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--application"), "API analyzer application id", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.pde.api.tools.apiAnalyzer"),
+  CliOption(listOf("--application"), "API analyzer application id", takesValue = true, valueLabel = "String", defaultValue = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"),
   CliOption(listOf("--fail-on-error"), "Fail when API errors are detected")
 )
 

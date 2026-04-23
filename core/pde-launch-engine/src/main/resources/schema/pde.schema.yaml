@@ -157,6 +157,12 @@ $defs:
         type: string
         default: ./target/install
         description: Path to install root (relative paths resolve from the config directory).
+      apiBaselineRoot:
+        type: string
+        description: >-
+          Optional baseline root for `pde api-analyze` when `--baseline-root` is not set.
+          Accepts a baseline target root, profile path, or `.target` file path.
+          Relative paths resolve from the config directory.
       bundlePool:
         type: string
         default: ./target/bundle-pool

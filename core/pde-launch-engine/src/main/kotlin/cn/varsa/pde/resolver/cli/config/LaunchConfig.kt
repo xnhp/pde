@@ -25,6 +25,7 @@ data class TargetConfig(
   val profileId: String? = null,
   val p2Path: String? = null,
   val install: String? = null,
+  val apiBaselineRoot: String? = null,
   val bundlePool: String? = null,
   val installer: String? = null,
   val eclipseRuntimeCache: String? = null,
