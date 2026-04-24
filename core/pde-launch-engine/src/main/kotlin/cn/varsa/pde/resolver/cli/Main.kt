@@ -69,6 +69,7 @@ import cn.varsa.pde.resolver.launch.LaunchContext
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val PDE_API_ANALYZER_APPLICATION = "org.eclipse.pde.api.tools.apiAnalyzer"
 internal const val KNIME_API_ANALYZER_APPLICATION = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"
+internal const val API_ANALYZER_BASELINE_PROFILE_ID = "api-analyzer-baseline"
 internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
@@ -313,7 +314,17 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     exitProcess(exit)
   }
   if (args.isNotEmpty() && (args[0] == "api-analyze" || args[0] == "api-analyzer")) {
-    val exit = apiAnalyzeMain(args.drop(1).toTypedArray())
+    val subcommand = args.getOrNull(1)
+    val exit = when (subcommand) {
+      null -> apiAnalyzeMain(emptyArray())
+      "-h", "--help", "help" -> {
+        printApiAnalyzeHelp()
+        0
+      }
+      "install" -> apiAnalyzeInstallMain(args.drop(2).toTypedArray())
+      "run" -> apiAnalyzeMain(args.drop(2).toTypedArray())
+      else -> apiAnalyzeMain(args.drop(1).toTypedArray())
+    }
     exitProcess(exit)
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
@@ -445,6 +456,20 @@ private fun printTargetHelp() {
   println("Subcommands:")
   println("  install ${maturityTag("usable")} Resolve/prepare target platform state")
   println("  mirror  ${maturityTag("usable")} Mirror update sites from a .target definition")
+}
+
+private fun printApiAnalyzeHelp() {
+  println("pde api-analyze ${maturityTag("WIP")} - API analysis commands")
+  println()
+  println("Usage:")
+  println("  pde api-analyze [run] [options]")
+  println("  pde api-analyze install [options]")
+  println()
+  println("Subcommands:")
+  println("  run     ${maturityTag("WIP")} Run API analysis (default)")
+  println("  install ${maturityTag("WIP")} Provision/update baseline profile for API analysis")
+  println()
+  println("Use '--help' with each subcommand for detailed options.")
 }
 
 private fun describeConfig(
@@ -1440,7 +1465,7 @@ private fun provisionBaselineTargetProfile(
   val baselineInstallRoot = outputRoot.resolve("baseline-target")
   val baselineP2Path = baselineInstallRoot.resolve("p2")
   val baselineInstallPath = baselineInstallRoot.resolve("install")
-  val baselineProfileId = "api-analyzer-baseline"
+  val baselineProfileId = API_ANALYZER_BASELINE_PROFILE_ID
 
   val installerArgs = buildTargetInstallerArgs(
     profileId = baselineProfileId,
@@ -1474,6 +1499,133 @@ private fun provisionBaselineTargetProfile(
     return null
   }
   return profilePath
+}
+
+private fun resolveApiAnalyzeBaselineRootPath(
+  context: LaunchConfigContext,
+  baselineRootValue: String?,
+  profilePath: Path
+): Path {
+  val targetConfig = context.config.target
+  fun resolveTargetConfigPath(path: String): Path = context.baseDir.resolve(path).normalize()
+  return when {
+    baselineRootValue != null -> Paths.get(baselineRootValue)
+    !targetConfig?.apiBaselineRoot.isNullOrBlank() -> {
+      logger.info("Using target.apiBaselineRoot from config as baseline root.")
+      resolveTargetConfigPath(targetConfig.apiBaselineRoot)
+    }
+    !targetConfig?.install.isNullOrBlank() -> {
+      logger.info("Using target.install from config as baseline root.")
+      resolveTargetConfigPath(targetConfig.install)
+    }
+    !targetConfig?.p2Path.isNullOrBlank() -> {
+      logger.info("Using target.p2Path from config as baseline root.")
+      resolveTargetConfigPath(targetConfig.p2Path)
+    }
+    else -> {
+      logger.info("Using target profile path as baseline root.")
+      profilePath
+    }
+  }
+}
+
+private fun resolveApiAnalyzeProvisionedBaselineProfilePath(
+  context: LaunchConfigContext,
+  outputRoot: Path
+): Path? {
+  val targetConfig = context.config.target ?: return null
+  val baselineP2Path = outputRoot.resolve("baseline-target").resolve("p2")
+  val baselineContext = context.copy(
+    config = context.config.copy(
+      target = targetConfig.copy(
+        profileId = API_ANALYZER_BASELINE_PROFILE_ID,
+        p2Path = baselineP2Path.toString()
+      )
+    )
+  )
+  return resolveProfilePath(baselineContext)
+}
+
+private fun apiAnalyzeInstallMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
+  val parser = ArgParser("pde api-analyze install ${maturityTag("WIP")}")
+  val configFileOpt by parser.option(
+    ArgType.String,
+    fullName = "config",
+    description = "Path to launch config YAML"
+  )
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Log level (trace, debug, info, warn, error)"
+  )
+  val logFileOpt by parser.option(
+    ArgType.String,
+    fullName = "log",
+    description = "Redirect launcher output to file"
+  )
+  val verboseOpt by parser.option(
+    ArgType.Boolean,
+    shortName = "v",
+    fullName = "verbose",
+    description = "Enable verbose logging"
+  ).default(false)
+  val debugOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "debug",
+    description = "Enable debug logging"
+  ).default(false)
+  val baselineRootOpt by parser.option(
+    ArgType.String,
+    fullName = "baseline-root",
+    description = "Baseline target root, profile path, or .target file (defaults to target.apiBaselineRoot, target.install, target.p2Path, or target profile)"
+  )
+  val configPosOpt by parser.argument(
+    ArgType.String,
+    description = "Launch config YAML"
+  ).optional()
+
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verboseOpt, debugOpt), shouldUseColor())
+
+  val configFile = configFileOpt ?: configPosOpt?.takeIf { looksLikeYamlFile(it) }
+  val resolvedConfigFile = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (resolvedConfigFile == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory.")
+    return 2
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${resolvedConfigFile.toAbsolutePath().normalize()} and will use it.")
+  }
+
+  val apiContext = LaunchConfigLoader.load(resolvedConfigFile)
+  val outputRoot = apiContext.file.parent?.resolve("api-analyzer") ?: Paths.get("api-analyzer")
+  val profilePath = resolveProfilePath(apiContext)
+  if (profilePath == null) {
+    logger.severe("No target profile path resolved from config.")
+    return 2
+  }
+
+  val baselineRootPath = resolveApiAnalyzeBaselineRootPath(apiContext, baselineRootOpt, profilePath)
+  if (!Files.exists(baselineRootPath)) {
+    logger.severe("Baseline root path does not exist: ${baselineRootPath.toAbsolutePath().normalize()}")
+    return 2
+  }
+  val baselineTargetDefinition = baselineRootPath.takeIf { it.toString().lowercase(Locale.ROOT).endsWith(".target") }
+  if (baselineTargetDefinition == null) {
+    logger.info("Baseline root is not a .target file; nothing to provision.")
+    return 0
+  }
+
+  logger.info("Provisioning baseline target definition via target installer and configured bundle pool.")
+  val provisioned = provisionBaselineTargetProfile(
+    context = apiContext,
+    outputRoot = outputRoot,
+    baselineTargetDefinition = baselineTargetDefinition,
+    logFile = logFileOpt?.let { Paths.get(it) }
+  ) ?: return 2
+  logger.info("Provisioned baseline profile: ${provisioned.toAbsolutePath().normalize()}")
+  return 0
 }
 
 private fun runTestLaunch(
@@ -2128,7 +2280,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   val dependencyListOpt by parser.option(
     ArgType.String,
     fullName = "dependency-list",
-    description = "Dependency list output path (defaults to api-analyzer/dependencies-list.txt)"
+    description = "Dependency list output path (defaults to <config-dir>/dependencies-list.txt)"
   )
   val baselineListOpt by parser.option(
     ArgType.String,
@@ -2225,43 +2377,23 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   }
   logger.info("Analyzing ${descriptorsToAnalyze.size} workspace bundles.")
 
-  val targetConfig = apiContext.config.target
-  fun resolveTargetConfigPath(path: String): Path = apiContext.baseDir.resolve(path).normalize()
-  val baselineRootPath = when {
-    baselineRootValue != null -> Paths.get(baselineRootValue)
-    !targetConfig?.apiBaselineRoot.isNullOrBlank() -> {
-      val configuredBaselineRoot = targetConfig.apiBaselineRoot
-      logger.info("Using target.apiBaselineRoot from config as baseline root.")
-      resolveTargetConfigPath(configuredBaselineRoot)
-    }
-    !targetConfig?.install.isNullOrBlank() -> {
-      val installRoot = targetConfig.install
-      logger.info("Using target.install from config as baseline root.")
-      resolveTargetConfigPath(installRoot)
-    }
-    !targetConfig?.p2Path.isNullOrBlank() -> {
-      val p2Path = targetConfig.p2Path
-      logger.info("Using target.p2Path from config as baseline root.")
-      resolveTargetConfigPath(p2Path)
-    }
-    else -> {
-      logger.info("Using target profile path as baseline root.")
-      profilePath
-    }
-  }
+  val baselineRootPath = resolveApiAnalyzeBaselineRootPath(apiContext, baselineRootValue, profilePath)
   val baselineTargetDefinition = baselineRootPath.takeIf { it.toString().lowercase(Locale.ROOT).endsWith(".target") }
   if (!Files.exists(baselineRootPath)) {
     logger.severe("Baseline root path does not exist: ${baselineRootPath.toAbsolutePath().normalize()}")
     return 2
   }
   val baselineRootForIndex = if (baselineTargetDefinition != null) {
-    logger.info("Provisioning baseline target definition via target installer and configured bundle pool.")
-    provisionBaselineTargetProfile(
-      context = apiContext,
-      outputRoot = outputRoot,
-      baselineTargetDefinition = baselineTargetDefinition,
-      logFile = logFileOpt?.let { Paths.get(it) }
-    ) ?: return 2
+    val existingBaselineProfilePath = resolveApiAnalyzeProvisionedBaselineProfilePath(apiContext, outputRoot)
+    if (existingBaselineProfilePath == null || !Files.exists(existingBaselineProfilePath)) {
+      logger.severe(
+        "Baseline target is a .target file, but no provisioned api-analyze profile exists. " +
+          "Run 'pde api-analyze install' first."
+      )
+      return 2
+    }
+    logger.info("Baseline: using existing provisioned profile ${existingBaselineProfilePath.toAbsolutePath().normalize()}")
+    existingBaselineProfilePath
   } else {
     baselineRootPath
   }
@@ -2277,27 +2409,12 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   }
   val dependencyListPath = when {
     dependencyListOpt != null -> Paths.get(dependencyListOpt)
-    else -> outputRoot.resolve("dependencies-list.txt")
+    else -> baseContext.file.parent?.resolve("dependencies-list.txt") ?: Paths.get("dependencies-list.txt")
   }
-  val dependencyListFallbackRoot = Paths.get("/home/ben/repos/knime-gateway")
-    .takeIf { Files.isDirectory(it) }
   val baselineListPath = baselineListOpt?.let { Paths.get(it) } ?: outputRoot.resolve("baseline-list.txt")
-
-  fun resolveProjectDependencyList(descriptor: WorkspaceBundleDescriptor): Path? {
-    val local = descriptor.path.resolve("target").resolve("dependencies-list.txt")
-    if (Files.exists(local)) return local
-    val fallbackRoot = dependencyListFallbackRoot ?: return null
-    val fallback = fallbackRoot.resolve(descriptor.path.fileName).resolve("target").resolve("dependencies-list.txt")
-    return fallback.takeIf { Files.exists(it) }
-  }
-
-  val perProjectDependencyLists = descriptorsToAnalyze
-    .mapNotNull { resolveProjectDependencyList(it) }
-  val needsGlobalDependencyList = dependencyListOpt != null ||
-    perProjectDependencyLists.size != descriptorsToAnalyze.size
   if (dependencyListPath.toString().lowercase(Locale.ROOT).endsWith(".target")) {
     logger.info("Dependency list: using target definition ${dependencyListPath.toAbsolutePath().normalize()}")
-  } else if (needsGlobalDependencyList) {
+  } else {
     val dependencyPlan = buildCompilePlanForWarning(apiContext, targetIndex, workspaceInputs)
     val dependencyBundles = dependencyPlan.selectedBundles
     val dependencyEntries = dependencyBundles
@@ -2311,14 +2428,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   }
   writePathList(baselineListPath, collectBundlePaths(baselineIndex))
   if (!dependencyListPath.toString().lowercase(Locale.ROOT).endsWith(".target")) {
-    if (needsGlobalDependencyList) {
-      logger.info("Dependency list: ${dependencyListPath.toAbsolutePath().normalize()}")
-    } else {
-      logger.info("Dependency list: using per-project target/dependencies-list.txt")
-    }
-  }
-  if (baselineTargetDefinition != null) {
-    logger.info("Baseline: using provisioned profile ${baselineRootForIndex.toAbsolutePath().normalize()}")
+    logger.info("Dependency list: ${dependencyListPath.toAbsolutePath().normalize()}")
   }
   logger.info("Baseline list: ${baselineListPath.toAbsolutePath().normalize()}")
 
@@ -2342,19 +2452,8 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
       "-baseline",
       baselineListPath.toString()
     )
-    val projectDependencyList = if (dependencyListOpt == null) {
-      resolveProjectDependencyList(descriptor)?.also { listPath ->
-        if (!descriptor.path.resolve("target").resolve("dependencies-list.txt").equals(listPath)) {
-          logger.info("Using dependency list from ${listPath.toAbsolutePath().normalize()}")
-        }
-      } ?: dependencyListPath
-    } else {
-      dependencyListPath
-    }
-    if (projectDependencyList != null) {
-      extraProgramArgs += "-dependencyList"
-      extraProgramArgs += projectDependencyList.toString()
-    }
+    extraProgramArgs += "-dependencyList"
+    extraProgramArgs += dependencyListPath.toString()
     if (failOnErrorOpt) {
       extraProgramArgs += "-failOnError"
     }

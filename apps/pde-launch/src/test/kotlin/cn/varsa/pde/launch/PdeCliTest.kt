@@ -157,8 +157,10 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("Usage: pde api-analyze"))
-    assertTrue(output.contains("--fail-on-error"))
+    assertTrue(output.contains("pde api-analyze"))
+    assertTrue(output.contains("Subcommands:"))
+    assertTrue(output.contains("run"))
+    assertTrue(output.contains("install"))
   }
 
   @Test
@@ -173,7 +175,39 @@ class PdeCliTest {
     }
 
     val output = out.toString()
+    assertTrue(output.contains("pde api-analyze"))
+  }
+
+  @Test
+  fun `api analyze run subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-analyze", "run", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
     assertTrue(output.contains("Usage: pde api-analyze"))
+    assertTrue(output.contains("--fail-on-error"))
+  }
+
+  @Test
+  fun `api analyze install subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-analyze", "install", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde api-analyze install"))
+    assertTrue(output.contains("--baseline-root=String"))
   }
 
   @Test
