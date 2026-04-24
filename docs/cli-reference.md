@@ -1,8 +1,8 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `93174cd`
-Generated date: `2026-04-23`
+Source commit: `f4ccbf0`
+Generated date: `2026-04-24`
 
 ## `pde`
 
@@ -22,6 +22,7 @@ Commands:
   target                     Target platform commands (install, mirror)
   test                       Run PDE test launch
   api-analyze, api-analyzer  Run API analysis
+  api-filters                Manage API filters from analyzer reports
   schema                     Print the active pde schema path
 ```
 
@@ -46,28 +47,75 @@ Usage: pde api-analyze [-hvV] [--debug] [--fail-on-error]
                        [--application=String] [--baseline-list=String]
                        [--baseline-root=String] [--config=String]
                        [--dependency-list=String] [--jdt-compliance=String]
-                       [--log=String] [--log-level=String] [configPos]
+                       [--log=String] [--log-level=String] [--report=String]
+                       [configPos]
 Run API analysis
-      [configPos]            Launch config YAML
+      [configPos]            Launch config YAML (defaults to discovered pde.
+                               yaml)
       --application=String   API analyzer application id
-      --baseline-list=String Baseline list output path (defaults to
+      --baseline-list=String Write baseline list text file (default:
                                api-analyzer/baseline-list.txt)
-      --baseline-root=String Baseline target root, profile path, or .target
-                               file (defaults to target.apiBaselineRoot, target.
-                               install, target.p2Path, or target profile)
-      --config=String        Path to launch config YAML
+      --baseline-root=String Baseline source (target root, profile path, or .
+                               target file; defaults from target config)
+      --config=String        Path to launch config YAML (defaults to discovered
+                               pde.yaml)
       --debug                Enable debug logging
       --dependency-list=String
-                             Dependency list output path (defaults to
-                               api-analyzer/dependencies-list.txt)
+                             Write resolved dependency list text file (default:
+                               <config-dir>/dependencies-list.txt)
       --fail-on-error        Fail when API errors are detected
   -h, --help                 Show this help message and exit.
       --jdt-compliance=String
                              Override JDT compliance (uses temp project copy)
-      --log=String           Redirect launcher output to file
+      --log=String           Write analyzer launcher output log (per-bundle
+                               suffixes when analyzing multiple bundles)
       --log-level=String     Log level (trace, debug, info, warn, error)
+      --report=String        Write JSON problem report
+                               (schemaVersion/problemRef/problemId/messageArgs/.
+                               ..) for downstream tools
   -v, --verbose              Enable verbose logging
   -V, --version              Print version information and exit.
+```
+
+## `pde api-filters`
+
+```text
+Usage: pde api-filters [-hV] [COMMAND]
+Manage API filters from analyzer reports
+  -h, --help      Show this help message and exit.
+  -V, --version   Print version information and exit.
+Commands:
+  add-from-report  Add .api_filters entries from api-analyze report JSON
+```
+
+## `pde api-filters add-from-report`
+
+```text
+Usage: pde api-filters add-from-report [-hV] [--all] [--allow-empty-selection]
+                                       [--apply] [--dry-run] [--bundle=String]
+                                       [--category=String]
+                                       [--comment-template=String]
+                                       [--problem=String] [--report=String]
+                                       [--severity=String] [reportPos]
+Add .api_filters entries from api-analyze report JSON
+      [reportPos]         Path to api-analyze --report JSON
+      --all               Select all report problems (can still be narrowed by
+                            filters)
+      --allow-empty-selection
+                          Return success when selection yields no problems
+      --apply             Write .settings/.api_filters changes to disk
+      --bundle=String     Keep only selected bundle BSNs (repeatable)
+      --category=String   Keep only selected categories (repeatable)
+      --comment-template=String
+                          Set filter comment with {problemRef},{bundleBsn},
+                            {timestamp}
+      --dry-run           Preview .api_filters changes without writing files
+                            (default mode)
+  -h, --help              Show this help message and exit.
+      --problem=String    Select a problemRef from the report (repeatable)
+      --report=String     Path to api-analyze --report JSON
+      --severity=String   Keep only selected severities (repeatable)
+  -V, --version           Print version information and exit.
 ```
 
 ## `pde compile`

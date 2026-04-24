@@ -192,6 +192,41 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage: pde api-analyze"))
     assertTrue(output.contains("--fail-on-error"))
+    assertTrue(output.contains("--report=String"))
+  }
+
+  @Test
+  fun `api filters add-from-report subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-filters", "add-from-report", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde api-filters add-from-report"))
+    assertTrue(output.contains("--report=String"))
+    assertTrue(output.contains("--problem=String"))
+  }
+
+  @Test
+  fun `api filters command prints subcommand help`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("api-filters", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde api-filters"))
+    assertTrue(output.contains("Commands:"))
+    assertTrue(output.contains("add-from-report"))
   }
 
   @Test

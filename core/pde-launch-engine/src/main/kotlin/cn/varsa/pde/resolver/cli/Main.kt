@@ -55,6 +55,7 @@ import java.nio.file.Paths
 import java.time.Instant
 import java.util.Locale
 import java.util.Properties
+import java.util.jar.Manifest
 import java.util.logging.Formatter
 import java.util.logging.Level
 import java.util.logging.LogRecord
@@ -175,7 +176,8 @@ internal val apiAnalyzeOptionsRequiringValue = setOf(
   "--baseline-root",
   "--dependency-list",
   "--baseline-list",
-  "--application"
+  "--application",
+  "--report"
 )
 internal val targetMirrorOptionsRequiringValue = setOf(
   "--config",
@@ -311,6 +313,10 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
   }
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
+    exitProcess(exit)
+  }
+  if (args.isNotEmpty() && args[0] == "api-filters") {
+    val exit = apiFiltersMain(args.drop(1).toTypedArray())
     exitProcess(exit)
   }
   if (args.isNotEmpty() && (args[0] == "api-analyze" || args[0] == "api-analyzer")) {
@@ -456,6 +462,11 @@ private fun printTargetHelp() {
   println("Subcommands:")
   println("  install ${maturityTag("usable")} Resolve/prepare target platform state")
   println("  mirror  ${maturityTag("usable")} Mirror update sites from a .target definition")
+  println()
+  println("See also:")
+  println("  pde target install --help")
+  println("  pde target mirror --help")
+  println("  docs/cli-quickstart.md")
 }
 
 private fun printApiAnalyzeHelp() {
@@ -469,7 +480,14 @@ private fun printApiAnalyzeHelp() {
   println("  run     ${maturityTag("WIP")} Run API analysis (default)")
   println("  install ${maturityTag("WIP")} Provision/update baseline profile for API analysis")
   println()
-  println("Use '--help' with each subcommand for detailed options.")
+  println("Examples:")
+  println("  pde api-analyze --report build/api-report.json")
+  println("  pde api-analyze install --baseline-root target/p2")
+  println()
+  println("See also:")
+  println("  pde api-analyze run --help")
+  println("  pde api-filters add-from-report --help")
+  println("  docs/cli-reference.md")
 }
 
 private fun describeConfig(
@@ -997,6 +1015,36 @@ private fun writePathList(output: Path, entries: List<Path>) {
       writer.newLine()
     }
   }
+}
+
+internal fun expandBundleClassPathEntries(entries: List<Path>): List<Path> {
+  val expanded = linkedSetOf<Path>()
+  entries.forEach { entry ->
+    val normalizedEntry = entry.toAbsolutePath().normalize()
+    expanded.add(normalizedEntry)
+    if (!Files.isDirectory(normalizedEntry)) {
+      return@forEach
+    }
+    val manifestPath = normalizedEntry.resolve("META-INF").resolve("MANIFEST.MF")
+    if (!Files.isRegularFile(manifestPath)) {
+      return@forEach
+    }
+    val bundleClassPath = runCatching {
+      Files.newInputStream(manifestPath).use { input ->
+        Manifest(input).mainAttributes.getValue("Bundle-ClassPath")
+      }
+    }.getOrNull() ?: return@forEach
+    bundleClassPath.split(',')
+      .map { it.trim() }
+      .filter { it.isNotEmpty() && it != "." }
+      .forEach { classPathEntry ->
+        val classPathPath = normalizedEntry.resolve(classPathEntry).normalize()
+        if (Files.exists(classPathPath)) {
+          expanded.add(classPathPath)
+        }
+      }
+  }
+  return expanded.toList()
 }
 
 private fun prepareLaunch(
@@ -2302,6 +2350,11 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
     fullName = "fail-on-error",
     description = "Fail when API errors are detected"
   ).default(false)
+  val reportOpt by parser.option(
+    ArgType.String,
+    fullName = "report",
+    description = "Write machine-readable API problem report JSON"
+  )
   val configPosOpt by parser.argument(
     ArgType.String,
     description = "Launch config YAML"
@@ -2419,6 +2472,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
     val dependencyBundles = dependencyPlan.selectedBundles
     val dependencyEntries = dependencyBundles
       .map { it.path.toAbsolutePath().normalize() }
+      .let(::expandBundleClassPathEntries)
       .distinct()
       .sortedBy { it.toString() }
     val workspaceBundleCount = dependencyBundles.count { it.isWorkspace }
@@ -2433,6 +2487,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   logger.info("Baseline list: ${baselineListPath.toAbsolutePath().normalize()}")
 
   val tempProjectsRoot = outputRoot.resolve("analysis-projects")
+  val collectedProblems = mutableListOf<ApiAnalyzeProblem>()
   descriptorsToAnalyze.forEach { descriptor ->
     val projectArg = if (jdtCompliance != null) {
       val projectName = descriptor.manifest.bundleSymbolicName?.key ?: descriptor.path.fileName.toString()
@@ -2468,6 +2523,9 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
         fileName + "-" + suffix
       }
       basePath.parent?.resolve(derived) ?: Paths.get(derived)
+    } ?: reportOpt?.let {
+      val suffix = label.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+      outputRoot.resolve("report-logs").resolve("$suffix.log")
     }
     val exitCode = runApiAnalyzer(
       launcherExecutable = launcherExecutable,
@@ -2479,6 +2537,17 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
     if (exitCode != 0) {
       return exitCode
     }
+    if (reportOpt != null && logFile != null) {
+      val bsn = descriptor.manifest.bundleSymbolicName?.key ?: label
+      val extracted = extractApiAnalyzeProblemsFromLog(logFile, defaultBundleBsn = bsn, defaultBundleDir = descriptor.path)
+      collectedProblems += extracted
+      logger.info("Extracted ${extracted.size} report problem(s) for $bsn")
+    }
+  }
+  if (reportOpt != null) {
+    val reportPath = Paths.get(reportOpt)
+    writeApiAnalyzeProblemReport(reportPath, collectedProblems)
+    logger.info("Wrote API report to ${reportPath.toAbsolutePath().normalize()} (${collectedProblems.size} problems)")
   }
   return 0
 }

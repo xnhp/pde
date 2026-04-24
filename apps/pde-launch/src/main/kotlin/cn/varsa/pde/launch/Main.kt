@@ -110,21 +110,39 @@ private val compileOptions = listOf(
 )
 
 private val apiAnalyzePositionals = listOf(
-  CliPositionalArg(0, "configPos", "Launch config YAML", "0..1")
+  CliPositionalArg(0, "configPos", "Launch config YAML (defaults to discovered pde.yaml)", "0..1")
 )
 
 private val apiAnalyzeOptions = listOf(
-  CliOption(listOf("--config"), "Path to launch config YAML", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--config"), "Path to launch config YAML (defaults to discovered pde.yaml)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log-level"), "Log level (trace, debug, info, warn, error)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--log"), "Redirect launcher output to file", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--log"), "Write analyzer launcher output log (per-bundle suffixes when analyzing multiple bundles)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable verbose logging"),
   CliOption(listOf("--debug"), "Enable debug logging"),
-  CliOption(listOf("--baseline-root"), "Baseline target root, profile path, or .target file (defaults to target.apiBaselineRoot, target.install, target.p2Path, or target profile)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--dependency-list"), "Dependency list output path (defaults to <config-dir>/dependencies-list.txt)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--baseline-list"), "Baseline list output path (defaults to api-analyzer/baseline-list.txt)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--dependency-list"), "Write resolved dependency list text file (default: <config-dir>/dependencies-list.txt)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--baseline-list"), "Write baseline list text file (default: api-analyzer/baseline-list.txt)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--jdt-compliance"), "Override JDT compliance (uses temp project copy)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--application"), "API analyzer application id", takesValue = true, valueLabel = "String", defaultValue = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"),
-  CliOption(listOf("--fail-on-error"), "Fail when API errors are detected")
+  CliOption(listOf("--fail-on-error"), "Fail when API errors are detected"),
+  CliOption(listOf("--report"), "Write JSON problem report (schemaVersion/problemRef/problemId/messageArgs/...) for downstream tools", takesValue = true, valueLabel = "String")
+)
+
+private val apiFiltersAddFromReportPositionals = listOf(
+  CliPositionalArg(0, "reportPos", "Path to api-analyze --report JSON", "0..1")
+)
+
+private val apiFiltersAddFromReportOptions = listOf(
+  CliOption(listOf("--report"), "Path to api-analyze --report JSON", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--problem"), "Select a problemRef from the report (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--all"), "Select all report problems (can still be narrowed by filters)"),
+  CliOption(listOf("--bundle"), "Keep only selected bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--category"), "Keep only selected categories (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--severity"), "Keep only selected severities (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--comment-template"), "Set filter comment with {problemRef},{bundleBsn},{timestamp}", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--dry-run"), "Preview .api_filters changes without writing files (default mode)"),
+  CliOption(listOf("--apply"), "Write .settings/.api_filters changes to disk"),
+  CliOption(listOf("--allow-empty-selection"), "Return success when selection yields no problems")
 )
 
 private val pdeCommand = CliCommandGroup(
@@ -227,6 +245,20 @@ private val pdeCommand = CliCommandGroup(
       mixinStandardHelpOptions = true,
       options = apiAnalyzeOptions,
       positionalArgs = apiAnalyzePositionals
+    ),
+    CliCommandGroup(
+      name = "api-filters",
+      description = "Manage API filters from analyzer reports",
+      children = listOf(
+        CliCommandLeaf(
+          name = "add-from-report",
+          description = "Add .api_filters entries from api-analyze report JSON",
+          handler = forwardToLaunch("pde api-filters add-from-report", "api-filters", "add-from-report"),
+          mixinStandardHelpOptions = true,
+          options = apiFiltersAddFromReportOptions,
+          positionalArgs = apiFiltersAddFromReportPositionals
+        )
+      )
     ),
     CliCommandLeaf(
       name = "schema",
