@@ -280,7 +280,7 @@ private val pdeCommand = CliCommandGroup(
             ),
             CliCommandLeaf(
               name = "diff",
-              description = "Diff latest and previous profile snapshots",
+              description = "Diff auto-selected latest/previous snapshots (use `inspect snapshots` to view)",
               handler = forwardToLaunch("pde target inspect diff", "target", "inspect", "diff"),
               mixinStandardHelpOptions = true,
               options = targetInspectDiffOptions,

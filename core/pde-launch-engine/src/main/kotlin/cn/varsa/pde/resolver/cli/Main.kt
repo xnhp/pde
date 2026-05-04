@@ -700,7 +700,10 @@ internal fun targetInspectIusMain(args: Array<String>): Int {
 
 internal fun targetInspectDiffMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
-  val parser = ArgParser("pde target inspect diff ${maturityTag("usable")}")
+  val parser = ArgParser(
+    "pde target inspect diff ${maturityTag("usable")} " +
+      "(uses latest + previous snapshots from target profile; run 'pde target inspect snapshots' to inspect available files)"
+  )
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
