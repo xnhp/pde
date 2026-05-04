@@ -58,6 +58,7 @@ class PdeCliTest {
     assertTrue(output.contains("Commands:"))
     assertTrue(output.contains("install"))
     assertTrue(output.contains("mirror"))
+    assertTrue(output.contains("inspect"))
   }
 
   @Test
@@ -90,6 +91,58 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage: pde target mirror"))
     assertTrue(output.contains("--destination=String"))
+  }
+
+  @Test
+  fun `target inspect command prints inspect subcommand help`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("target", "inspect", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde target inspect"))
+    assertTrue(output.contains("profile"))
+    assertTrue(output.contains("ius"))
+    assertTrue(output.contains("diff"))
+    assertTrue(output.contains("health"))
+    assertTrue(output.contains("snapshots"))
+  }
+
+  @Test
+  fun `target inspect profile subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("target", "inspect", "profile", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde target inspect profile"))
+    assertTrue(output.contains("--json"))
+  }
+
+  @Test
+  fun `target inspect health subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("target", "inspect", "health", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde target inspect health"))
+    assertTrue(output.contains("--limit=Int"))
   }
 
   @Test

@@ -91,6 +91,37 @@ private val targetMirrorOptions = listOf(
   CliOption(listOf("--debug"), "Enable DEBUG logging")
 )
 
+private val targetInspectPositionals = listOf(
+  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1")
+)
+
+private val targetInspectProfileOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--json"), "Emit JSON output")
+)
+
+private val targetInspectIusOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--json"), "Emit JSON output"),
+  CliOption(listOf("--limit"), "Maximum number of IUs to print", takesValue = true, valueLabel = "Int", defaultValue = "200")
+)
+
+private val targetInspectDiffOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--json"), "Emit JSON output")
+)
+
+private val targetInspectHealthOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--json"), "Emit JSON output"),
+  CliOption(listOf("--limit"), "Maximum number of missing artifacts to print", takesValue = true, valueLabel = "Int", defaultValue = "100")
+)
+
+private val targetInspectSnapshotsOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--json"), "Emit JSON output")
+)
+
 private val compilePositionals = listOf(
   CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1")
 )
@@ -209,7 +240,7 @@ private val pdeCommand = CliCommandGroup(
     ),
     CliCommandGroup(
       name = "target",
-      description = "Target platform commands (install, mirror)",
+      description = "Target platform commands (install, mirror, inspect)",
       children = listOf(
         CliCommandLeaf(
           name = "install",
@@ -226,6 +257,52 @@ private val pdeCommand = CliCommandGroup(
           mixinStandardHelpOptions = true,
           options = targetMirrorOptions,
           positionalArgs = targetMirrorPositionals
+        ),
+        CliCommandGroup(
+          name = "inspect",
+          description = "Inspect target profile state and health",
+          children = listOf(
+            CliCommandLeaf(
+              name = "profile",
+              description = "Show profile location and bundle-pool basics",
+              handler = forwardToLaunch("pde target inspect profile", "target", "inspect", "profile"),
+              mixinStandardHelpOptions = true,
+              options = targetInspectProfileOptions,
+              positionalArgs = targetInspectPositionals
+            ),
+            CliCommandLeaf(
+              name = "ius",
+              description = "List installable units from latest profile snapshot",
+              handler = forwardToLaunch("pde target inspect ius", "target", "inspect", "ius"),
+              mixinStandardHelpOptions = true,
+              options = targetInspectIusOptions,
+              positionalArgs = targetInspectPositionals
+            ),
+            CliCommandLeaf(
+              name = "diff",
+              description = "Diff latest and previous profile snapshots",
+              handler = forwardToLaunch("pde target inspect diff", "target", "inspect", "diff"),
+              mixinStandardHelpOptions = true,
+              options = targetInspectDiffOptions,
+              positionalArgs = targetInspectPositionals
+            ),
+            CliCommandLeaf(
+              name = "health",
+              description = "Run consistency checks for profile and bundle pool",
+              handler = forwardToLaunch("pde target inspect health", "target", "inspect", "health"),
+              mixinStandardHelpOptions = true,
+              options = targetInspectHealthOptions,
+              positionalArgs = targetInspectPositionals
+            ),
+            CliCommandLeaf(
+              name = "snapshots",
+              description = "List available profile snapshots",
+              handler = forwardToLaunch("pde target inspect snapshots", "target", "inspect", "snapshots"),
+              mixinStandardHelpOptions = true,
+              options = targetInspectSnapshotsOptions,
+              positionalArgs = targetInspectPositionals
+            )
+          )
         )
       )
     ),

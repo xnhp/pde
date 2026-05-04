@@ -19,6 +19,7 @@ import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.index.getBundlePoolPath
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.compile.BundleCompileCache
@@ -56,11 +57,15 @@ import java.time.Instant
 import java.util.Locale
 import java.util.Properties
 import java.util.jar.Manifest
+import java.util.zip.GZIPInputStream
 import java.util.logging.Formatter
 import java.util.logging.Level
 import java.util.logging.LogRecord
 import java.util.logging.Logger
 import cn.varsa.pde.remoterunner.ConsoleTags
+import javax.xml.stream.XMLInputFactory
+import javax.xml.stream.XMLStreamConstants
+import kotlin.io.path.inputStream
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
@@ -186,6 +191,10 @@ internal val targetMirrorOptionsRequiringValue = setOf(
   "--write-mode",
   "-d"
 )
+internal val targetInspectOptionsRequiringValue = setOf(
+  "--config",
+  "--limit"
+)
 
 private fun looksLikeYamlFile(arg: String): Boolean {
   val lower = arg.lowercase()
@@ -304,6 +313,24 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
       subcommand == "mirror" -> {
         val exit = targetMirrorMain(args.drop(2).toTypedArray())
         exitProcess(exit)
+      }
+      subcommand == "inspect" -> {
+        val inspectSubcommand = args.getOrNull(2)
+        when {
+          inspectSubcommand == null || inspectSubcommand == "-h" || inspectSubcommand == "--help" || inspectSubcommand == "help" -> {
+            printTargetInspectHelp()
+            return
+          }
+          inspectSubcommand == "profile" -> exitProcess(targetInspectProfileMain(args.drop(3).toTypedArray()))
+          inspectSubcommand == "ius" -> exitProcess(targetInspectIusMain(args.drop(3).toTypedArray()))
+          inspectSubcommand == "diff" -> exitProcess(targetInspectDiffMain(args.drop(3).toTypedArray()))
+          inspectSubcommand == "health" -> exitProcess(targetInspectHealthMain(args.drop(3).toTypedArray()))
+          inspectSubcommand == "snapshots" -> exitProcess(targetInspectSnapshotsMain(args.drop(3).toTypedArray()))
+          else -> {
+            logger.severe("Unknown target inspect subcommand '$inspectSubcommand'. Use 'pde target inspect --help'.")
+            exitProcess(2)
+          }
+        }
       }
       else -> {
         logger.severe("Unknown target subcommand '$subcommand'. Use 'pde target --help'.")
@@ -462,11 +489,313 @@ private fun printTargetHelp() {
   println("Subcommands:")
   println("  install ${maturityTag("usable")} Resolve/prepare target platform state")
   println("  mirror  ${maturityTag("usable")} Mirror update sites from a .target definition")
+  println("  inspect ${maturityTag("usable")} Inspect target profile state and health")
   println()
   println("See also:")
   println("  pde target install --help")
   println("  pde target mirror --help")
+  println("  pde target inspect --help")
   println("  docs/cli-quickstart.md")
+}
+
+private fun printTargetInspectHelp() {
+  println("pde target inspect ${maturityTag("usable")} - inspect target profile state")
+  println()
+  println("Usage:")
+  println("  pde target inspect <subcommand> [options]")
+  println()
+  println("Subcommands:")
+  println("  profile   ${maturityTag("usable")} Show profile location and bundle-pool basics")
+  println("  ius       ${maturityTag("usable")} List installable units from latest profile snapshot")
+  println("  diff      ${maturityTag("usable")} Diff latest and previous profile snapshots")
+  println("  health    ${maturityTag("usable")} Run consistency checks for profile and bundle pool")
+  println("  snapshots ${maturityTag("usable")} List available profile snapshots")
+  println()
+  println("Examples:")
+  println("  pde target inspect profile --config pde.yaml")
+  println("  pde target inspect ius --json --limit 100")
+  println("  pde target inspect health")
+}
+
+private data class ProfileArtifact(
+  val classifier: String,
+  val id: String,
+  val version: String
+)
+
+private data class TargetInspectionContext(
+  val configContext: LaunchConfigContext,
+  val profileDir: Path,
+  val snapshots: List<Path>,
+  val latestSnapshot: Path,
+  val previousSnapshot: Path?
+)
+
+private fun loadTargetInspectionContext(configFileOpt: String?, configPos: String?): TargetInspectionContext? {
+  val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory")
+    return null
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
+  }
+
+  val configContext = LaunchConfigLoader.load(discoveredConfig)
+  val profilePath = resolveProfilePath(configContext)
+  if (profilePath == null) {
+    logger.severe("target profile path missing in YAML config; set target.profileId + target.p2Path.")
+    return null
+  }
+  if (!Files.exists(profilePath)) {
+    logger.severe(
+      "target profile registry does not exist: $profilePath (check target.profileId/target.p2Path or run pde target install)"
+    )
+    return null
+  }
+  if (!Files.isDirectory(profilePath)) {
+    logger.severe("target profile path is not a directory: ${profilePath.toAbsolutePath().normalize()}")
+    return null
+  }
+  val snapshots = listProfileSnapshots(profilePath)
+  if (snapshots.isEmpty()) {
+    logger.severe("No profile snapshots found under ${profilePath.toAbsolutePath().normalize()}")
+    return null
+  }
+  return TargetInspectionContext(
+    configContext = configContext,
+    profileDir = profilePath,
+    snapshots = snapshots,
+    latestSnapshot = snapshots.last(),
+    previousSnapshot = snapshots.getOrNull(snapshots.size - 2)
+  )
+}
+
+private fun listProfileSnapshots(profileDir: Path): List<Path> {
+  return Files.newDirectoryStream(profileDir).use { stream ->
+    stream
+      .filter { Files.isRegularFile(it) }
+      .filter {
+        val name = it.fileName.toString().lowercase(Locale.ROOT)
+        name.endsWith(".profile") || name.endsWith(".profile.gz")
+      }
+      .sortedWith(compareBy({ snapshotTimestamp(it) }, { it.fileName.toString() }))
+      .toList()
+  }
+}
+
+private fun snapshotTimestamp(snapshot: Path): Long {
+  return snapshot.fileName.toString().substringBefore('.').toLongOrNull() ?: Long.MIN_VALUE
+}
+
+private fun parseProfileArtifacts(snapshot: Path): List<ProfileArtifact> {
+  val artifacts = mutableListOf<ProfileArtifact>()
+  val xmlFactory = XMLInputFactory.newInstance()
+  val input = snapshot.inputStream().let { raw ->
+    if (snapshot.fileName.toString().lowercase(Locale.ROOT).endsWith(".gz")) GZIPInputStream(raw) else raw
+  }
+  input.use { stream ->
+    val reader = xmlFactory.createXMLStreamReader(stream)
+    try {
+      while (reader.hasNext()) {
+        if (reader.next() == XMLStreamConstants.START_ELEMENT && reader.localName == "artifact") {
+          val classifier = reader.getAttributeValue("", "classifier") ?: continue
+          val id = reader.getAttributeValue("", "id") ?: continue
+          val version = reader.getAttributeValue("", "version") ?: continue
+          artifacts += ProfileArtifact(classifier = classifier, id = id, version = version)
+        }
+      }
+    } finally {
+      reader.close()
+    }
+  }
+  return artifacts
+}
+
+internal fun targetInspectProfileMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
+  val parser = ArgParser("pde target inspect profile ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(normalizedArgs)
+  configureLogging(Level.WARNING, shouldUseColor())
+
+  val context = loadTargetInspectionContext(configFileOpt, configPos) ?: return 2
+  val bundlePool = getBundlePoolPath(context.latestSnapshot.toFile())
+  val payload = mapOf(
+    "config" to context.configContext.file.toAbsolutePath().normalize().toString(),
+    "profileDir" to context.profileDir.toAbsolutePath().normalize().toString(),
+    "latestSnapshot" to context.latestSnapshot.fileName.toString(),
+    "snapshotCount" to context.snapshots.size,
+    "bundlePool" to bundlePool,
+    "bundlePoolExists" to (bundlePool?.let { Files.exists(Paths.get(it.removePrefix("file:"))) } == true)
+  )
+  if (json) {
+    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload))
+  } else {
+    println("Config: ${payload["config"]}")
+    println("Profile dir: ${payload["profileDir"]}")
+    println("Latest snapshot: ${payload["latestSnapshot"]}")
+    println("Snapshots: ${payload["snapshotCount"]}")
+    println("Bundle pool: ${payload["bundlePool"] ?: "<missing in profile properties>"}")
+    println("Bundle pool exists: ${payload["bundlePoolExists"]}")
+  }
+  return 0
+}
+
+internal fun targetInspectSnapshotsMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
+  val parser = ArgParser("pde target inspect snapshots ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(normalizedArgs)
+  configureLogging(Level.WARNING, shouldUseColor())
+
+  val context = loadTargetInspectionContext(configFileOpt, configPos) ?: return 2
+  val rows = context.snapshots.map { snapshot ->
+    mapOf(
+      "file" to snapshot.fileName.toString(),
+      "timestamp" to snapshotTimestamp(snapshot)
+    )
+  }
+  if (json) {
+    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(rows))
+  } else {
+    println("Profile dir: ${context.profileDir.toAbsolutePath().normalize()}")
+    rows.forEach { row ->
+      println("- ${row["file"]} (timestamp=${row["timestamp"]})")
+    }
+  }
+  return 0
+}
+
+internal fun targetInspectIusMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
+  val parser = ArgParser("pde target inspect ius ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
+  val limit by parser.option(ArgType.Int, fullName = "limit", description = "Maximum number of IUs to print").default(200)
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(normalizedArgs)
+  configureLogging(Level.WARNING, shouldUseColor())
+
+  val context = loadTargetInspectionContext(configFileOpt, configPos) ?: return 2
+  val artifacts = parseProfileArtifacts(context.latestSnapshot)
+  val filtered = artifacts
+    .filter { it.classifier == "osgi.bundle" }
+    .sortedWith(compareBy<ProfileArtifact> { it.id }.thenBy { it.version })
+  val selected = filtered.take(limit.coerceAtLeast(1))
+  if (json) {
+    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(selected))
+  } else {
+    println("Profile snapshot: ${context.latestSnapshot.fileName}")
+    println("Bundles: ${filtered.size} (showing ${selected.size})")
+    selected.forEach { println("- ${it.id}@${it.version}") }
+  }
+  return 0
+}
+
+internal fun targetInspectDiffMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
+  val parser = ArgParser("pde target inspect diff ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(normalizedArgs)
+  configureLogging(Level.WARNING, shouldUseColor())
+
+  val context = loadTargetInspectionContext(configFileOpt, configPos) ?: return 2
+  val previous = context.previousSnapshot
+  if (previous == null) {
+    logger.severe("Need at least two snapshots to diff.")
+    return 2
+  }
+
+  fun toMap(artifacts: List<ProfileArtifact>): Map<String, String> {
+    return artifacts
+      .filter { it.classifier == "osgi.bundle" }
+      .associate { it.id to it.version }
+  }
+
+  val oldMap = toMap(parseProfileArtifacts(previous))
+  val newMap = toMap(parseProfileArtifacts(context.latestSnapshot))
+  val added = (newMap.keys - oldMap.keys).sorted().map { mapOf("id" to it, "version" to newMap.getValue(it)) }
+  val removed = (oldMap.keys - newMap.keys).sorted().map { mapOf("id" to it, "version" to oldMap.getValue(it)) }
+  val changed = (newMap.keys intersect oldMap.keys)
+    .filter { oldMap[it] != newMap[it] }
+    .sorted()
+    .map { id -> mapOf("id" to id, "from" to oldMap.getValue(id), "to" to newMap.getValue(id)) }
+
+  val payload = mapOf(
+    "from" to previous.fileName.toString(),
+    "to" to context.latestSnapshot.fileName.toString(),
+    "added" to added,
+    "removed" to removed,
+    "changed" to changed
+  )
+  if (json) {
+    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload))
+  } else {
+    println("Diff: ${payload["from"]} -> ${payload["to"]}")
+    println("Added: ${added.size}")
+    println("Removed: ${removed.size}")
+    println("Changed: ${changed.size}")
+    changed.take(25).forEach { println("- ${it["id"]}: ${it["from"]} -> ${it["to"]}") }
+  }
+  return 0
+}
+
+internal fun targetInspectHealthMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
+  val parser = ArgParser("pde target inspect health ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
+  val limit by parser.option(ArgType.Int, fullName = "limit", description = "Maximum number of missing artifacts to print").default(100)
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(normalizedArgs)
+  configureLogging(Level.WARNING, shouldUseColor())
+
+  val context = loadTargetInspectionContext(configFileOpt, configPos) ?: return 2
+  val bundlePool = getBundlePoolPath(context.latestSnapshot.toFile())
+  val bundlePoolPath = bundlePool?.removePrefix("file:")?.let { Paths.get(it) }
+  val pluginsDir = bundlePoolPath?.resolve("plugins")
+  val artifacts = parseProfileArtifacts(context.latestSnapshot)
+    .filter { it.classifier == "osgi.bundle" }
+  val missing = if (pluginsDir != null && Files.isDirectory(pluginsDir)) {
+    artifacts.filter { artifact ->
+      val jar = pluginsDir.resolve("${artifact.id}_${artifact.version}.jar")
+      val dir = pluginsDir.resolve("${artifact.id}_${artifact.version}")
+      !Files.exists(jar) && !Files.exists(dir)
+    }
+  } else {
+    artifacts
+  }
+  val payload = mapOf(
+    "snapshot" to context.latestSnapshot.fileName.toString(),
+    "bundleCount" to artifacts.size,
+    "bundlePool" to bundlePool,
+    "bundlePoolExists" to (bundlePoolPath?.let { Files.exists(it) } == true),
+    "pluginsDirExists" to (pluginsDir?.let { Files.isDirectory(it) } == true),
+    "missingArtifactsCount" to missing.size,
+    "missingArtifacts" to missing.take(limit.coerceAtLeast(1)).map { "${it.id}@${it.version}" },
+    "healthy" to (missing.isEmpty() && (pluginsDir?.let { Files.isDirectory(it) } == true))
+  )
+  if (json) {
+    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload))
+  } else {
+    println("Snapshot: ${payload["snapshot"]}")
+    println("Bundles declared: ${payload["bundleCount"]}")
+    println("Bundle pool: ${payload["bundlePool"] ?: "<missing in profile properties>"}")
+    println("Bundle pool exists: ${payload["bundlePoolExists"]}")
+    println("Plugins dir exists: ${payload["pluginsDirExists"]}")
+    println("Missing artifacts: ${payload["missingArtifactsCount"]}")
+    (payload["missingArtifacts"] as List<*>).forEach { println("- $it") }
+    println("Healthy: ${payload["healthy"]}")
+  }
+  return 0
 }
 
 private fun printApiAnalyzeHelp() {

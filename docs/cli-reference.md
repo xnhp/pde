@@ -1,8 +1,8 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `f4ccbf0`
-Generated date: `2026-04-24`
+Source commit: `4845e42`
+Generated date: `2026-05-04`
 
 ## `pde`
 
@@ -19,7 +19,7 @@ Commands:
   add-test-helper            Append a gateway helper test entry
   run                        Run a launch config
   launch                     Run a launch config
-  target                     Target platform commands (install, mirror)
+  target                     Target platform commands (install, mirror, inspect)
   test                       Run PDE test launch
   api-analyze, api-analyzer  Run API analysis
   api-filters                Manage API filters from analyzer reports
@@ -255,12 +255,92 @@ Print the active pde schema path
 
 ```text
 Usage: pde target [-hV] [COMMAND]
-Target platform commands (install, mirror)
+Target platform commands (install, mirror, inspect)
   -h, --help      Show this help message and exit.
   -V, --version   Print version information and exit.
 Commands:
   install  Resolve/prepare target platform state
   mirror   Mirror update sites from a .target definition
+  inspect  Inspect target profile state and health
+```
+
+## `pde target inspect`
+
+```text
+Usage: pde target inspect [-hV] [COMMAND]
+Inspect target profile state and health
+  -h, --help      Show this help message and exit.
+  -V, --version   Print version information and exit.
+Commands:
+  profile    Show profile location and bundle-pool basics
+  ius        List installable units from latest profile snapshot
+  diff       Diff latest and previous profile snapshots
+  health     Run consistency checks for profile and bundle pool
+  snapshots  List available profile snapshots
+```
+
+## `pde target inspect diff`
+
+```text
+Usage: pde target inspect diff [-hV] [--json] [--config=String] [configPos]
+Diff latest and previous profile snapshots
+      [configPos]       YAML launch configuration (positional)
+      --config=String   YAML launch configuration
+  -h, --help            Show this help message and exit.
+      --json            Emit JSON output
+  -V, --version         Print version information and exit.
+```
+
+## `pde target inspect health`
+
+```text
+Usage: pde target inspect health [-hV] [--json] [--config=String] [--limit=Int]
+                                 [configPos]
+Run consistency checks for profile and bundle pool
+      [configPos]       YAML launch configuration (positional)
+      --config=String   YAML launch configuration
+  -h, --help            Show this help message and exit.
+      --json            Emit JSON output
+      --limit=Int       Maximum number of missing artifacts to print
+  -V, --version         Print version information and exit.
+```
+
+## `pde target inspect ius`
+
+```text
+Usage: pde target inspect ius [-hV] [--json] [--config=String] [--limit=Int]
+                              [configPos]
+List installable units from latest profile snapshot
+      [configPos]       YAML launch configuration (positional)
+      --config=String   YAML launch configuration
+  -h, --help            Show this help message and exit.
+      --json            Emit JSON output
+      --limit=Int       Maximum number of IUs to print
+  -V, --version         Print version information and exit.
+```
+
+## `pde target inspect profile`
+
+```text
+Usage: pde target inspect profile [-hV] [--json] [--config=String] [configPos]
+Show profile location and bundle-pool basics
+      [configPos]       YAML launch configuration (positional)
+      --config=String   YAML launch configuration
+  -h, --help            Show this help message and exit.
+      --json            Emit JSON output
+  -V, --version         Print version information and exit.
+```
+
+## `pde target inspect snapshots`
+
+```text
+Usage: pde target inspect snapshots [-hV] [--json] [--config=String] [configPos]
+List available profile snapshots
+      [configPos]       YAML launch configuration (positional)
+      --config=String   YAML launch configuration
+  -h, --help            Show this help message and exit.
+      --json            Emit JSON output
+  -V, --version         Print version information and exit.
 ```
 
 ## `pde target install`
