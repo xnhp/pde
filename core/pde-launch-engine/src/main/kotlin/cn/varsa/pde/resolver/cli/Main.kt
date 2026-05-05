@@ -2520,7 +2520,7 @@ private fun testMain(args: Array<String>): Int {
   val parser = ArgParser("pde test ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
-  val testPos by parser.argument(ArgType.String, description = "Test name (optional, defaults to first tests entry)").optional()
+  val testPos by parser.argument(ArgType.String, description = "Test name (optional, defaults to all configured tests)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -2599,6 +2599,42 @@ private fun testMain(args: Array<String>): Int {
       logger.severe("Invalid --exclude regex: ${error.message}")
       return 2
     }
+
+  if (testName == null) {
+    if (loaded.config.tests.isEmpty()) {
+      logger.severe("No tests defined in ${loaded.file}. Add a 'tests' entry or pass a legacy launch.yaml.")
+      return 2
+    }
+    var exitCode = 0
+    for ((index, selectedTest) in loaded.config.tests.withIndex()) {
+      logger.info("Running test ${index + 1}/${loaded.config.tests.size}: '${testLabel(selectedTest)}'.")
+      val configContext = applyTestEntry(loaded, selectedTest, null, logSelection = false)
+        .let { ctx ->
+          if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
+        }
+        .let { applyOsgiDebug(it, osgiDebug) }
+      val targetArgs = resolveTargetArgs(configContext)
+      val testExit = runTestLaunch(
+        configContext = configContext,
+        targetArgs = targetArgs,
+        listenHost = listenHost,
+        listenPort = listenPort,
+        portRangeSpec = portRangeSpec,
+        timeoutSeconds = timeoutSeconds,
+        reports = reports,
+        forwardSpecs = forwardSpecs,
+        excludes = excludes,
+        quiet = quiet,
+        noColor = noColor,
+        logFile = logFile,
+        debug = debug
+      )
+      if (testExit != 0 && exitCode == 0) {
+        exitCode = testExit
+      }
+    }
+    return exitCode
+  }
 
   val selected = selectTestConfig(loaded, testName)
   if (selected == null) return 2

@@ -1,7 +1,7 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `4845e42`
+Source commit: `3452383`
 Generated date: `2026-05-04`
 
 ## `pde`
@@ -274,7 +274,8 @@ Inspect target profile state and health
 Commands:
   profile    Show profile location and bundle-pool basics
   ius        List installable units from latest profile snapshot
-  diff       Diff latest and previous profile snapshots
+  diff       Diff auto-selected latest/previous snapshots (use `inspect
+               snapshots` to view)
   health     Run consistency checks for profile and bundle pool
   snapshots  List available profile snapshots
 ```
@@ -283,7 +284,7 @@ Commands:
 
 ```text
 Usage: pde target inspect diff [-hV] [--json] [--config=String] [configPos]
-Diff latest and previous profile snapshots
+Diff auto-selected latest/previous snapshots (use `inspect snapshots` to view)
       [configPos]       YAML launch configuration (positional)
       --config=String   YAML launch configuration
   -h, --help            Show this help message and exit.
@@ -393,7 +394,7 @@ Usage: pde test [-hvV] [--debug] [--debugJVM] [--no-color] [--osgiDebug]
                 [configPos] [testPos]
 Run PDE test launch
       [configPos]            YAML launch configuration (positional)
-      [testPos]              Test name (optional, defaults to first tests entry)
+      [testPos]              Test name (optional, defaults to all configured tests)
       --config=String        YAML launch configuration
       --debug                Enable DEBUG logging
       --debugJVM             Enable JDWP for test JVM (equivalent to tests[].
@@ -414,4 +415,3 @@ Run PDE test launch
   -v, --verbose              Enable INFO logging
   -V, --version              Print version information and exit.
 ```
-
