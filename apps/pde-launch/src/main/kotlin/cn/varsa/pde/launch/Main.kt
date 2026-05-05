@@ -9,6 +9,7 @@ import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
 import pde.format.main as formatMain
 import picocli.CommandLine
+import kotlin.system.exitProcess
 
 private fun forwardToLaunch(commandName: String, vararg prefix: String): (Array<String>) -> Int = { args ->
   launchMain((prefix.toList() + args).toTypedArray(), commandName = commandName)
@@ -345,12 +346,10 @@ private val pdeCommand = CliCommandGroup(
   )
 )
 
-internal fun runPde(args: Array<String>) {
-  CliMain.run(pdeCommand, args)
-}
+internal fun runPde(args: Array<String>): Int = createPdeCommandLine().execute(*args)
 
 fun main(args: Array<String>) {
-  runPde(args)
+  exitProcess(runPde(args))
 }
 
 internal fun createPdeCommandLine(): CommandLine = CliMain.createCommandLine(pdeCommand)
