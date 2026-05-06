@@ -414,7 +414,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
   val logFileOpt by parser.option(
     ArgType.String,
     fullName = "log",
-    description = "Write application stdout/stderr to log file"
+    description = "Write launched PDE process stdout/stderr to a file"
   )
   val verbose by parser.option(
     ArgType.Boolean,
@@ -2587,7 +2587,7 @@ private fun testMain(args: Array<String>): Int {
   val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
   val timeoutSeconds by parser.option(ArgType.Int, fullName = "timeout", description = "Seconds to wait for PDE connection").default(180)
   val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
-  val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Forward log in form label=path").multiple()
+  val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Prefix and stream an existing log source (label=path)").multiple()
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
   parser.parse(normalizedTestArgs.parserArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())

@@ -1,8 +1,8 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `454309b`
-Generated date: `2026-05-05`
+Source commit: `47fc359`
+Generated date: `2026-05-06`
 
 ## `pde`
 
@@ -17,8 +17,8 @@ Commands:
   format                     Format Java sources via Eclipse formatter
   add-test                   Append a test entry to launch config
   add-test-helper            Append a gateway helper test entry
-  run                        Run a launch config
-  launch                     Run a launch config
+  run                        Run a launch config (alias of launch)
+  launch                     Run a launch config (alias of run)
   target                     Target platform commands (install, mirror, inspect)
   test                       Run PDE test launch
   api-analyze, api-analyzer  Run API analysis
@@ -190,7 +190,7 @@ Usage: pde launch [-hvV] [--debug] [--dry-run] [--osgiDebug]
                   [--framework=String] [--log=String] [--log-level=String]
                   [-o=String] [--product=String] [--splash=String] [-t=String]
                   [-w=String] [configPos] [launchPos]
-Run a launch config
+Run a launch config (alias of run)
       [configPos]            YAML launch configuration (positional)
       [launchPos]            Launch name (optional, from launches entry)
       --application=String   Application identifier
@@ -221,7 +221,7 @@ Usage: pde run [-hvV] [--debug] [--dry-run] [--osgiDebug]
                [--framework=String] [--log=String] [--log-level=String]
                [-o=String] [--product=String] [--splash=String] [-t=String]
                [-w=String] [configPos] [launchPos]
-Run a launch config
+Run a launch config (alias of launch)
       [configPos]            YAML launch configuration (positional)
       [launchPos]            Launch name (optional, from launches entry)
       --application=String   Application identifier
@@ -386,24 +386,23 @@ Mirror update sites from a .target definition
 ## `pde test`
 
 ```text
-Usage: pde test [-hvV] [--debug] [--no-color] [--osgiDebug]
-                [--quiet] [--config=String]
+Usage: pde test [-hvV] [--debug] [--osgiDebug] [--quiet] [--config=String]
                 [--forward-log=String] [--listen-host=String]
                 [--listen-port=Int] [--log=String] [--log-level=String]
                 [--port-range=String] [--report=String] [--timeout=Int]
-                [configPos] [testPos]...
+                [testPos...]
 Run PDE test launch
-      [configPos]            YAML launch configuration (positional)
-      [testPos]              Test name/index (optional, repeatable; defaults to all configured tests)
+      [testPos...]           Test name/index (optional, repeatable; defaults to
+                               all configured tests)
       --config=String        YAML launch configuration
       --debug                Enable DEBUG logging
-      --forward-log=String   Forward log in form label=path
+      --forward-log=String   Prefix and stream an existing log source
+                               (label=path)
   -h, --help                 Show this help message and exit.
       --listen-host=String   Host to bind
       --listen-port=Int      Fixed port to bind
-      --log=String           Write application stdout/stderr to log file
+      --log=String           Write launched PDE process stdout/stderr to a file
       --log-level=String     Logging level (error|warn|info|debug|trace)
-      --no-color             Disable ANSI colors in console logs
       --osgiDebug            Enable OSGi debug output (-debug)
       --port-range=String    Inclusive port range start-end
       --quiet                Suppress console test logs

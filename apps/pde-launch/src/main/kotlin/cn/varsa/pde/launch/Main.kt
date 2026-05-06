@@ -24,7 +24,7 @@ private val launchPositionals = listOf(
 private val launchOptions = listOf(
   CliOption(listOf("--config"), "YAML launch configuration (supports launches/tests)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--log"), "Write application stdout/stderr to log file", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--log"), "Write launched PDE process stdout/stderr to a file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),
   CliOption(listOf("--debug"), "Enable JDWP for launch JVM"),
   CliOption(listOf("--osgiDebug"), "Enable OSGi debug output (-debug)"),
@@ -55,7 +55,7 @@ private val testOptions = listOf(
   CliOption(listOf("--port-range"), "Inclusive port range start-end", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--timeout"), "Seconds to wait for PDE connection", takesValue = true, valueLabel = "Int", defaultValue = "180"),
   CliOption(listOf("--report"), "Reporting sink (teamcity, junit-xml:/path)", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--forward-log"), "Forward log in form label=path", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--forward-log"), "Prefix and stream an existing log source (label=path)", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--quiet"), "Suppress console test logs"),
 )
 
