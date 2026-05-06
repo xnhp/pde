@@ -2095,6 +2095,9 @@ private fun runTestLaunch(
     val logPath = prepared.layout.dataDir.resolve(".metadata").resolve(".log").toAbsolutePath().normalize()
     logger.info("OSGi log path: $logPath")
   }
+  if (configContext.jvmDebug) {
+    logger.info("Waiting for debugger to attach on port $DEFAULT_TEST_DEBUG_PORT...")
+  }
   logCommand(prepared.command)
   val processBuilder = ProcessBuilder(prepared.command)
     .directory(prepared.layout.workDir.toFile())
