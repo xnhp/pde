@@ -57,7 +57,6 @@ private val testOptions = listOf(
   CliOption(listOf("--report"), "Reporting sink (teamcity, junit-xml:/path)", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--forward-log"), "Forward log in form label=path", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--quiet"), "Suppress console test logs"),
-  CliOption(listOf("--no-color"), "Disable ANSI colors in console logs")
 )
 
 private val targetInstallPositionals = listOf(

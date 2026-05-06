@@ -2056,11 +2056,10 @@ private fun runTestLaunch(
   reports: List<ReportTarget>,
   forwardSpecs: List<cn.varsa.pde.remoterunner.ForwardLogSpec>,
   quiet: Boolean,
-  noColor: Boolean,
   logFile: Path?,
   debug: Boolean
 ): Int {
-  val useColor = shouldUseColor(noColor)
+  val useColor = shouldUseColor()
   val allocator = PortAllocator(listenHost, listenPort, parsePortRange(portRangeSpec))
   val server = try {
     allocator.bind()
@@ -2590,9 +2589,8 @@ private fun testMain(args: Array<String>): Int {
   val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
   val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Forward log in form label=path").multiple()
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
-  val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
   parser.parse(normalizedTestArgs.parserArgs)
-  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor(noColor))
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
 
   val configFile = configFileOpt ?: normalizedTestArgs.parserArgs.firstOrNull()
   val requestedTests = normalizedTestArgs.requestedTests
@@ -2640,7 +2638,6 @@ private fun testMain(args: Array<String>): Int {
         reports = reports,
         forwardSpecs = forwardSpecs,
         quiet = quiet,
-        noColor = noColor,
         logFile = logFile,
         debug = debug
       )
@@ -2670,7 +2667,6 @@ private fun testMain(args: Array<String>): Int {
       reports = reports,
       forwardSpecs = forwardSpecs,
       quiet = quiet,
-      noColor = noColor,
       logFile = logFile,
       debug = debug
     )
