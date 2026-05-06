@@ -41,7 +41,7 @@ private val launchOptions = listOf(
 
 private val testPositionals = listOf(
   CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1"),
-  CliPositionalArg(1, "testPos", "Test name (optional, defaults to first tests entry)", "0..1")
+  CliPositionalArg(1, "testPos", "Test name/index (optional, repeatable; defaults to all configured tests)", "0..*")
 )
 
 private val testOptions = listOf(
@@ -51,14 +51,12 @@ private val testOptions = listOf(
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),
   CliOption(listOf("--debug"), "Enable DEBUG logging"),
   CliOption(listOf("--osgiDebug"), "Enable OSGi debug output (-debug)"),
-  CliOption(listOf("--debugJVM"), "Enable JDWP for test JVM (equivalent to tests[].debug=true)"),
   CliOption(listOf("--listen-host"), "Host to bind", takesValue = true, valueLabel = "String", defaultValue = "127.0.0.1"),
   CliOption(listOf("--listen-port"), "Fixed port to bind", takesValue = true, valueLabel = "Int"),
   CliOption(listOf("--port-range"), "Inclusive port range start-end", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--timeout"), "Seconds to wait for PDE connection", takesValue = true, valueLabel = "Int", defaultValue = "180"),
   CliOption(listOf("--report"), "Reporting sink (teamcity, junit-xml:/path)", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--forward-log"), "Forward log in form label=path", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--exclude"), "Regex filter to exclude tests", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--quiet"), "Suppress console test logs"),
   CliOption(listOf("--no-color"), "Disable ANSI colors in console logs")
 )

@@ -1,8 +1,8 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `3452383`
-Generated date: `2026-05-04`
+Source commit: `454309b`
+Generated date: `2026-05-05`
 
 ## `pde`
 
@@ -386,20 +386,17 @@ Mirror update sites from a .target definition
 ## `pde test`
 
 ```text
-Usage: pde test [-hvV] [--debug] [--debugJVM] [--no-color] [--osgiDebug]
-                [--quiet] [--config=String] [--exclude=String]
+Usage: pde test [-hvV] [--debug] [--no-color] [--osgiDebug]
+                [--quiet] [--config=String]
                 [--forward-log=String] [--listen-host=String]
                 [--listen-port=Int] [--log=String] [--log-level=String]
                 [--port-range=String] [--report=String] [--timeout=Int]
-                [configPos] [testPos]
+                [configPos] [testPos]...
 Run PDE test launch
       [configPos]            YAML launch configuration (positional)
-      [testPos]              Test name (optional, defaults to all configured tests)
+      [testPos]              Test name/index (optional, repeatable; defaults to all configured tests)
       --config=String        YAML launch configuration
       --debug                Enable DEBUG logging
-      --debugJVM             Enable JDWP for test JVM (equivalent to tests[].
-                               debug=true)
-      --exclude=String       Regex filter to exclude tests
       --forward-log=String   Forward log in form label=path
   -h, --help                 Show this help message and exit.
       --listen-host=String   Host to bind

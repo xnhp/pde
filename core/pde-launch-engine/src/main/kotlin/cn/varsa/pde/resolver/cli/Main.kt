@@ -162,8 +162,7 @@ internal val testOptionsRequiringValue = setOf(
   "--port-range",
   "--timeout",
   "--report",
-  "--forward-log",
-  "--exclude"
+  "--forward-log"
 )
 internal val compileOptionsRequiringValue = setOf(
   "--config",
@@ -230,6 +229,49 @@ internal fun normalizeArgsWithImplicitConfig(
   }
 
   return rawArgs
+}
+
+internal data class NormalizedTestArgs(
+  val parserArgs: Array<String>,
+  val configPositional: String?,
+  val requestedTests: List<String>
+)
+
+internal fun normalizeTestArgs(rawArgs: Array<String>): NormalizedTestArgs {
+  val hasExplicitConfig = rawArgs.any { it == "--config" || it.startsWith("--config=") }
+  val parserTokens = mutableListOf<String>()
+  val requestedTests = mutableListOf<String>()
+  var configPositional: String? = null
+
+  var index = 0
+  while (index < rawArgs.size) {
+    val arg = rawArgs[index]
+    if (arg.startsWith("-")) {
+      parserTokens += arg
+      val optionName = arg.substringBefore('=')
+      if (testOptionsRequiringValue.contains(optionName) && !arg.contains('=') && index + 1 < rawArgs.size) {
+        parserTokens += rawArgs[index + 1]
+        index += 2
+      } else {
+        index += 1
+      }
+      continue
+    }
+
+    if (!hasExplicitConfig && configPositional == null && looksLikeYamlFile(arg)) {
+      configPositional = arg
+      parserTokens += arg
+    } else {
+      requestedTests += arg
+    }
+    index += 1
+  }
+
+  return NormalizedTestArgs(
+    parserArgs = parserTokens.toTypedArray(),
+    configPositional = configPositional,
+    requestedTests = requestedTests
+  )
 }
 
 data class PreparedLaunch(
@@ -2017,7 +2059,6 @@ private fun runTestLaunch(
   timeoutSeconds: Int,
   reports: List<ReportTarget>,
   forwardSpecs: List<cn.varsa.pde.remoterunner.ForwardLogSpec>,
-  excludes: List<Regex>,
   quiet: Boolean,
   noColor: Boolean,
   logFile: Path?,
@@ -2087,7 +2128,7 @@ private fun runTestLaunch(
 
   val listeners = mutableListOf<RemoteTestListener>()
   if (!quiet) {
-    listeners += LoggingRemoteTestListener(System.out, emptyList(), excludes, color = useColor)
+    listeners += LoggingRemoteTestListener(System.out, emptyList(), emptyList(), color = useColor)
   }
   val recorder = RecordingRemoteTestListener()
   listeners += recorder
@@ -2516,11 +2557,11 @@ private fun runMirrorApplication(
 
 private fun testMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, testOptionsRequiringValue)
+  val normalizedTestArgs = normalizeTestArgs(normalizedArgs)
 
   val parser = ArgParser("pde test ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
-  val testPos by parser.argument(ArgType.String, description = "Test name (optional, defaults to all configured tests)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -2547,30 +2588,19 @@ private fun testMain(args: Array<String>): Int {
     fullName = "osgiDebug",
     description = "Enable OSGi debug output (-debug)"
   ).default(false)
-  val debugJvm by parser.option(
-    ArgType.Boolean,
-    fullName = "debugJVM",
-    description = "Enable JDWP for test JVM (equivalent to tests[].debug=true)"
-  ).default(false)
   val listenHost by parser.option(ArgType.String, fullName = "listen-host", description = "Host to bind").default("127.0.0.1")
   val listenPort by parser.option(ArgType.Int, fullName = "listen-port", description = "Fixed port to bind")
   val portRangeSpec by parser.option(ArgType.String, fullName = "port-range", description = "Inclusive port range start-end")
   val timeoutSeconds by parser.option(ArgType.Int, fullName = "timeout", description = "Seconds to wait for PDE connection").default(180)
   val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
   val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Forward log in form label=path").multiple()
-  val excludePatterns by parser.option(ArgType.String, fullName = "exclude", description = "Regex filter to exclude tests").multiple()
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
   val noColor by parser.option(ArgType.Boolean, fullName = "no-color", description = "Disable ANSI colors in console logs").default(false)
-  parser.parse(normalizedArgs)
+  parser.parse(normalizedTestArgs.parserArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor(noColor))
 
-  val configPosValue = configPos
-  val configFile = configFileOpt ?: configPosValue?.takeIf { looksLikeYamlFile(it) }
-  val testName = when {
-    configPosValue != null && !looksLikeYamlFile(configPosValue) -> configPosValue
-    testPos != null -> testPos
-    else -> null
-  }
+  val configFile = configFileOpt ?: configPos ?: normalizedTestArgs.configPositional
+  val requestedTests = normalizedTestArgs.requestedTests
 
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
   if (discoveredConfig == null) {
@@ -2594,13 +2624,7 @@ private fun testMain(args: Array<String>): Int {
       logger.severe("Invalid --forward-log value: ${error.message}")
       return 2
     }
-  val excludes = runCatching { excludePatterns.map(::Regex) }
-    .getOrElse { error ->
-      logger.severe("Invalid --exclude regex: ${error.message}")
-      return 2
-    }
-
-  if (testName == null) {
+  if (requestedTests.isEmpty()) {
     if (loaded.config.tests.isEmpty()) {
       logger.severe("No tests defined in ${loaded.file}. Add a 'tests' entry or pass a legacy launch.yaml.")
       return 2
@@ -2609,9 +2633,6 @@ private fun testMain(args: Array<String>): Int {
     for ((index, selectedTest) in loaded.config.tests.withIndex()) {
       logger.info("Running test ${index + 1}/${loaded.config.tests.size}: '${testLabel(selectedTest)}'.")
       val configContext = applyTestEntry(loaded, selectedTest, null, logSelection = false)
-        .let { ctx ->
-          if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
-        }
         .let { applyOsgiDebug(it, osgiDebug) }
       val targetArgs = resolveTargetArgs(configContext)
       val testExit = runTestLaunch(
@@ -2623,7 +2644,6 @@ private fun testMain(args: Array<String>): Int {
         timeoutSeconds = timeoutSeconds,
         reports = reports,
         forwardSpecs = forwardSpecs,
-        excludes = excludes,
         quiet = quiet,
         noColor = noColor,
         logFile = logFile,
@@ -2636,27 +2656,34 @@ private fun testMain(args: Array<String>): Int {
     return exitCode
   }
 
-  val selected = selectTestConfig(loaded, testName)
-  if (selected == null) return 2
-  val configContext = selected.let { ctx ->
-    if (debugJvm) ctx.copy(jvmDebug = true, jvmDebugRequiresPdeTestApp = true) else ctx
-  }.let { applyOsgiDebug(it, osgiDebug) }
-  val targetArgs = resolveTargetArgs(configContext)
-  return runTestLaunch(
-    configContext = configContext,
-    targetArgs = targetArgs,
-    listenHost = listenHost,
-    listenPort = listenPort,
-    portRangeSpec = portRangeSpec,
-    timeoutSeconds = timeoutSeconds,
-    reports = reports,
-    forwardSpecs = forwardSpecs,
-    excludes = excludes,
-    quiet = quiet,
-    noColor = noColor,
-    logFile = logFile,
-    debug = debug
-  )
+  var exitCode = 0
+  for ((index, testName) in requestedTests.withIndex()) {
+    val selected = selectTestConfig(loaded, testName)
+    if (selected == null) return 2
+    if (requestedTests.size > 1) {
+      logger.info("Running requested test ${index + 1}/${requestedTests.size}: '$testName'.")
+    }
+    val configContext = applyOsgiDebug(selected, osgiDebug)
+    val targetArgs = resolveTargetArgs(configContext)
+    val testExit = runTestLaunch(
+      configContext = configContext,
+      targetArgs = targetArgs,
+      listenHost = listenHost,
+      listenPort = listenPort,
+      portRangeSpec = portRangeSpec,
+      timeoutSeconds = timeoutSeconds,
+      reports = reports,
+      forwardSpecs = forwardSpecs,
+      quiet = quiet,
+      noColor = noColor,
+      logFile = logFile,
+      debug = debug
+    )
+    if (testExit != 0 && exitCode == 0) {
+      exitCode = testExit
+    }
+  }
+  return exitCode
 }
 
 private fun apiAnalyzeMain(args: Array<String>): Int {
