@@ -223,7 +223,7 @@ private val pdeCommand = CliCommandGroup(
     ),
     CliCommandLeaf(
       name = "run",
-      description = "Run a launch config",
+      description = "Run a launch config (alias of launch)",
       handler = forwardToLaunch("pde run"),
       mixinStandardHelpOptions = true,
       options = launchOptions,
@@ -231,7 +231,7 @@ private val pdeCommand = CliCommandGroup(
     ),
     CliCommandLeaf(
       name = "launch",
-      description = "Run a launch config",
+      description = "Run a launch config (alias of run)",
       handler = forwardToLaunch("pde launch"),
       mixinStandardHelpOptions = true,
       options = launchOptions,
