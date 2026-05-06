@@ -40,8 +40,7 @@ private val launchOptions = listOf(
 )
 
 private val testPositionals = listOf(
-  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1"),
-  CliPositionalArg(1, "testPos", "Test name/index (optional, repeatable; defaults to all configured tests)", "0..*")
+  CliPositionalArg(0, "testPos", "Test name/index (optional, repeatable; defaults to all configured tests)", "0..*")
 )
 
 private val testOptions = listOf(

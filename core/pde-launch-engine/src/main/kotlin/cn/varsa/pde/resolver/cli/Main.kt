@@ -233,7 +233,6 @@ internal fun normalizeArgsWithImplicitConfig(
 
 internal data class NormalizedTestArgs(
   val parserArgs: Array<String>,
-  val configPositional: String?,
   val requestedTests: List<String>
 )
 
@@ -241,7 +240,6 @@ internal fun normalizeTestArgs(rawArgs: Array<String>): NormalizedTestArgs {
   val hasExplicitConfig = rawArgs.any { it == "--config" || it.startsWith("--config=") }
   val parserTokens = mutableListOf<String>()
   val requestedTests = mutableListOf<String>()
-  var configPositional: String? = null
 
   var index = 0
   while (index < rawArgs.size) {
@@ -258,8 +256,7 @@ internal fun normalizeTestArgs(rawArgs: Array<String>): NormalizedTestArgs {
       continue
     }
 
-    if (!hasExplicitConfig && configPositional == null && looksLikeYamlFile(arg)) {
-      configPositional = arg
+    if (!hasExplicitConfig && parserTokens.isEmpty() && looksLikeYamlFile(arg)) {
       parserTokens += arg
     } else {
       requestedTests += arg
@@ -269,7 +266,6 @@ internal fun normalizeTestArgs(rawArgs: Array<String>): NormalizedTestArgs {
 
   return NormalizedTestArgs(
     parserArgs = parserTokens.toTypedArray(),
-    configPositional = configPositional,
     requestedTests = requestedTests
   )
 }
@@ -2561,7 +2557,6 @@ private fun testMain(args: Array<String>): Int {
 
   val parser = ArgParser("pde test ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
-  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val logLevelOpt by parser.option(
     ArgType.String,
     fullName = "log-level",
@@ -2599,7 +2594,7 @@ private fun testMain(args: Array<String>): Int {
   parser.parse(normalizedTestArgs.parserArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor(noColor))
 
-  val configFile = configFileOpt ?: configPos ?: normalizedTestArgs.configPositional
+  val configFile = configFileOpt ?: normalizedTestArgs.parserArgs.firstOrNull()
   val requestedTests = normalizedTestArgs.requestedTests
 
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
