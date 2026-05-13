@@ -141,13 +141,20 @@ This repo currently publishes releases to GitHub Releases only.
 1. Pick a version and update `pluginVersion` in `gradle.properties`.
 2. Build and test artifacts:
    - `./gradlew check :pde-cli:distZip :intellij:buildPlugin`
-3. Create a tag:
+3. Verify local build outputs exist before creating a release:
+   - CLI zip: `apps/pde-launch/build/distributions/pde-${pluginVersion}.zip`
+   - IntelliJ plugin zip: `intellij/build/distributions/intellij-${pluginVersion}.zip`
+4. Create a tag:
    - CLI release: `cli/vX.Y.Z`
    - IntelliJ plugin release: `ij/vX.Y.Z`
-4. Create a GitHub Release for that tag and upload assets:
+5. Create a GitHub Release for that tag and upload assets:
    - CLI zip from `apps/pde-launch/build/distributions/`
    - IntelliJ plugin zip from `intellij/build/distributions/`
+6. After publishing, verify the release has at least one attached asset on GitHub:
+   - `gh release view <tag> --repo xnhp/pde --json assets --jq '.assets | length'`
+   - If this returns `0`, edit the release and upload the correct ZIP artifact.
 
 Notes:
 - For now, ZIP artifacts are sufficient (no TAR packaging required).
 - CLI and plugin tags are separate so they can be released independently.
+- Do not publish a release without uploaded artifacts; users install directly from the release assets.

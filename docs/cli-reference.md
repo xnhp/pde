@@ -1,7 +1,7 @@
 # CLI Reference
 
 Generated. Do not edit manually.
-Source commit: `47fc359`
+Source commit: `b0cc9ee`
 Generated date: `2026-05-06`
 
 ## `pde`
@@ -200,7 +200,7 @@ Run a launch config (alias of run)
       --dry-run              Parse configuration only
       --framework=String     Framework BSN
   -h, --help                 Show this help message and exit.
-      --log=String           Write application stdout/stderr to log file
+      --log=String           Write launched PDE process stdout/stderr to a file
       --log-level=String     Logging level (error|warn|info|debug|trace)
   -o, --output=String        Output directory for config.ini/bundles.info/dev.
                                properties
@@ -231,7 +231,7 @@ Run a launch config (alias of launch)
       --dry-run              Parse configuration only
       --framework=String     Framework BSN
   -h, --help                 Show this help message and exit.
-      --log=String           Write application stdout/stderr to log file
+      --log=String           Write launched PDE process stdout/stderr to a file
       --log-level=String     Logging level (error|warn|info|debug|trace)
   -o, --output=String        Output directory for config.ini/bundles.info/dev.
                                properties
@@ -401,7 +401,7 @@ Run PDE test launch
   -h, --help                 Show this help message and exit.
       --listen-host=String   Host to bind
       --listen-port=Int      Fixed port to bind
-      --log=String           Write launched PDE process stdout/stderr to a file
+      --log=String           Write application stdout/stderr to log file
       --log-level=String     Logging level (error|warn|info|debug|trace)
       --osgiDebug            Enable OSGi debug output (-debug)
       --port-range=String    Inclusive port range start-end
@@ -411,3 +411,4 @@ Run PDE test launch
   -v, --verbose              Enable INFO logging
   -V, --version              Print version information and exit.
 ```
+
