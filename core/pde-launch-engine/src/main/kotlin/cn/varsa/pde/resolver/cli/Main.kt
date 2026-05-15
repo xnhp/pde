@@ -888,6 +888,25 @@ private fun describeConfig(
   }
 }
 
+private fun parseEnvFile(path: Path): Map<String, String> {
+  if (!Files.exists(path)) {
+    logger.warning("envFile not found: $path")
+    return emptyMap()
+  }
+  val result = mutableMapOf<String, String>()
+  Files.readAllLines(path, StandardCharsets.UTF_8).forEachIndexed { lineNum, line ->
+    val trimmed = line.trim()
+    if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEachIndexed
+    val eq = trimmed.indexOf('=')
+    if (eq <= 0) {
+      logger.warning("envFile $path line ${lineNum + 1}: expected KEY=VALUE, skipping: $trimmed")
+      return@forEachIndexed
+    }
+    result[trimmed.substring(0, eq).trim()] = trimmed.substring(eq + 1)
+  }
+  return result
+}
+
 private fun selectLaunchConfig(
   context: LaunchConfigContext,
   launchName: String?,
@@ -917,6 +936,11 @@ private fun selectLaunchConfig(
     logger.severe("Launch '$launchName' not found in ${context.file}. Available launches: $available")
     return null
   }
+  val fileEnv: Map<String, String> = selected.envFile
+    ?.let { context.baseDir.resolve(it) }
+    ?.let { parseEnvFile(it) }
+    ?: emptyMap()
+  val env = fileEnv + selected.env
   val runtime = context.runtime.copy(
     product = selected.product,
     application = selected.application,
@@ -925,7 +949,8 @@ private fun selectLaunchConfig(
     programArgs = selected.programArgs,
     dataDir = selected.dataDir,
     configDir = selected.configDir,
-    workDir = selected.workDir
+    workDir = selected.workDir,
+    env = env
   )
   if (launchName == null) {
     logger.info("Using default launch '${selected.name}'.")
@@ -1077,6 +1102,9 @@ private fun executeLaunch(
   }
   logCommand(prepared.command)
   val processBuilder = ProcessBuilder(prepared.command)
+  if (context.runtime.env.isNotEmpty()) {
+    processBuilder.environment().putAll(context.runtime.env)
+  }
   val outputLog = logFile?.toAbsolutePath()?.normalize()
   if (outputLog != null) {
     outputLog.parent?.let { Files.createDirectories(it) }

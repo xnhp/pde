@@ -95,6 +95,18 @@ $defs:
         description: >-
           Launch working directory override for this launch preset.
           If omitted, a temporary working directory is created.
+      env:
+        type: object
+        additionalProperties:
+          type: string
+        description: >-
+          Extra environment variables for this launch preset. Merged with the
+          current process environment; values here take precedence over envFile.
+      envFile:
+        type: string
+        description: >-
+          Path to a .env file relative to pde.yaml. Each non-blank, non-comment
+          line must be KEY=VALUE. Loaded before inline env, so inline env wins.
     required: [name]
   testEntry:
     type: object
