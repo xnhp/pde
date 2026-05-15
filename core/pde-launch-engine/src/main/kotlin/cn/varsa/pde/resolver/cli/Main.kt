@@ -907,6 +907,7 @@ private fun parseEnvFile(path: Path): Map<String, String> {
     emptyMap()
   }
 }
+
 private fun selectLaunchConfig(
   context: LaunchConfigContext,
   launchName: String?,
@@ -936,6 +937,11 @@ private fun selectLaunchConfig(
     logger.severe("Launch '$launchName' not found in ${context.file}. Available launches: $available")
     return null
   }
+  val fileEnv: Map<String, String> = selected.envFile
+    ?.let { context.baseDir.resolve(it) }
+    ?.let { parseEnvFile(it) }
+    ?: emptyMap()
+  val env = fileEnv + selected.env
   val runtime = context.runtime.copy(
     product = selected.product,
     application = selected.application,
@@ -944,7 +950,8 @@ private fun selectLaunchConfig(
     programArgs = selected.programArgs,
     dataDir = selected.dataDir,
     configDir = selected.configDir,
-    workDir = selected.workDir
+    workDir = selected.workDir,
+    env = env
   )
   if (launchName == null) {
     logger.info("Using default launch '${selected.name}'.")
@@ -1096,6 +1103,9 @@ private fun executeLaunch(
   }
   logCommand(prepared.command)
   val processBuilder = ProcessBuilder(prepared.command)
+  if (context.runtime.env.isNotEmpty()) {
+    processBuilder.environment().putAll(context.runtime.env)
+  }
   val outputLog = logFile?.toAbsolutePath()?.normalize()
   if (outputLog != null) {
     outputLog.parent?.let { Files.createDirectories(it) }

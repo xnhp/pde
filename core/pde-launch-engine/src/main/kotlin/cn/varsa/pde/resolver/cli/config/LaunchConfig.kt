@@ -54,7 +54,9 @@ data class LaunchEntry(
   val vmArgs: List<String> = emptyList(),
   val dataDir: String? = null,
   val configDir: String? = null,
-  val workDir: String? = null
+  val workDir: String? = null,
+  val env: Map<String, String> = emptyMap(),
+  val envFile: String? = null
 )
 
 data class TestEntry(
@@ -75,7 +77,8 @@ data class LaunchRuntime(
   val vmArgs: List<String> = emptyList(),
   val dataDir: String? = null,
   val configDir: String? = null,
-  val workDir: String? = null
+  val workDir: String? = null,
+  val env: Map<String, String> = emptyMap()
 )
 
 data class LaunchConfigContext(
