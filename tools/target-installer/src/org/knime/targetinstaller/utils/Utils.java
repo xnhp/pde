@@ -146,8 +146,8 @@ public class Utils {
                 // "org.eclipse.equinox.p2.cache" -> "/home/ben/eclipse-workspace/.metadata/.plugins/org.eclipse.pde.core/.bundle_pool"
                 IProfile.PROP_CACHE, bundlePool.toAbsolutePath().toString(),
                 IProfile.PROP_INSTALL_FEATURES, Boolean.TRUE.toString(),
-                // TODO see P2TargetUtils#generateEnvironmentProperties
-                IProfile.PROP_ENVIRONMENTS, "osgi.ws=gtk,osgi.os=linux,osgi.arch=x86_64",
+                IProfile.PROP_ENVIRONMENTS, "osgi.ws=%s,osgi.os=%s,osgi.arch=%s".formatted(
+                        System.getProperty("osgi.ws"), System.getProperty("osgi.os"), System.getProperty("osgi.arch")),
                 // TODO see P2TargetUtils#generateNLProperty
                 IProfile.PROP_NL, "en_GB",
                 // The following are (protected) properties from P2TargetUtils
@@ -155,7 +155,6 @@ public class Utils {
                 "org.eclipse.pde.core.sequence", Integer.toString(1),
                 // TODO see P2TargetUtils#getProvisionMode(ITargetDefinition)
                 "org.eclipse.pde.core.provision_mode", "planner",
-                // TODO see P2TargetUtils#getIncludeAllEnvironments
                 "org.eclipse.pde.core.all_environments", "false",
                 // getIncludeSource
                 "org.eclipse.pde.core.autoIncludeSource", "true",

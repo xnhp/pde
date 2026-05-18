@@ -1532,9 +1532,9 @@ private fun assembleCommand(
   }
   val stdArgs = listOf(
     "-clean",
-    "-os", "linux",
-    "-ws", "gtk",
-    "-arch", "x86_64",
+    "-os", currentOsgiOs(),
+    "-ws", currentOsgiWs(),
+    "-arch", currentOsgiArch(),
     "-nl", "en_GB"
   )
   val launchArgs = mutableListOf<String>().apply {
@@ -3267,6 +3267,32 @@ fun main(args: Array<String>) {
   } else {
     logger.info("Source: ${index.source}; bundles: ${flat.size}")
     flat.forEach { (bsn, ver, path) -> logger.info("$bsn@$ver -> $path") }
+  }
+}
+
+private fun currentOsgiOs(): String {
+  val name = System.getProperty("os.name").lowercase()
+  return when {
+    name.contains("mac") -> "macosx"
+    name.contains("win") -> "win32"
+    else -> "linux"
+  }
+}
+
+private fun currentOsgiWs(): String {
+  val name = System.getProperty("os.name").lowercase()
+  return when {
+    name.contains("mac") -> "cocoa"
+    name.contains("win") -> "win32"
+    else -> "gtk"
+  }
+}
+
+private fun currentOsgiArch(): String {
+  val arch = System.getProperty("os.arch").lowercase()
+  return when {
+    arch == "aarch64" || arch == "arm64" -> "aarch64"
+    else -> "x86_64"
   }
 }
 
