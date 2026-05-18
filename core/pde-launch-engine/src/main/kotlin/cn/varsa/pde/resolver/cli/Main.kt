@@ -1551,9 +1551,9 @@ private fun assembleCommand(
   }
   val stdArgs = listOf(
     "-clean",
-    "-os", "linux",
-    "-ws", "gtk",
-    "-arch", "x86_64",
+    "-os", currentOsgiOs(),
+    "-ws", currentOsgiWs(),
+    "-arch", currentOsgiArch(),
     "-nl", "en_GB"
   )
   val launchArgs = mutableListOf<String>().apply {
