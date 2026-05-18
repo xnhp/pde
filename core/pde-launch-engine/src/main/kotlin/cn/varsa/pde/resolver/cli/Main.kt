@@ -39,6 +39,7 @@ import cn.varsa.pde.resolver.cli.config.TargetFileParser
 import cn.varsa.pde.resolver.cli.config.TargetLaunchArgs
 import cn.varsa.pde.resolver.cli.config.TestEntry
 import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
+import io.github.cdimascio.dotenv.Dotenv
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
@@ -888,6 +889,24 @@ private fun describeConfig(
   }
 }
 
+private fun parseEnvFile(path: Path): Map<String, String> {
+  if (!Files.exists(path)) {
+    logger.warning("envFile not found: $path")
+    return emptyMap()
+  }
+  return try {
+    Dotenv.configure()
+      .directory(path.parent?.toString() ?: ".")
+      .filename(path.fileName.toString())
+      .ignoreIfMissing()
+      .load()
+      .entries()
+      .associate { entry -> entry.key to entry.value }
+  } catch (ex: RuntimeException) {
+    logger.warning("Failed to load envFile $path: ${ex.message}")
+    emptyMap()
+  }
+}
 private fun selectLaunchConfig(
   context: LaunchConfigContext,
   launchName: String?,
