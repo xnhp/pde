@@ -50,8 +50,8 @@ Example commands are:
 - `pde format` -- (experimental) invoke the Eclipse JDT code formatter
 - `pde api-analyze` -- (experimental) run API analysis
 
-The full CLI command reference is generated from `--help` output into `docs/cli-reference.md`
-as part of `:pde-cli:installDist`.
+The full CLI command reference is available directly in `--help` output
+(`pde --help` and `pde <command> --help`).
 
 ## IntelliJ integration
 

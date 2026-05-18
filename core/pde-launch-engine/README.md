@@ -16,4 +16,4 @@ used by the public `pde` CLI.
   `pde test`, and `pde api-analyze`.
 - User-facing configuration and behavior are documented at:
   - `docs/config-yaml.md`
-  - `docs/cli-reference.md`
+  - `pde --help` / `pde <command> --help`

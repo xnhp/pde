@@ -302,7 +302,7 @@ private fun printApiFiltersHelp() {
   println("See also:")
   println("  pde api-filters add-from-report --help")
   println("  pde api-analyze --report build/api-report.json")
-  println("  docs/cli-reference.md")
+  println("  pde --help")
 }
 
 private fun apiFiltersAddFromReportMain(args: Array<String>): Int {

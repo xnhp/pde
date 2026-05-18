@@ -3,6 +3,13 @@
 .intellijPlatform
 .qodana
 .kotlin
+.aether/
+.opencode/
+aether.yaml
+flow.yaml
+gh-issues/
+pr-feedback/
+todos/
 build
 tools/target-installer/build/
 tools/target-installer/dist/

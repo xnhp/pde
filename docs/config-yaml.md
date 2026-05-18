@@ -74,6 +74,6 @@ tests:
 
 ## Related docs
 
-- CLI command usage: `docs/cli-reference.md`
+- CLI command usage: `pde --help` (or `pde <command> --help`)
 - JDT LS/Eglot workflow: `docs/jdtls-eglot.md`
 - JDT LS smoke tests: `docs/jdtls-smoke-tests.md`

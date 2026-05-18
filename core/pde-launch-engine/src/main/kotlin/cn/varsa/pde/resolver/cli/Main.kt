@@ -858,7 +858,7 @@ private fun printApiAnalyzeHelp() {
   println("See also:")
   println("  pde api-analyze run --help")
   println("  pde api-filters add-from-report --help")
-  println("  docs/cli-reference.md")
+  println("  pde --help")
 }
 
 private fun describeConfig(
