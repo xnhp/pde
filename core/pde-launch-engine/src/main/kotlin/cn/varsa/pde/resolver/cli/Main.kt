@@ -3270,4 +3270,30 @@ fun main(args: Array<String>) {
   }
 }
 
+internal fun currentOsgiOs(): String {
+  val name = System.getProperty("os.name").lowercase()
+  return when {
+    name.contains("mac") -> "macosx"
+    name.contains("win") -> "win32"
+    else -> "linux"
+  }
+}
+
+internal fun currentOsgiWs(): String {
+  val name = System.getProperty("os.name").lowercase()
+  return when {
+    name.contains("mac") -> "cocoa"
+    name.contains("win") -> "win32"
+    else -> "gtk"
+  }
+}
+
+internal fun currentOsgiArch(): String {
+  val arch = System.getProperty("os.arch").lowercase()
+  return when {
+    arch == "aarch64" || arch == "arm64" -> "aarch64"
+    else -> "x86_64"
+  }
+}
+
 private fun escape(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"")
