@@ -20,6 +20,8 @@ JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 JAVAC_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
 
 TINYLOG_VERSION="2.7.0"
+PLUGIN_VERSION=$(grep "^Bundle-Version:" "$REPO_ROOT/META-INF/MANIFEST.MF" | awk '{print $2}' | tr -d '\r' | sed 's/\.qualifier$//')
+PLUGIN_JAR="org.knime.targetinstaller_${PLUGIN_VERSION}.jar"
 
 if [[ -z "$RUNTIME_ZIP" && -z "$ECLIPSE_SDK" ]]; then
   echo "Either RUNTIME_ZIP (prebuilt runtime archive) or ECLIPSE_SDK must be set" >&2
@@ -58,7 +60,7 @@ echo "Compiling bundle"
   $(find "$REPO_ROOT/src" -name '*.java')
 
 echo "Packaging bundle"
-jar cfm "$PLUGIN_DIR/org.knime.targetinstaller_1.0.0.jar" \
+jar cfm "$PLUGIN_DIR/$PLUGIN_JAR" \
   "$REPO_ROOT/META-INF/MANIFEST.MF" \
   -C "$PLUGIN_BUILD_DIR/classes" . \
   -C "$REPO_ROOT" plugin.xml \
@@ -72,6 +74,10 @@ if [[ -n "$RUNTIME_ZIP" ]]; then
     echo "Unable to locate org.eclipse.equinox.launcher in $RUNTIME_ZIP" >&2
     exit 1
   fi
+  # Install the target installer plugin into the runtime
+  cp "$PLUGIN_DIR/$PLUGIN_JAR" "$RUNTIME_DIR/plugins/"
+  echo "org.knime.targetinstaller,$PLUGIN_VERSION,plugins/$PLUGIN_JAR,4,true" \
+    >> "$RUNTIME_DIR/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"
 else
   LAUNCHER_JAR=$(ls "$ECLIPSE_SDK"/plugins/org.eclipse.equinox.launcher_*.jar | head -n 1)
   if [[ -z "$LAUNCHER_JAR" ]]; then
