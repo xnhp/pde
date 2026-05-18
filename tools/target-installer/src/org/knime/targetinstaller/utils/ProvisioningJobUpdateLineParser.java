@@ -1,8 +1,6 @@
 package org.knime.targetinstaller.utils;
 // java
-import org.apache.commons.lang3.builder.EqualsBuilder;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
-
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 public class ProvisioningJobUpdateLineParser {
@@ -22,12 +20,12 @@ public class ProvisioningJobUpdateLineParser {
 
             BundleId bundleId1 = (BundleId) o;
 
-            return new EqualsBuilder().append(bundleId, bundleId1.bundleId).isEquals();
+            return Objects.equals(bundleId, bundleId1.bundleId);
         }
 
         @Override
         public int hashCode() {
-            return new HashCodeBuilder(17, 37).append(bundleId).toHashCode();
+            return Objects.hash(bundleId);
         }
 
         @Override
