@@ -4,11 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class ProfileUtilsTest {
   @Test
   fun mapProfileEmitsArtifacts() {
-    val tmp = createTempDir(prefix = "profileTest")
+    val tmp = createTempDirectory("profileTest").toFile()
     try {
       val profileDir = File(tmp, "abc.profile").apply { mkdirs() }
       val profileFile = File(profileDir, "0001.profile").apply { writeText(profileXml()) }
@@ -50,4 +51,3 @@ class ProfileUtilsTest {
     </profile>
   """.trimIndent()
 }
-

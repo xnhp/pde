@@ -3,11 +3,12 @@ package cn.varsa.pde.resolver.features
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class FeatureScannerP2AndTargetTest {
   @Test
   fun scanTargetDefinitionFeatures_emitsFromBundlePool() {
-    val tmp = createTempDir(prefix = "tdefFeat")
+    val tmp = createTempDirectory("tdefFeat").toFile()
     try {
       val profileDir = File(tmp, "My.profile").apply { mkdirs() }
       File(profileDir, "0001.profile").writeText(profileXml())
@@ -33,7 +34,7 @@ class FeatureScannerP2AndTargetTest {
 
   @Test
   fun scanP2Features_emitsFromProfile() {
-    val tmp = createTempDir(prefix = "p2Feat")
+    val tmp = createTempDirectory("p2Feat").toFile()
     try {
       val p2Dir = File(tmp, "p2").apply { mkdirs() }
       val profileName = "SDKProfile"
@@ -72,4 +73,3 @@ class FeatureScannerP2AndTargetTest {
     </profile>
   """.trimIndent()
 }
-

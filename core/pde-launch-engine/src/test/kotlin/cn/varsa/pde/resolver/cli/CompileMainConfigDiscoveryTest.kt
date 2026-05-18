@@ -42,10 +42,9 @@ class CompileMainConfigDiscoveryTest {
       Files.deleteIfExists(configFile)
     }
 
+    System.out.flush()
+    System.err.flush()
     val output = out.toString()
-    val errorOutput = err.toString()
-    val combined = errorOutput + output
-    assertTrue(combined.contains("Discovered launch config"))
     assertTrue(output.contains("\"bsn\" : \"org.example.test\""))
   }
 

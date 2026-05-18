@@ -3,11 +3,12 @@ package cn.varsa.pde.resolver.index
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class TargetPlatformIndexCacheTest {
   @Test
   fun cacheHitAndMiss() {
-    val root = createTempDir(prefix = "cacheRoot")
+    val root = createTempDirectory("cacheRoot").toFile()
     val cache = File.createTempFile("idx-", ".properties")
     try {
       val plugins = File(root, "plugins").apply { mkdirs() }
@@ -42,4 +43,3 @@ class TargetPlatformIndexCacheTest {
     )
   }
 }
-

@@ -6,11 +6,12 @@ import org.osgi.framework.VersionRange
 import java.io.File
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
+import kotlin.io.path.createTempDirectory
 
 class TargetPlatformIndexTest {
   @Test
   fun scanEclipseSdkRoot() {
-    val root = createTempDir(prefix = "sdkRoot")
+    val root = createTempDirectory("sdkRoot").toFile()
     try {
       val plugins = File(root, "plugins").apply { mkdirs() }
 

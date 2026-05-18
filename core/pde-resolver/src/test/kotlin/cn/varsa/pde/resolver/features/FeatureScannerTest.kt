@@ -3,11 +3,12 @@ package cn.varsa.pde.resolver.features
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class FeatureScannerTest {
   @Test
   fun scanEclipseSdkFeatures() {
-    val root = createTempDir(prefix = "sdkFeat")
+    val root = createTempDirectory("sdkFeat").toFile()
     try {
       val features = File(root, "features").apply { mkdirs() }
       File(features, "feat.a_1.0.0.jar").writeText("jar")
@@ -22,4 +23,3 @@ class FeatureScannerTest {
     }
   }
 }
-

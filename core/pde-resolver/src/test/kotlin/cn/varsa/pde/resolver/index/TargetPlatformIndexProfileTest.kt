@@ -3,11 +3,12 @@ package cn.varsa.pde.resolver.index
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class TargetPlatformIndexProfileTest {
   @Test
   fun buildFromTargetDefinitionProfile_usesBundlePool() {
-    val tmp = createTempDir(prefix = "idxProfile")
+    val tmp = createTempDirectory("idxProfile").toFile()
     try {
       val bundlePool = File(tmp, "bundlepool").apply { mkdirs() }
       val plugins = File(bundlePool, "plugins").apply { mkdirs() }
