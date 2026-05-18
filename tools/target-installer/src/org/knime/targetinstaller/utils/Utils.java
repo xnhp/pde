@@ -81,7 +81,7 @@ public class Utils {
         // probably value from .target file (repository > location)
         // no trailing slash! see /home/ben/eclipse/plugins/org.eclipse.equinox.p2.engine.source_2.10.0.v20240210-0918.jar!/org/eclipse/equinox/internal/p2/engine/phases/AuthorityChecker.java:113
         trustedAuths.add(new URI("https://update.knime.com"));
-        // trustedAuths.add(new URI("https://jenkins.devops.knime.com"));
+        trustedAuths.add(new URI("https://jenkins.devops.knime.com"));
         trustedAuths.add(new URI("https://jenkins.knime.com"));
         authChecker.persistTrustedAuthorities(trustedAuths);  // not sure why this is an instance method
     }
