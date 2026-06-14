@@ -86,6 +86,45 @@ public class Utils {
         authChecker.persistTrustedAuthorities(trustedAuths);  // not sure why this is an instance method
     }
 
+    /**
+     * Name of the opt-in environment variable (also honoured as the {@code pde.trustAllAuthorities}
+     * system property) that, when truthy, makes the installer trust all p2 authorities.
+     */
+    public static final String TRUST_ALL_AUTHORITIES_ENV = "PDE_TRUST_ALL_AUTHORITIES";
+
+    /** @return {@code true} if trust-all was opted into via env var or system property. */
+    public static boolean trustAllAuthoritiesOptedIn() {
+        var value = System.getenv(TRUST_ALL_AUTHORITIES_ENV);
+        if (value == null) {
+            value = System.getProperty("pde.trustAllAuthorities");
+        }
+        return value != null
+                && ("true".equalsIgnoreCase(value) || "1".equals(value) || "yes".equalsIgnoreCase(value));
+    }
+
+    /**
+     * Opt-in escape hatch: trust all p2 authorities so {@link AuthorityChecker#start} returns before it
+     * builds a {@link java.net.http.HttpClient}. That client opens an NIO selector whose self-pipe needs a
+     * loopback / AF_UNIX socket; in sandboxed environments that connection is blocked and provisioning dies
+     * in the Collect phase with "Unable to establish loopback connection". Trusting all authorities skips the
+     * certificate gathering entirely.
+     * <p>
+     * Off by default and intentionally so: it disables remote authority verification. Enable only for trusted
+     * or local ({@code file:}) targets, via {@code PDE_TRUST_ALL_AUTHORITIES=true}. A normally-reachable,
+     * fully-trusted target does not need it (no untrusted authorities to gather certificates for).
+     */
+    public static void trustAllAuthoritiesIfOptedIn(IProvisioningAgent agent, IProfile profile) {
+        if (!trustAllAuthoritiesOptedIn()) {
+            return;
+        }
+        var status = new AuthorityChecker(agent, profile).setTrustAlways(true);
+        if (status != null && !status.isOK()) {
+            Logger.warn("Could not persist trustAllAuthorities preference: {}", status.getMessage());
+        }
+        System.out.printf("%s set: trusting all p2 authorities (remote authority verification disabled)%n",
+                TRUST_ALL_AUTHORITIES_ENV);
+    }
+
     public static Path createDirIfNotExist(Path target) {
         if (!target.toFile().exists()) {
             if (!target.toFile().mkdirs()) {
@@ -227,7 +266,6 @@ public class Utils {
             System.out.print("\u001b[2J\u001b[H"); // or "\033[2J\033[H"
             System.out.flush();
         }
-
 
         private void printMostRecentUpdates() {
             for (var update : mostRecentUpdates.values()) {

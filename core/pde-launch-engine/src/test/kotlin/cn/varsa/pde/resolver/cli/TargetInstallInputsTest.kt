@@ -32,13 +32,15 @@ class TargetInstallInputsTest {
     var invokedInstaller: Path? = null
     var invokedArgs: List<String>? = null
     var invokedWorkingDir: Path? = null
+    var invokedTrustAllAuthorities = true
 
     val exit = targetMain(
       arrayOf("--config", configFile.toString()),
-      runInstallerLauncher = { installer, args, workingDir, _ ->
+      runInstallerLauncher = { installer, args, workingDir, _, trustAllAuthorities ->
         invokedInstaller = installer
         invokedArgs = args
         invokedWorkingDir = workingDir
+        invokedTrustAllAuthorities = trustAllAuthorities
         0
       }
     )
@@ -46,6 +48,7 @@ class TargetInstallInputsTest {
     assertEquals(0, exit)
     assertEquals(installerJar.toAbsolutePath().normalize(), invokedInstaller)
     assertEquals(baseDir.toAbsolutePath().normalize(), invokedWorkingDir)
+    assertFalse(invokedTrustAllAuthorities)
     assertEquals(
       listOf(
         "-profileId", "profile",
@@ -73,6 +76,7 @@ class TargetInstallInputsTest {
           p2Path: .p2-state
           install: eclipse-install
           bundlePool: shared-pool
+          trustAllAuthorities: true
         bundles: []
       """.trimIndent()
     )
@@ -93,16 +97,19 @@ class TargetInstallInputsTest {
     Files.writeString(baseDir.resolve("ignored.target"), "<target></target>")
 
     var invokedArgs: List<String>? = null
+    var invokedTrustAllAuthorities = false
 
     val exit = targetMain(
       arrayOf("--config", configFile.toString()),
-      runInstallerLauncher = { _, args, _, _ ->
+      runInstallerLauncher = { _, args, _, _, trustAllAuthorities ->
         invokedArgs = args
+        invokedTrustAllAuthorities = trustAllAuthorities
         0
       }
     )
 
     assertEquals(0, exit)
+    assertEquals(true, invokedTrustAllAuthorities)
     assertEquals(
       listOf(
         "-profileId", "custom-profile",
@@ -134,7 +141,7 @@ class TargetInstallInputsTest {
     var launched = false
     val exit = targetMain(
       arrayOf("--config", configFile.toString()),
-      runInstallerLauncher = { _, _, _, _ ->
+      runInstallerLauncher = { _, _, _, _, _ ->
         launched = true
         0
       }
@@ -163,7 +170,7 @@ class TargetInstallInputsTest {
     var launched = false
     val exit = targetMain(
       arrayOf("--config", configFile.toString()),
-      runInstallerLauncher = { _, _, _, _ ->
+      runInstallerLauncher = { _, _, _, _, _ ->
         launched = true
         0
       }
