@@ -209,6 +209,15 @@ $defs:
         description: >-
           Optional list of p2 repositories used when provisioning Eclipse runtime
           artifacts from update sites.
+      trustAllAuthorities:
+        type: boolean
+        default: false
+        description: >-
+          Opt-in: trust all p2 authorities during `pde target install`, skipping p2's
+          HttpClient-based certificate gathering. Needed in sandboxed environments that block
+          the NIO selector's loopback/AF_UNIX self-pipe ("Unable to establish loopback
+          connection"). Disables remote authority verification — enable only for trusted or
+          local (file:) targets. Also settable via the PDE_TRUST_ALL_AUTHORITIES env var.
       mirror:
         $ref: "#/$defs/targetMirror"
         description: Mirror options used by `pde target mirror`.

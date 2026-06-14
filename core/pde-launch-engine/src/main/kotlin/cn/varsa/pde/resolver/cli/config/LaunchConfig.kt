@@ -30,6 +30,7 @@ data class TargetConfig(
   val installer: String? = null,
   val eclipseRuntimeCache: String? = null,
   val p2Repositories: List<String>? = null,
+  val trustAllAuthorities: Boolean? = null,
   val mirror: TargetMirrorConfig? = null
 )
 

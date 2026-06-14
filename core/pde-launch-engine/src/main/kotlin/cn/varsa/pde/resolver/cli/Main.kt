@@ -1836,7 +1836,8 @@ private fun runTargetInstallerLauncher(
   installerJar: Path,
   installerArgs: List<String>,
   workingDir: Path,
-  logFile: Path?
+  logFile: Path?,
+  trustAllAuthorities: Boolean = false
 ): Int {
   val javaBin = System.getenv("JAVA_HOME")?.let { Path.of(it, "bin", "java").toString() } ?: "java"
   val command = mutableListOf(
@@ -1850,6 +1851,11 @@ private fun runTargetInstallerLauncher(
   val processBuilder = ProcessBuilder(command)
     .directory(workingDir.toFile())
     .redirectErrorStream(true)
+  if (trustAllAuthorities) {
+    // target.trustAllAuthorities: true -> hand the installer JVM the opt-in it reads, so p2 skips the
+    // HttpClient-based authority check that fails where the NIO loopback/AF_UNIX self-pipe is blocked.
+    processBuilder.environment()["PDE_TRUST_ALL_AUTHORITIES"] = "true"
+  }
   if (logFile != null) {
     val outputLog = logFile.toAbsolutePath().normalize()
     outputLog.parent?.let { Files.createDirectories(it) }
@@ -1913,7 +1919,8 @@ private fun provisionBaselineTargetProfile(
     installerJar = installerJar,
     installerArgs = installerArgs,
     workingDir = context.baseDir,
-    logFile = logFile
+    logFile = logFile,
+    trustAllAuthorities = context.config.target.trustAllAuthorities == true
   )
   if (exitCode != 0) {
     logger.severe("Target installer exited with code $exitCode while provisioning baseline target.")
@@ -2290,7 +2297,8 @@ internal fun targetMain(args: Array<String>): Int {
     installerJar = installerJar,
     installerArgs = installerArgs,
     workingDir = issueContext.baseDir,
-    logFile = logFile
+    logFile = logFile,
+    trustAllAuthorities = issueContext.config.target.trustAllAuthorities == true
   )
   if (exit != 0) error("Target installer exited with code $exit")
   return 0

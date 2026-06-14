@@ -66,9 +66,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 import static org.knime.targetinstaller.utils.ConsoleColors.green;
 
@@ -84,6 +86,45 @@ public class Utils {
         trustedAuths.add(new URI("https://jenkins.devops.knime.com"));
         trustedAuths.add(new URI("https://jenkins.knime.com"));
         authChecker.persistTrustedAuthorities(trustedAuths);  // not sure why this is an instance method
+    }
+
+    /**
+     * Name of the opt-in environment variable (also honoured as the {@code pde.trustAllAuthorities}
+     * system property) that, when truthy, makes the installer trust all p2 authorities.
+     */
+    public static final String TRUST_ALL_AUTHORITIES_ENV = "PDE_TRUST_ALL_AUTHORITIES";
+
+    /** @return {@code true} if trust-all was opted into via env var or system property. */
+    public static boolean trustAllAuthoritiesOptedIn() {
+        var value = System.getenv(TRUST_ALL_AUTHORITIES_ENV);
+        if (value == null) {
+            value = System.getProperty("pde.trustAllAuthorities");
+        }
+        return value != null
+                && ("true".equalsIgnoreCase(value) || "1".equals(value) || "yes".equalsIgnoreCase(value));
+    }
+
+    /**
+     * Opt-in escape hatch: trust all p2 authorities so {@link AuthorityChecker#start} returns before it
+     * builds a {@link java.net.http.HttpClient}. That client opens an NIO selector whose self-pipe needs a
+     * loopback / AF_UNIX socket; in sandboxed environments that connection is blocked and provisioning dies
+     * in the Collect phase with "Unable to establish loopback connection". Trusting all authorities skips the
+     * certificate gathering entirely.
+     * <p>
+     * Off by default and intentionally so: it disables remote authority verification. Enable only for trusted
+     * or local ({@code file:}) targets, via {@code PDE_TRUST_ALL_AUTHORITIES=true}. A normally-reachable,
+     * fully-trusted target does not need it (no untrusted authorities to gather certificates for).
+     */
+    public static void trustAllAuthoritiesIfOptedIn(IProvisioningAgent agent, IProfile profile) {
+        if (!trustAllAuthoritiesOptedIn()) {
+            return;
+        }
+        var status = new AuthorityChecker(agent, profile).setTrustAlways(true);
+        if (status != null && !status.isOK()) {
+            Logger.warn("Could not persist trustAllAuthorities preference: {}", status.getMessage());
+        }
+        System.out.printf("%s set: trusting all p2 authorities (remote authority verification disabled)%n",
+                TRUST_ALL_AUTHORITIES_ENV);
     }
 
     public static Path createDirIfNotExist(Path target) {
@@ -209,18 +250,68 @@ public class Utils {
 
         private boolean done;
 
-        private Map<ProvisioningJobUpdateLineParser.BundleId, ProvisioningJobUpdateLineParser.ProvisioningJobUpdate> mostRecentUpdates = new ConcurrentHashMap<>();
+        // Insertion-ordered + synchronized: parallel download threads call subTask(), and the
+        // previous ConcurrentHashMap had an unstable iteration order, so rendered lines jumped around.
+        private final Map<ProvisioningJobUpdateLineParser.BundleId, ProvisioningJobUpdateLineParser.ProvisioningJobUpdate> active =
+                Collections.synchronizedMap(new LinkedHashMap<>());
+
+        // Lines drawn in the previous frame, so we can redraw just that block in place instead of
+        // wiping the whole terminal on every update (the old full-screen clear caused the flicker).
+        private int lastLineCount = 0;
+
+        private static final Pattern SIZE = Pattern.compile("([0-9.]+) *([kmg]?)b?", Pattern.CASE_INSENSITIVE);
 
         @Override
         public void subTask(String name) {
-            // different fetches / downloads run in parallel, this would switch
-            System.out.print("\r");
             var update = ProvisioningJobUpdateLineParser.parseUpdateLine(name);
-            if (update.bundleId() != null) {
-                mostRecentUpdates.put(update.bundleId(), update);
+            if (update.bundleId() == null || update.downloaded() == null) {
+                return;
             }
-            clearScreenAnsi();
-            printMostRecentUpdates();
+            synchronized (active) {
+                if (isComplete(update)) {
+                    active.remove(update.bundleId()); // drop finished downloads so the list shrinks
+                } else {
+                    active.put(update.bundleId(), update);
+                }
+                render();
+            }
+        }
+
+        private static boolean isComplete(ProvisioningJobUpdateLineParser.ProvisioningJobUpdate update) {
+            if (update.total() == null) {
+                return false;
+            }
+            if (update.downloaded().equals(update.total())) {
+                return true;
+            }
+            // p2 may report the final tick with mixed units (e.g. "10.23MB of 10.23MB" vs
+            // "1,022.56kB of 1.0MB"); compare normalized byte counts so completion is detected.
+            long downloaded = parseBytes(update.downloaded());
+            long total = parseBytes(update.total());
+            return downloaded >= 0 && total > 0 && downloaded >= total;
+        }
+
+        private static long parseBytes(String text) {
+            if (text == null) {
+                return -1;
+            }
+            var matcher = SIZE.matcher(text.replace(",", "").trim());
+            if (!matcher.matches()) {
+                return -1;
+            }
+            double value;
+            try {
+                value = Double.parseDouble(matcher.group(1));
+            } catch (NumberFormatException e) {
+                return -1;
+            }
+            switch (matcher.group(2).toLowerCase()) {
+                case "k": value *= 1_000; break;
+                case "m": value *= 1_000_000; break;
+                case "g": value *= 1_000_000_000L; break;
+                default: break;
+            }
+            return (long) value;
         }
 
         public static void clearScreenAnsi() {
@@ -229,19 +320,35 @@ public class Utils {
         }
 
 
-        private void printMostRecentUpdates() {
-            for (var update : mostRecentUpdates.values()) {
-                if (update.downloaded() != null) {
-                    System.out.println(update.bundleId() + "\t" + update.downloaded() + " of " + update.total() + " at " + update.speed());
-                }
+        // Redraw the live block in place. Caller must hold the `active` lock.
+        private void render() {
+            var sb = new StringBuilder();
+            if (lastLineCount > 0) {
+                sb.append((char) 0x1b).append('[').append(lastLineCount).append('F'); // cursor up N lines, to column 0
             }
+            sb.append((char) 0x1b).append("[J"); // erase from cursor to end of screen (clears lines freed by removals)
+            int n = 0;
+            for (var update : active.values()) {
+                sb.append(update.bundleId()).append('\t')
+                  .append(update.downloaded()).append(" of ").append(update.total())
+                  .append(" at ").append(update.speed()).append('\n');
+                n++;
+            }
+            lastLineCount = n;
+            System.out.print(sb);
+            System.out.flush();
         }
 
         @Override
         public void done() {
             this.done = true;
-            System.out.print("\r");
+            synchronized (active) {
+                active.clear();
+                render(); // erase the live block before the final message
+                lastLineCount = 0;
+            }
             System.out.print(green("done") + "\n");
+            System.out.flush();
         }
 
         @Override
