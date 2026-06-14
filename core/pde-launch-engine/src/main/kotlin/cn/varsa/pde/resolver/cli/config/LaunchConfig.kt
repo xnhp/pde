@@ -33,6 +33,7 @@ data class TargetConfig(
   val p2Repositories: List<String>? = null,
   val extraBundles: List<String>? = null,
   val pinnedVersions: Map<String, String>? = null,
+  val trustAllAuthorities: Boolean? = null,
   val mirror: TargetMirrorConfig? = null
 )
 

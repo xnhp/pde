@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import static org.knime.targetinstaller.utils.Utils.createDirIfNotExist;
 import static org.knime.targetinstaller.utils.Utils.deleteProfileIfExists;
 import static org.knime.targetinstaller.utils.Utils.patchTrustedAuthorities;
+import static org.knime.targetinstaller.utils.Utils.trustAllAuthoritiesIfOptedIn;
 import static org.knime.targetinstaller.utils.Utils.printProfileSummary;
 import static org.knime.targetinstaller.utils.Utils.upsertProfile;
 
@@ -66,6 +67,9 @@ public class Application implements IApplication{
         // this property skips the entire method
         System.setProperty("eclipse.p2.unsignedPolicy", "allow");
         patchTrustedAuthorities(agent, profile);
+        // Opt-in (PDE_TRUST_ALL_AUTHORITIES=true): skip AuthorityChecker's HttpClient-based certificate
+        // gathering, which fails in sandboxes that block the NIO selector's loopback/AF_UNIX self-pipe.
+        trustAllAuthoritiesIfOptedIn(agent, profile);
 
         var repository = new Repository(agent);
         repository.load(targetDefinition.repoURIs());
