@@ -34,7 +34,11 @@ data class WorkspaceBundleDescriptor(
 data class ResolveOptions(
   val whitelistPrefixes: Set<String> = emptySet(),
   val preferWorkspace: Boolean = true,
-  val includeHostsForFragments: Boolean = true
+  val includeHostsForFragments: Boolean = true,
+  /** BSNs (optionally `bsn@version`) to force into selection / onto the compile classpath. */
+  val extraBundles: List<String> = emptyList(),
+  /** BSN -> exact version: when that BSN is selected by any path, use this version. */
+  val pinnedVersions: Map<String, String> = emptyMap()
 )
 
 enum class BundleOrigin { WORKSPACE, TARGET }
@@ -130,18 +134,26 @@ object Resolver {
       )
     }
 
+    fun pinnedRangeFor(bsn: String): VersionRange? =
+      options.pinnedVersions[bsn]
+        ?.let { runCatching { Version.parseVersion(it) }.getOrNull() }
+        ?.let { VersionRange(VersionRange.LEFT_CLOSED, it, it, VersionRange.RIGHT_CLOSED) }
+
     fun select(bsn: String, range: VersionRange?): Candidate? {
+      // A pin overrides the requirement range: when this BSN is selected by any path, use the
+      // pinned version (lets the user force one version of a lib the target ships several times).
+      val effectiveRange = pinnedRangeFor(bsn) ?: range
       if (options.preferWorkspace) {
         val ws = workspaceByBsn[bsn]
           ?.asSequence()
           ?.map { it to it.manifest.bundleVersion }
-          ?.filter { (_, v) -> range == null || range.includes(v) }
+          ?.filter { (_, v) -> effectiveRange == null || effectiveRange.includes(v) }
           ?.maxByOrNull { it.second }
           ?.first
         if (ws != null) return candidateFromWorkspace(ws)
       }
 
-      val targetBundle = target.get(bsn, range)
+      val targetBundle = target.get(bsn, effectiveRange)
       return targetBundle?.let { candidateFromTarget(it) }
     }
 
@@ -282,31 +294,86 @@ object Resolver {
         }
       }
 
-      val nav = tpProvidersByPkg[pkg] ?: return null
-      val entry = nav.descendingMap().entries.firstOrNull { e ->
-        val man = nav[e.key]?.manifest ?: return@firstOrNull false
-        val ver = exportsOf(man)[pkg]
+      val tpNav = tpProvidersByPkg[pkg]
+      if (tpNav != null) {
+        val entry = tpNav.descendingMap().entries.firstOrNull { e ->
+          val man = tpNav[e.key]?.manifest ?: return@firstOrNull false
+          val ver = exportsOf(man)[pkg]
+          ver != null && range.includes(ver)
+        }
+        if (entry != null) {
+          val provider = entry.value
+          return Candidate(
+            bsn = provider.bsn,
+            version = provider.version,
+            path = provider.path,
+            manifest = provider.manifest,
+            origin = provider.origin,
+            classPathEntries = provider.classPathEntries,
+            sourceEntries = provider.sourceEntries,
+            fragmentHost = provider.manifest.fragmentHost?.key
+          )
+        }
+      }
+      // Fall back to the full target index for packages not in the precomputed entry/host import
+      // set — e.g. packages imported only by Require-Bundle-closure members. Range-checks the
+      // package export version (not the bundle version), matching the tpProvidersByPkg branch.
+      val navAll = target.exportedBundlesByPackageNav()[pkg] ?: return null
+      val match = navAll.descendingMap().entries.firstOrNull { e ->
+        val ver = exportsOf(e.value.manifest)[pkg]
         ver != null && range.includes(ver)
       } ?: return null
-      val provider = entry.value
-      return Candidate(
-        bsn = provider.bsn,
-        version = provider.version,
-        path = provider.path,
-        manifest = provider.manifest,
-        origin = provider.origin,
-        classPathEntries = provider.classPathEntries,
-        sourceEntries = provider.sourceEntries,
-        fragmentHost = provider.manifest.fragmentHost?.key
-      )
+      return candidateFromTarget(match.value)
+    }
+
+    // Import-Package resolution that also honors pins: if the chosen exporter's BSN is pinned,
+    // swap to the pinned version (select() applies the pin).
+    fun providerWithPin(pkg: String, range: VersionRange): Candidate? {
+      val provider = findProviderForPackage(pkg, range) ?: return null
+      if (!options.pinnedVersions.containsKey(provider.bsn)) return provider
+      return select(provider.bsn, null) ?: provider
     }
 
     imports.forEach { (pkg, range) ->
-      val provider = findProviderForPackage(pkg, range)
+      val provider = providerWithPin(pkg, range)
       if (provider != null && !selected.containsKey(provider.bsn)) {
         selected[provider.bsn] = provider
       } else if (provider == null) {
         unresolved.add(UnresolvedBundle(pkg, range, "import-package"))
+      }
+    }
+
+    // Indirectly-required Import-Package exporters: a Require-Bundle-closure member's API may
+    // reference a type from a package it only Imports (not Re-exports / Require-Bundles), e.g.
+    // junit-jupiter-api -> org.opentest4j. Import-Package is otherwise resolved only for the
+    // entry + fragment host, so that exporter is never selected and ecj reports the type as
+    // "indirectly referenced from required type". Expand the closure's mandatory imports to a
+    // fixpoint (each newly-added exporter is processed too, covering deeper chains), bounded by
+    // "package already provided by the selection".
+    run {
+      val providedPackages = HashSet<String>()
+      selected.values.forEach { providedPackages += exportsOf(it.manifest).keys }
+      val worklist = ArrayDeque(selected.keys.filter { it != entrySymbolicName })
+      val processed = HashSet<String>()
+      while (worklist.isNotEmpty()) {
+        val bsn = worklist.removeFirst()
+        if (!processed.add(bsn)) continue
+        val manifest = selected[bsn]?.manifest ?: continue
+        manifest.importedPackageAndVersion().forEach forEachPkg@{ (pkg, range) ->
+          if (pkg.startsWith("java.") || pkg in providedPackages) return@forEachPkg
+          val provider = providerWithPin(pkg, range)
+          if (provider == null) {
+            unresolved.add(UnresolvedBundle(pkg, range, "import-package-indirect"))
+            return@forEachPkg
+          }
+          // Consistency-first: if this BSN is already selected (possibly at another version),
+          // keep the existing selection rather than putting a second copy on the classpath.
+          if (!selected.containsKey(provider.bsn)) {
+            selected[provider.bsn] = provider
+            worklist.add(provider.bsn)
+          }
+          providedPackages += exportsOf(provider.manifest).keys
+        }
       }
     }
 
@@ -340,6 +407,30 @@ object Resolver {
       if (bsn != hostBsn) bundles.add(toResolved(cand))
     }
 
+    // extraBundles are force-added and intentionally NOT deduplicated by BSN: OSGi permits several
+    // versions of a non-singleton bundle to coexist, so `bsn@v1` and `bsn@v2` — or a version that
+    // dependency resolution already selected at a different version — all appear. An explicit
+    // `@version` is resolved exactly (bypassing pins); a bare BSN uses the pinned-or-highest version.
+    options.extraBundles.forEach { spec ->
+      val at = spec.indexOf('@')
+      val bsn = (if (at >= 0) spec.substring(0, at) else spec).trim()
+      if (bsn.isEmpty()) return@forEach
+      val cand = if (at >= 0) {
+        val v = runCatching { Version.parseVersion(spec.substring(at + 1).trim()) }.getOrNull()
+        if (v == null) {
+          unresolved.add(UnresolvedBundle(bsn, null, "extra-bundle"))
+          return@forEach
+        }
+        workspaceByBsn[bsn]?.firstOrNull { it.manifest.bundleVersion == v }?.let { candidateFromWorkspace(it) }
+          ?: target.get(bsn, VersionRange(VersionRange.LEFT_CLOSED, v, v, VersionRange.RIGHT_CLOSED))
+            ?.let { candidateFromTarget(it) }
+      } else {
+        select(bsn, null)
+      }
+      if (cand != null) bundles.add(toResolved(cand))
+      else unresolved.add(UnresolvedBundle(bsn, null, "extra-bundle"))
+    }
+
     val moduleDependencies = bundles
       .filter { it.isWorkspace }
       .map { it.bsn }
@@ -350,7 +441,7 @@ object Resolver {
     val problems = unresolved.map { u ->
       val type = when (u.reason) {
         "fragmentHost" -> ResolveProblemType.FRAGMENT_HOST
-        "import-package" -> ResolveProblemType.MISSING_PACKAGE
+        "import-package", "import-package-indirect" -> ResolveProblemType.MISSING_PACKAGE
         else -> ResolveProblemType.MISSING_BUNDLE
       }
       ResolveProblem(type, u.bsn, u.range, u.reason)

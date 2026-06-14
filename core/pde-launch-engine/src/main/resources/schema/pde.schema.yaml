@@ -209,6 +209,24 @@ $defs:
         description: >-
           Optional list of p2 repositories used when provisioning Eclipse runtime
           artifacts from update sites.
+      extraBundles:
+        type: array
+        items:
+          type: string
+        description: >-
+          Bundle symbolic names (optionally `bsn@version`) to force onto the classpath in addition to
+          whatever dependency resolution selects. NOT deduplicated by symbolic name: since OSGi allows
+          several versions of a non-singleton bundle to coexist, listing `bsn@v1` and `bsn@v2` — or a
+          version resolution already selected differently — yields all of them. A bare `bsn` uses the
+          pinned-or-highest version; an explicit `@version` is resolved exactly (ignoring pinnedVersions).
+      pinnedVersions:
+        type: object
+        additionalProperties:
+          type: string
+        description: >-
+          Map of bundle symbolic name to exact version. When that bundle is selected by any path,
+          this version is used instead of the highest in range. Lets you force a consistent version
+          when the target platform ships the same bundle at several versions.
       mirror:
         $ref: "#/$defs/targetMirror"
         description: Mirror options used by `pde target mirror`.

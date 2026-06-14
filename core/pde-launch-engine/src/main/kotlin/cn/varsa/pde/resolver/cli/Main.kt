@@ -303,7 +303,9 @@ private fun buildCompilePlanForWarning(
     resolverOptions = ResolveOptions(
       whitelistPrefixes = emptySet(),
       preferWorkspace = hasWorkspaceModules,
-      includeHostsForFragments = true
+      includeHostsForFragments = true,
+      extraBundles = context.config.target?.extraBundles ?: emptyList(),
+      pinnedVersions = context.config.target?.pinnedVersions ?: emptyMap()
     ),
     autoStartBundles = emptyMap(),
     startupLevels = emptyMap(),
@@ -1478,7 +1480,9 @@ private fun prepareLaunch(
     resolverOptions = ResolveOptions(
       whitelistPrefixes = resolverWhitelist,
       preferWorkspace = hasWorkspaceModules,
-      includeHostsForFragments = true
+      includeHostsForFragments = true,
+      extraBundles = context.config.target?.extraBundles ?: emptyList(),
+      pinnedVersions = context.config.target?.pinnedVersions ?: emptyMap()
     ),
     requiredStartupBundles = combinedStartup.keys,
     startupLevels = combinedStartup,
@@ -3031,7 +3035,9 @@ fun compileMain(args: Array<String>): Int {
       resolverOptions = ResolveOptions(
         whitelistPrefixes = emptySet(),
         preferWorkspace = hasWorkspaceModules,
-        includeHostsForFragments = true
+        includeHostsForFragments = true,
+        extraBundles = configContext.config.target?.extraBundles ?: emptyList(),
+        pinnedVersions = configContext.config.target?.pinnedVersions ?: emptyMap()
       ),
       autoStartBundles = emptyMap(),
       startupLevels = emptyMap(),
