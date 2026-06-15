@@ -6,6 +6,7 @@ import cn.varsa.pde.resolver.algo.ResolveProblemType
 import cn.varsa.pde.resolver.algo.ResolveResult
 import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.algo.ResolvedBundle
+import cn.varsa.pde.resolver.manifest.isLazyActivated
 
 object LaunchPlanner {
   data class PlanResult(
@@ -71,14 +72,20 @@ object LaunchPlanner {
     }
 
     environment.libraryBundles.forEach { bundle ->
-      selector.registerSupplemental(bundle.bsn, bundle.version, bundle.location, bundle.isWorkspace)
+      selector.registerSupplemental(
+        bundle.bsn, bundle.version, bundle.location, bundle.isWorkspace,
+        lazyActivation = bundle.lazyActivation
+      )
     }
 
     environment.requiredStartupBundles.forEach { bsn ->
       if (!selector.contains(bsn)) {
         val rb = environment.targetIndex.get(bsn)
         if (rb != null) {
-          selector.registerSupplemental(bsn, rb.manifest.bundleVersion, rb.location, false)
+          selector.registerSupplemental(
+            bsn, rb.manifest.bundleVersion, rb.location, false,
+            lazyActivation = rb.manifest.isLazyActivated()
+          )
         } else {
           recordProblems(
             scope = "Launch Plan",
@@ -96,7 +103,9 @@ object LaunchPlanner {
 
     val bundles = selector.entries().map { rb ->
       val level = levelFor(rb.bsn)
-      val auto = autoStartFor(rb.bsn, level)
+      // Lazy-activation bundles must be armed (started with the activation policy) or Equinox never
+      // runs their activator / DS components. Force auto-start for them regardless of autoStartDefault.
+      val auto = autoStartFor(rb.bsn, level) || rb.lazyActivation
       startupLevels[rb.bsn] = level
       BundleStartSpec(
         bsn = rb.bsn,

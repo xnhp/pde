@@ -26,7 +26,8 @@ data class LaunchEnvironment(
     val bsn: String,
     val version: Version,
     val location: Path,
-    val isWorkspace: Boolean = false
+    val isWorkspace: Boolean = false,
+    val lazyActivation: Boolean = false
   )
 }
 

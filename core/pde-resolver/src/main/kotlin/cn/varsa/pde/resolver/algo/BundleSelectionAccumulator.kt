@@ -47,7 +47,8 @@ class BundleSelectionAccumulator(private val preferWorkspace: Boolean = true) {
     version: Version,
     path: Path,
     isWorkspace: Boolean = false,
-    classPathEntries: List<Path> = listOf(path)
+    classPathEntries: List<Path> = listOf(path),
+    lazyActivation: Boolean = false
   ) {
     register(
       ResolvedBundle(
@@ -58,7 +59,8 @@ class BundleSelectionAccumulator(private val preferWorkspace: Boolean = true) {
         classPathEntries = classPathEntries,
         sourceEntries = emptyList(),
         fragmentHost = null,
-        isHost = false
+        isHost = false,
+        lazyActivation = lazyActivation
       )
     )
   }

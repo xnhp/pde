@@ -32,6 +32,7 @@ import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
 import cn.varsa.pde.resolver.cli.config.DEFAULT_STARTUP_LEVELS
+import cn.varsa.pde.resolver.manifest.isLazyActivated
 import cn.varsa.pde.resolver.cli.config.LaunchLayout
 import cn.varsa.pde.resolver.cli.config.LaunchLayoutResolver
 import cn.varsa.pde.resolver.cli.config.TargetDefinitionStartupParser
@@ -1468,7 +1469,10 @@ private fun prepareLaunch(
       .map { it.key to it.value }
       .filter { (_, bundle) -> bundle.manifest.eclipseSourceBundle == null }
       .map { (version, bundle) ->
-        LaunchEnvironment.SupplementalBundle(bsn, version, bundle.location, isWorkspace = false)
+        LaunchEnvironment.SupplementalBundle(
+          bsn, version, bundle.location, isWorkspace = false,
+          lazyActivation = bundle.manifest.isLazyActivated()
+        )
       }
   }
   val devProperties = workspaceInputs.devProperties
