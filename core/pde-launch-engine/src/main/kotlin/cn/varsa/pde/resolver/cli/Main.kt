@@ -271,6 +271,9 @@ internal fun normalizeTestArgs(rawArgs: Array<String>): NormalizedTestArgs {
   )
 }
 
+internal fun inferTestConfigFile(configFileOpt: String?, normalizedTestArgs: NormalizedTestArgs): String? =
+  configFileOpt ?: normalizedTestArgs.parserArgs.firstOrNull()?.takeIf(::looksLikeYamlFile)
+
 data class PreparedLaunch(
   val command: List<String>,
   val planResult: LaunchPlanner.PlanResult,
@@ -2644,7 +2647,7 @@ private fun testMain(args: Array<String>): Int {
   parser.parse(normalizedTestArgs.parserArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
 
-  val configFile = configFileOpt ?: normalizedTestArgs.parserArgs.firstOrNull()
+  val configFile = inferTestConfigFile(configFileOpt, normalizedTestArgs)
   val requestedTests = normalizedTestArgs.requestedTests
 
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()

@@ -28,4 +28,13 @@ class TestArgsNormalizationTest {
     assertEquals(listOf("pde.yaml", "myA"), normalized.requestedTests)
     assertEquals(listOf("--config", "launch.yaml"), normalized.parserArgs.toList())
   }
+
+  @Test
+  fun `does not infer config from option-only test invocation`() {
+    val normalized = normalizeTestArgs(arrayOf("--clean"))
+
+    assertEquals(null, inferTestConfigFile(null, normalized))
+    assertEquals(emptyList(), normalized.requestedTests)
+    assertEquals(listOf("--clean"), normalized.parserArgs.toList())
+  }
 }
