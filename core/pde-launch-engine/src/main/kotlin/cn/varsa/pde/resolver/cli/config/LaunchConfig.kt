@@ -66,7 +66,10 @@ data class TestEntry(
   val runner: String? = null,
   val debug: Boolean = false,
   val programArgs: List<String> = emptyList(),
-  val vmArgs: List<String> = emptyList()
+  val vmArgs: List<String> = emptyList(),
+  val dataDir: String? = null,
+  val configDir: String? = null,
+  val workDir: String? = null
 )
 
 data class LaunchRuntime(
@@ -88,7 +91,8 @@ data class LaunchConfigContext(
   val workingDir: Path,
   val runtime: LaunchRuntime = LaunchRuntime(),
   val jvmDebug: Boolean = false,
-  val jvmDebugRequiresPdeTestApp: Boolean = false
+  val jvmDebugRequiresPdeTestApp: Boolean = false,
+  val clean: Boolean = false
 )
 
 object LaunchConfigLoader {

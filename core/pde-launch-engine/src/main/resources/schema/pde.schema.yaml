@@ -126,6 +126,21 @@ $defs:
         $ref: "#/$defs/stringArray"
         default: []
         description: Additional JVM arguments for the test runtime.
+      dataDir:
+        type: string
+        description: >-
+          Test data workspace directory override for this test preset.
+          If omitted, a temporary data directory is created.
+      configDir:
+        type: string
+        description: >-
+          Test runtime configuration directory override for this test preset.
+          If omitted, a temporary config directory is created.
+      workDir:
+        type: string
+        description: >-
+          Test working directory override for this test preset.
+          If omitted, a temporary working directory is created.
   targetMirror:
     type: object
     description: Options for `pde target mirror`.

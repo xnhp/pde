@@ -433,6 +433,11 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     fullName = "osgiDebug",
     description = "Enable OSGi debug output (-debug)"
   ).default(false)
+  val clean by parser.option(
+    ArgType.Boolean,
+    fullName = "clean",
+    description = "Launch with Eclipse -clean and rebuild OSGi framework state"
+  ).default(false)
   val configPos by parser.argument(
     ArgType.String,
     description = "YAML launch configuration (positional)"
@@ -468,7 +473,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     if (configFile == null) {
       logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
     }
-    val configContext = LaunchConfigLoader.load(discoveredConfig)
+    val configContext = LaunchConfigLoader.load(discoveredConfig).copy(clean = clean)
     val selected = selectLaunchConfig(configContext, launchName, debug)
     if (selected == null) return
     val osgiContext = applyOsgiDebug(selected, osgiDebug)
@@ -1067,7 +1072,10 @@ private fun applyTestEntry(
     application = PDE_JUNIT_PLUGIN_TEST_APPLICATION,
     splash = null,
     vmArgs = vmArgs,
-    programArgs = programArgs
+    programArgs = programArgs,
+    dataDir = selected.dataDir ?: context.runtime.dataDir,
+    configDir = selected.configDir ?: context.runtime.configDir,
+    workDir = selected.workDir ?: context.runtime.workDir
   )
   val withDebug = context.copy(
     runtime = runtime,
@@ -1559,13 +1567,20 @@ private fun assembleCommand(
     addAll(targetArgs?.programArgs ?: emptyList())
     addAll(configProgramArgs)
   }
-  val stdArgs = listOf(
-    "-clean",
-    "-os", currentOsgiOs(),
-    "-ws", currentOsgiWs(),
-    "-arch", currentOsgiArch(),
-    "-nl", "en_GB"
-  )
+  val stdArgs = mutableListOf<String>().apply {
+    if (context.clean) {
+      add("-clean")
+    }
+    addAll(listOf(
+      "-os", currentOsgiOs(),
+      "-ws", currentOsgiWs(),
+      "-arch", currentOsgiArch(),
+      "-nl", "en_GB"
+    ))
+  }
+  if (context.clean && context.runtime.configDir != null) {
+    logger.info("Using -clean with persistent configDir '${context.runtime.configDir}'; OSGi framework state will be rebuilt.")
+  }
   val launchArgs = mutableListOf<String>().apply {
     addAll(programArgs)
     addAll(stdArgs)
@@ -2621,6 +2636,11 @@ private fun testMain(args: Array<String>): Int {
   val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
   val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Prefix and stream an existing log source (label=path)").multiple()
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
+  val clean by parser.option(
+    ArgType.Boolean,
+    fullName = "clean",
+    description = "Launch with Eclipse -clean and rebuild OSGi framework state"
+  ).default(false)
   parser.parse(normalizedTestArgs.parserArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
 
@@ -2636,7 +2656,7 @@ private fun testMain(args: Array<String>): Int {
     logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
   }
 
-  val loaded = LaunchConfigLoader.load(discoveredConfig)
+  val loaded = LaunchConfigLoader.load(discoveredConfig).copy(clean = clean)
   val logFile = logFileOpt?.let { Paths.get(it) }
 
   val reports = runCatching { reportValues.map(::parseReportTarget) }
