@@ -47,9 +47,11 @@ class BundleSelectionAccumulator(private val preferWorkspace: Boolean = true) {
     version: Version,
     path: Path,
     isWorkspace: Boolean = false,
-    classPathEntries: List<Path> = listOf(path),
-    lazyActivation: Boolean = false
+    classPathEntries: List<Path> = listOf(path)
   ) {
+    // Note: supplemental (whole-target) bundles are intentionally NOT armed for lazy activation —
+    // only the workspace resolver closure is (see LaunchPlanner). Arming the whole target caused a
+    // startup activation storm of unrelated bundles (birt/h2o/debug.ui) in headless test launches.
     register(
       ResolvedBundle(
         bsn = bsn,
@@ -59,8 +61,7 @@ class BundleSelectionAccumulator(private val preferWorkspace: Boolean = true) {
         classPathEntries = classPathEntries,
         sourceEntries = emptyList(),
         fragmentHost = null,
-        isHost = false,
-        lazyActivation = lazyActivation
+        isHost = false
       )
     )
   }

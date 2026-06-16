@@ -217,4 +217,38 @@ class ResolverIndirectImportTest {
     assertTrue("resolved 2.0.0 present", fooVersions.contains(Version.parseVersion("2.0.0")))
     assertTrue("forced 1.0.0 also present", fooVersions.contains(Version.parseVersion("1.0.0")))
   }
+
+  @Test
+  fun skipsJreSystemPackagesInIndirectImportClosure() {
+    // A required bundle that imports JRE packages (javax.*) must NOT be recorded as
+    // import-package-indirect unresolved — those come from the OSGi system bundle, not a bundle.
+    val cryptoUser = BundleManifest.parse(
+      mapOf(
+        "Bundle-SymbolicName" to "needs.crypto",
+        "Bundle-Version" to "1.0.0",
+        "Import-Package" to "javax.crypto,javax.net.ssl,javax.management"
+      )
+    )
+    val appEntry = WorkspaceBundleDescriptor(
+      Paths.get("/ws/org.example.app"),
+      BundleManifest.parse(
+        mapOf(
+          "Bundle-SymbolicName" to "org.example.app",
+          "Bundle-Version" to "1.0.0",
+          "Require-Bundle" to "needs.crypto"
+        )
+      )
+    )
+    val index = TargetPlatformIndex(
+      navOf("needs.crypto" to ("1.0.0" to rb("needs.crypto", "/tp/needs.crypto", cryptoUser)))
+    )
+
+    val result = Resolver.resolve(index, listOf(appEntry), appEntry, ResolveOptions())
+
+    assertTrue("required bundle resolved", result.bundles.any { it.bsn == "needs.crypto" })
+    assertTrue(
+      "JRE/system packages are not flagged as import-package-indirect",
+      result.unresolved.none { it.reason == "import-package-indirect" }
+    )
+  }
 }

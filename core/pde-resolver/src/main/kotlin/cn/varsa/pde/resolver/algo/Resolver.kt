@@ -44,6 +44,19 @@ data class ResolveOptions(
 
 enum class BundleOrigin { WORKSPACE, TARGET }
 
+/**
+ * Packages provided by the JRE / OSGi system bundle (boot classpath), never exported by a regular
+ * bundle. The indirect-import closure must skip these — otherwise it records hundreds of bogus
+ * `import-package-indirect` unresolved entries for `javax.*`/`jdk.*`/etc.
+ */
+private val SYSTEM_PACKAGE_PREFIXES = listOf(
+  "java.", "javax.", "jakarta.", "jdk.", "sun.", "com.sun.",
+  "org.w3c.dom", "org.xml.sax", "org.ietf.jgss", "org.omg."
+)
+
+internal fun isSystemPackage(pkg: String): Boolean =
+  SYSTEM_PACKAGE_PREFIXES.any { pkg == it.trimEnd('.') || pkg.startsWith(it) }
+
 data class ResolvedBundle(
   val bsn: String,
   val version: Version,
@@ -363,7 +376,7 @@ object Resolver {
         if (!processed.add(bsn)) continue
         val manifest = selected[bsn]?.manifest ?: continue
         manifest.importedPackageAndVersion().forEach forEachPkg@{ (pkg, range) ->
-          if (pkg.startsWith("java.") || pkg in providedPackages) return@forEachPkg
+          if (isSystemPackage(pkg) || pkg in providedPackages) return@forEachPkg
           val provider = providerWithPin(pkg, range)
           if (provider == null) {
             unresolved.add(UnresolvedBundle(pkg, range, "import-package-indirect"))

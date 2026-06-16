@@ -6,7 +6,6 @@ import cn.varsa.pde.resolver.algo.ResolveProblemType
 import cn.varsa.pde.resolver.algo.ResolveResult
 import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.algo.ResolvedBundle
-import cn.varsa.pde.resolver.manifest.isLazyActivated
 
 object LaunchPlanner {
   data class PlanResult(
@@ -72,20 +71,14 @@ object LaunchPlanner {
     }
 
     environment.libraryBundles.forEach { bundle ->
-      selector.registerSupplemental(
-        bundle.bsn, bundle.version, bundle.location, bundle.isWorkspace,
-        lazyActivation = bundle.lazyActivation
-      )
+      selector.registerSupplemental(bundle.bsn, bundle.version, bundle.location, bundle.isWorkspace)
     }
 
     environment.requiredStartupBundles.forEach { bsn ->
       if (!selector.contains(bsn)) {
         val rb = environment.targetIndex.get(bsn)
         if (rb != null) {
-          selector.registerSupplemental(
-            bsn, rb.manifest.bundleVersion, rb.location, false,
-            lazyActivation = rb.manifest.isLazyActivated()
-          )
+          selector.registerSupplemental(bsn, rb.manifest.bundleVersion, rb.location, false)
         } else {
           recordProblems(
             scope = "Launch Plan",
