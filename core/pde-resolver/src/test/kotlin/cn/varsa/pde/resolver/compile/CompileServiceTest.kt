@@ -50,7 +50,8 @@ class CompileServiceTest {
     assertEquals("org.example.test", spec.bsn)
     assertEquals("workspace", spec.origin)
     assertEquals(wsPath.toString(), spec.bundlePath)
-    assertTrue(spec.classpath.contains(wsPath.toString()))
+    // classpath entries are absolutized+normalized by CompileService; mirror that (bundlePath/sourceRoots are raw).
+    assertTrue(spec.classpath.contains(wsPath.toAbsolutePath().normalize().toString()))
     assertTrue(spec.sourceRoots.contains(wsPath.resolve("src").toString()))
     assertEquals(listOf("META-INF/", ".", "icons/"), spec.resourceIncludes)
     assertEquals(listOf("**/*.bak"), spec.resourceExcludes)
@@ -134,7 +135,10 @@ class CompileServiceTest {
 
     val spec = CompileService.buildSpecs(plan, listOf(wsDesc)).specs.first { it.bsn == "org.example.a" }
 
-    assertTrue(spec.classpath.any { it == tpPath.toString() }, "classpath should include target bundle dependency")
+    assertTrue(
+      spec.classpath.contains(tpPath.toAbsolutePath().normalize().toString()),
+      "classpath should include target bundle dependency"
+    )
   }
 
   @Test
