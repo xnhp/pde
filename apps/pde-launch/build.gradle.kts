@@ -28,4 +28,25 @@ application {
   applicationName = "pde"
 }
 
+val mcpStartScript = layout.buildDirectory.file("mcp/pde-mcp")
+
+tasks.register("mcpStartScripts") {
+  notCompatibleWithConfigurationCache("Generates a local absolute-classpath launcher script.")
+  dependsOn(tasks.named("jar"))
+  inputs.files(tasks.named<Jar>("jar"), configurations.runtimeClasspath)
+  outputs.file(mcpStartScript)
+  doLast {
+    val classpath = (files(tasks.named<Jar>("jar")) + configurations.runtimeClasspath.get())
+      .joinToString(":") { it.absolutePath }
+    val script = mcpStartScript.get().asFile
+    script.parentFile.mkdirs()
+    script.writeText(
+      """#!/usr/bin/env sh
+exec java -cp '$classpath' cn.varsa.pde.launch.PdeMcpServerKt "$@"
+"""
+    )
+    script.setExecutable(true)
+  }
+}
+
 // toolchain/version configured in the root build

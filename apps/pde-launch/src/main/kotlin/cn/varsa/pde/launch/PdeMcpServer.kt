@@ -5,6 +5,8 @@ import cn.varsa.cli.core.runCliMcpStdioServer
 import kotlinx.coroutines.runBlocking
 
 fun runPdeMcpServer() = runBlocking {
+  System.setProperty("org.slf4j.simpleLogger.logFile", "System.err")
+  System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "warn")
   runCliMcpStdioServer(
     root = pdeMcpWorkflowCommand,
     name = "pde-cli",
