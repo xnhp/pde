@@ -13,6 +13,7 @@ dependencies {
   implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
   implementation("org.yaml:snakeyaml:2.6")
   implementation("cn.varsa:cli-core:0.1.0-SNAPSHOT")
+  implementation("io.modelcontextprotocol:kotlin-sdk-server:0.13.0")
   implementation(project(":remote-test-runner"))
   implementation(project(":pde-remote-test-runtime"))
   implementation(project(":pde-resolver"))

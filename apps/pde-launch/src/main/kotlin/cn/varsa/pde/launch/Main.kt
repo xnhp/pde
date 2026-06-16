@@ -346,10 +346,10 @@ internal val pdeCommand = CliCommandGroup(
     ),
     CliCommandLeaf(
       name = "mcp",
-      description = "Run MCP server exposing PDE CLI commands as tools",
+      description = "Run MCP server over stdin/stdout exposing PDE workflow tools",
       handler = { args ->
         CliArgs.requireArgCount(args, 0, "pde mcp")
-        runPdeMcpServer(PdeMcpServerConfig.fromEnvironment())
+        runPdeMcpServer()
         0
       },
       mixinStandardHelpOptions = false

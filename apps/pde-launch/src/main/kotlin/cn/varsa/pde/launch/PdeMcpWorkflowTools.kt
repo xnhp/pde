@@ -16,7 +16,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
-private val pdeMcpWorkflowCommand = CliCommandGroup(
+internal val pdeMcpWorkflowCommand = CliCommandGroup(
   name = "pde",
   description = "PDE MCP workflow tools",
   children = listOf(
