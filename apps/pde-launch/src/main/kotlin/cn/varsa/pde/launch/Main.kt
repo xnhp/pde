@@ -1,14 +1,17 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.cli.core.CliArgs
 import cn.varsa.cli.core.CliCommandGroup
 import cn.varsa.cli.core.CliCommandLeaf
 import cn.varsa.cli.core.CliMain
 import cn.varsa.cli.core.CliOption
 import cn.varsa.cli.core.CliPositionalArg
+import cn.varsa.cli.core.CliMcpRegistrationConfig
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
 import pde.format.main as formatMain
 import picocli.CommandLine
+import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlin.system.exitProcess
 
 private fun forwardToLaunch(commandName: String, vararg prefix: String): (Array<String>) -> Int = { args ->
@@ -175,7 +178,7 @@ private val apiFiltersAddFromReportOptions = listOf(
   CliOption(listOf("--allow-empty-selection"), "Return success when selection yields no problems")
 )
 
-private val pdeCommand = CliCommandGroup(
+internal val pdeCommand = CliCommandGroup(
   name = "pde",
   description = "PDE tooling CLI",
   children = listOf(
@@ -340,6 +343,16 @@ private val pdeCommand = CliCommandGroup(
       name = "schema",
       description = "Print the active pde schema path",
       handler = { args -> SchemaCommand.main(args) }
+    ),
+    CliCommandLeaf(
+      name = "mcp",
+      description = "Run MCP server exposing PDE CLI commands as tools",
+      handler = { args ->
+        CliArgs.requireArgCount(args, 0, "pde mcp")
+        runPdeMcpServer(PdeMcpServerConfig.fromEnvironment())
+        0
+      },
+      mixinStandardHelpOptions = false
     )
   )
 )
@@ -351,3 +364,7 @@ fun main(args: Array<String>) {
 }
 
 internal fun createPdeCommandLine(): CommandLine = CliMain.createCommandLine(pdeCommand)
+
+fun Server.registerPdeTools(config: CliMcpRegistrationConfig = CliMcpRegistrationConfig()) {
+  this.registerPdeWorkflowTools(config)
+}
