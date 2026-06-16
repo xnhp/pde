@@ -59,7 +59,6 @@ For all commands, refer to their subcommand `--help`.
 # Common warnings
 
 - `Using lowercase profile registry path ... profile.profile`
-- `Workspace bundles appear out of date ... run pde compile --execute`
 - `Launch plan has unresolved bundles/dependencies; continuing anyway`
 
 These warnings do not always block test execution.
