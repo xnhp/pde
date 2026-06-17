@@ -108,6 +108,9 @@ Commands:
 ```text
 Usage: pde target install
 Resolve/prepare target platform state
+
+Options:
+  --copy-path   Copy target profile path to clipboard after successful install
 ```
 
 ## `pde target mirror`
@@ -123,4 +126,3 @@ Mirror update sites from a .target definition
 Usage: pde test
 Run PDE test launch
 ```
-

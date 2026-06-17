@@ -47,6 +47,9 @@ import kotlinx.cli.multiple
 import kotlinx.cli.optional
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import java.awt.GraphicsEnvironment
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.net.URI
 import java.net.SocketTimeoutException
@@ -1792,6 +1795,20 @@ private fun resolveProfilePath(context: LaunchConfigContext): Path? {
   return preferred
 }
 
+private fun copyStringToClipboard(value: String): Boolean {
+  return try {
+    if (GraphicsEnvironment.isHeadless()) {
+      return false
+    }
+    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+    val selection = StringSelection(value)
+    clipboard.setContents(selection, selection)
+    true
+  } catch (ex: Throwable) {
+    false
+  }
+}
+
 private fun buildTargetInstallerArgs(context: LaunchConfigContext, targetDefinition: Path): List<String> {
   val targetConfig = context.config.target
     ?: error("Missing target config while building installer args. See docs/config-yaml.md#target.")
@@ -2209,7 +2226,11 @@ private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts
   RuntimeLayoutWriter.write(layout, plan, ctx, opts, defaults)
 }
 
-internal fun targetMain(args: Array<String>): Int {
+internal fun targetMain(
+  args: Array<String>,
+  runInstallerLauncher: (installerJar: Path, installerArgs: List<String>, workingDir: Path, logFile: Path?) -> Int = ::runTargetInstallerLauncher,
+  clipboardCopier: (String) -> Boolean = ::copyStringToClipboard
+): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
   val parser = ArgParser("pde target install ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
@@ -2235,6 +2256,11 @@ internal fun targetMain(args: Array<String>): Int {
     ArgType.Boolean,
     fullName = "debug",
     description = "Enable DEBUG logging"
+  ).default(false)
+  val copyPath by parser.option(
+    ArgType.Boolean,
+    fullName = "copy-path",
+    description = "Copy target profile path to clipboard after successful install"
   ).default(false)
   parser.parse(normalizedArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
@@ -2286,13 +2312,22 @@ internal fun targetMain(args: Array<String>): Int {
   }
   val installerArgs = buildTargetInstallerArgs(issueContext, targetDefinition)
   val logFile = logFileOpt?.let { Paths.get(it) }
-  val exit = runTargetInstallerLauncher(
-    installerJar = installerJar,
-    installerArgs = installerArgs,
-    workingDir = issueContext.baseDir,
-    logFile = logFile
-  )
+  val exit = runInstallerLauncher(installerJar, installerArgs, issueContext.baseDir, logFile)
   if (exit != 0) error("Target installer exited with code $exit")
+  if (copyPath) {
+    val profilePath = resolveProfilePath(issueContext)
+    if (profilePath == null) {
+      logger.warning("Unable to resolve target profile path for clipboard copy")
+    } else {
+      val absolutePath = profilePath.toAbsolutePath().normalize()
+      val didCopy = clipboardCopier(absolutePath.toString())
+      if (didCopy) {
+        logger.info("Copied target profile path to clipboard: $absolutePath")
+      } else {
+        logger.warning("Failed to copy target profile path to clipboard: $absolutePath")
+      }
+    }
+  }
   return 0
 }
 
