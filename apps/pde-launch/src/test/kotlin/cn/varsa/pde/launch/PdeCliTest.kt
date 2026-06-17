@@ -196,7 +196,8 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("pde compile"))
-    assertTrue(output.contains("--execute"))
+    assertTrue(!output.contains("--execute"))
+    assertTrue(output.contains("--full-rebuild"))
   }
 
   @Test

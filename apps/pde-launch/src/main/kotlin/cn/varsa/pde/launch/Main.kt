@@ -133,10 +133,9 @@ private val compileOptions = listOf(
   CliOption(listOf("--workspace", "-w"), "Workspace bundle directory (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--framework"), "Framework BSN", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.osgi"),
   CliOption(listOf("--json"), "Emit compile specs as JSON"),
-  CliOption(listOf("--execute"), "Run ECJ compilation (default when using a launch config)"),
   CliOption(listOf("--full-rebuild"), "Force full rebuild of all workspace bundles (skip incremental cache)"),
   CliOption(listOf("--debug"), "Emit debug info (lines/vars/source)"),
-  CliOption(listOf("--results-json"), "Write compile results (when --execute) to JSON file", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--results-json"), "Write compile results to JSON file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundles-info-out"), "Write bundles.info reflecting compiled workspace outputs", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--runtime-out"), "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory", takesValue = true, valueLabel = "String")

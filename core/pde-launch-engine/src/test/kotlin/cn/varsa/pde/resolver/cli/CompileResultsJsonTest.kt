@@ -29,7 +29,6 @@ class CompileResultsJsonTest {
     try {
       compileMain(
         arrayOf(
-          "--execute",
           "--config", configFile.toString(),
           "--results-json", resultsFile.absolutePath
         )

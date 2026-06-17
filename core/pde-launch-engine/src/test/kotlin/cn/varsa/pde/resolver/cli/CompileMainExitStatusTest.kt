@@ -20,7 +20,6 @@ class CompileMainExitStatusTest {
 
     val exitCode = compileMain(
       arrayOf(
-        "--execute",
         "--config", configFile.toString()
       )
     )
