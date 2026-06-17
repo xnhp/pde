@@ -2317,14 +2317,20 @@ internal fun targetMain(
   if (copyPath) {
     val profilePath = resolveProfilePath(issueContext)
     if (profilePath == null) {
-      logger.warning("Unable to resolve target profile path for clipboard copy")
+      val message = "Unable to resolve target profile path for clipboard copy"
+      logger.warning(message)
+      println(message)
     } else {
       val absolutePath = profilePath.toAbsolutePath().normalize()
       val didCopy = clipboardCopier(absolutePath.toString())
       if (didCopy) {
-        logger.info("Copied target profile path to clipboard: $absolutePath")
+        val message = "Copied target profile path to clipboard: $absolutePath"
+        logger.info(message)
+        println(message)
       } else {
-        logger.warning("Failed to copy target profile path to clipboard: $absolutePath")
+        val message = "Failed to copy target profile path to clipboard: $absolutePath"
+        logger.warning(message)
+        println(message)
       }
     }
   }
