@@ -390,6 +390,8 @@ private fun pdeMcpHelpText(): String = """
       }
     }
   }
+
+  ${pdeMcpWorkflowCommand.cliMcpToolsListText()}
 """.trimIndent()
 
 internal fun runPde(args: Array<String>): Int = createPdeCommandLine().execute(*args)
