@@ -4,9 +4,10 @@ import cn.varsa.cli.core.CliArgs
 import cn.varsa.cli.core.CliCommandGroup
 import cn.varsa.cli.core.CliCommandLeaf
 import cn.varsa.cli.core.CliMain
+import cn.varsa.cli.core.CliMcpRegistrationConfig
 import cn.varsa.cli.core.CliOption
 import cn.varsa.cli.core.CliPositionalArg
-import cn.varsa.cli.core.CliMcpRegistrationConfig
+import cn.varsa.cli.core.cliMcpToolsListText
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
 import pde.format.main as formatMain
@@ -343,18 +344,53 @@ internal val pdeCommand = CliCommandGroup(
       description = "Print the active pde schema path",
       handler = { args -> SchemaCommand.main(args) }
     ),
-    CliCommandLeaf(
+    CliCommandGroup(
       name = "mcp",
-      description = "Run MCP server over stdin/stdout exposing PDE workflow tools",
-      handler = { args ->
-        CliArgs.requireArgCount(args, 0, "pde mcp")
+      description = pdeMcpHelpText(),
+      handler = {
         runPdeMcpServer()
         0
       },
-      mixinStandardHelpOptions = false
+      mixinStandardHelpOptions = true,
+      children = listOf(
+        CliCommandGroup(
+          name = "tools",
+          description = "Inspect PDE MCP tools",
+          children = listOf(
+            CliCommandLeaf(
+              name = "list",
+              description = "List implemented MCP tools and parameters",
+              handler = { args ->
+                CliArgs.requireArgCount(args, 0, "pde mcp tools list")
+                println(pdeMcpWorkflowCommand.cliMcpToolsListText())
+                0
+              },
+              mixinStandardHelpOptions = true
+            )
+          )
+        )
+      )
     )
   )
 )
+
+private fun pdeMcpHelpText(): String = """
+  Run MCP server over stdin/stdout exposing PDE workflow tools.
+
+  Use `pde mcp tools list` to inspect available MCP tools and their parameters.
+
+  Opencode example:
+  {
+    "mcp": {
+      "pde": {
+        "type": "local",
+        "command": ["/path/to/pde", "mcp"],
+        "cwd": "/path/to/workspace",
+        "enabled": true
+      }
+    }
+  }
+""".trimIndent()
 
 internal fun runPde(args: Array<String>): Int = createPdeCommandLine().execute(*args)
 
