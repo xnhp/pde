@@ -78,7 +78,7 @@ echo "Compiling bundle"
 JAVAC_ARGS="$BUILD_DIR/javac-bundle-args.txt"
 {
   echo "--release"
-  echo "17"
+  echo "21"
   echo "-cp"
   printf '"%s"\n' "$CLASSPATH"
   echo "-d"
@@ -176,7 +176,7 @@ echo "Creating runtime archive"
 jar cf "$LAUNCHER_BUILD_DIR/runtime.zip" -C "$RUNTIME_DIR" .
 
 echo "Building launcher"
-"$JAVAC_BIN" --release 17 \
+"$JAVAC_BIN" --release 21 \
   -d "$LAUNCHER_BUILD_DIR/classes" \
   "$REPO_ROOT/launcher/src/org/knime/targetinstaller/launcher/Bootstrap.java"
 
