@@ -55,6 +55,15 @@ if [[ -z "$ECLIPSE_PLUGINS_DIR" ]]; then
   ECLIPSE_PLUGINS_DIR="$BOOTSTRAP_RUNTIME_DIR/plugins"
 fi
 
+# Fail fast on a bad SDK/runtime path. The "$ECLIPSE_PLUGINS_DIR"/*.jar glob below has no nullglob,
+# so an unmatched pattern falls through as a literal and javac then emits 100+ misleading
+# "package org.eclipse.* does not exist" errors instead of a clear cause.
+if [[ ! -d "$ECLIPSE_PLUGINS_DIR" ]] || ! compgen -G "$ECLIPSE_PLUGINS_DIR/*.jar" >/dev/null; then
+  echo "ERROR: no Eclipse plugin jars found in '$ECLIPSE_PLUGINS_DIR'." >&2
+  echo "       Point ECLIPSE_SDK (or the 'eclipseSdk' Gradle property) at a real Eclipse SDK install." >&2
+  exit 1
+fi
+
 function download_dep() {
   local url="$1"
   local out="$2"
