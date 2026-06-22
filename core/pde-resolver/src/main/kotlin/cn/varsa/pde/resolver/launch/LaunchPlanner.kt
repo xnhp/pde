@@ -96,7 +96,9 @@ object LaunchPlanner {
 
     val bundles = selector.entries().map { rb ->
       val level = levelFor(rb.bsn)
-      val auto = autoStartFor(rb.bsn, level)
+      // Lazy-activation bundles must be armed (started with the activation policy) or Equinox never
+      // runs their activator / DS components. Force auto-start for them regardless of autoStartDefault.
+      val auto = autoStartFor(rb.bsn, level) || rb.lazyActivation
       startupLevels[rb.bsn] = level
       BundleStartSpec(
         bsn = rb.bsn,

@@ -30,6 +30,8 @@ data class TargetConfig(
   val installer: String? = null,
   val eclipseRuntimeCache: String? = null,
   val p2Repositories: List<String>? = null,
+  val extraBundles: List<String>? = null,
+  val pinnedVersions: Map<String, String>? = null,
   val mirror: TargetMirrorConfig? = null
 )
 
@@ -226,8 +228,8 @@ object LaunchConfigLoader {
 internal val DEFAULT_STARTUP_LEVELS = mapOf(
   "org.eclipse.osgi" to 1,
   "org.eclipse.equinox.simpleconfigurator" to 1,
-  "org.eclipse.equinox.ds" to 1,
-  "org.eclipse.m2e.logback.configuration" to 4,
+  // DS runtime is org.apache.felix.scr (below); org.eclipse.equinox.ds was removed from modern
+  // Eclipse. org.eclipse.m2e.logback.configuration is an IDE-only bundle absent from real targets.
   "org.apache.felix.gogo.runtime" to 4,
   "org.eclipse.equinox.event" to 2,
   "org.eclipse.core.runtime" to 4,
