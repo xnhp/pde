@@ -26,13 +26,8 @@ tasks.wrapper {
   gradleVersion = providers.gradleProperty("gradleVersion").get()
 }
 
-tasks.register<Exec>("buildTargetInstallerLauncher") {
+tasks.register("buildTargetInstallerLauncher") {
   description = "Build the standalone target-installer launcher jar"
   group = "build"
-  workingDir = file("tools/target-installer")
-  providers.gradleProperty("eclipseSdk").orNull?.let { environment("ECLIPSE_SDK", it) }
-  providers.gradleProperty("p2Repositories").orNull?.let { environment("P2_REPOSITORIES", it) }
-  providers.gradleProperty("runtimeZip").orNull?.let { environment("RUNTIME_ZIP", it) }
-  commandLine("bash", "scripts/build-launcher.sh")
-  outputs.file(file("tools/target-installer/dist/target-installer-launcher.jar"))
+  dependsOn(":target-installer:targetInstallerLauncherJar")
 }

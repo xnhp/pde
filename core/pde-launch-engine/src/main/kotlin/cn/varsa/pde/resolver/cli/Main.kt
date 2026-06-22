@@ -83,6 +83,8 @@ internal const val API_ANALYZER_BASELINE_PROFILE_ID = "api-analyzer-baseline"
 internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
+private const val TARGET_INSTALLER_LAUNCHER_JAR = "target-installer-launcher.jar"
+private const val TARGET_INSTALLER_OVERRIDE_PROPERTY = "pde.targetInstaller"
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-launch-engine")
 private fun createFormatter(useColor: Boolean) = object : Formatter() {
@@ -1809,6 +1811,49 @@ private fun copyStringToClipboard(value: String): Boolean {
   }
 }
 
+private fun resolveTargetInstallerJar(context: LaunchConfigContext): Path? {
+  val configured = context.config.target?.installer?.takeUnless { it.isBlank() }
+  if (configured != null) {
+    return context.baseDir.resolve(configured).normalize()
+  }
+  System.getProperty(TARGET_INSTALLER_OVERRIDE_PROPERTY)?.takeUnless { it.isBlank() }?.let {
+    return Paths.get(it).toAbsolutePath().normalize()
+  }
+  return findBundledTargetInstallerJar()
+}
+
+private fun findBundledTargetInstallerJar(): Path? {
+  val classPath = System.getProperty("java.class.path").orEmpty()
+  return classPath.split(File.pathSeparatorChar)
+    .asSequence()
+    .mapNotNull { entry -> entry.takeUnless { it.isBlank() }?.let(Paths::get) }
+    .flatMap { entry ->
+      sequenceOf(
+        entry.takeIf { it.fileName?.toString() == TARGET_INSTALLER_LAUNCHER_JAR },
+        entry.parent?.resolve(TARGET_INSTALLER_LAUNCHER_JAR)
+      ).filterNotNull()
+    }
+    .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
+    ?.toAbsolutePath()
+    ?.normalize()
+}
+
+private fun validateTargetInstallerJar(installerJar: Path, missingMessage: String): Boolean {
+  if (Files.isDirectory(installerJar)) {
+    logger.severe("target.installer must point to the target-installer launcher jar, not a directory: $installerJar")
+    return false
+  }
+  if (!Files.exists(installerJar)) {
+    logger.severe(missingMessage)
+    return false
+  }
+  if (!installerJar.toString().lowercase(Locale.ROOT).endsWith(".jar")) {
+    logger.severe("target.installer must be a launcher jar: $installerJar")
+    return false
+  }
+  return true
+}
+
 private fun buildTargetInstallerArgs(context: LaunchConfigContext, targetDefinition: Path): List<String> {
   val targetConfig = context.config.target
     ?: error("Missing target config while building installer args. See docs/config-yaml.md#target.")
@@ -1888,22 +1933,12 @@ private fun provisionBaselineTargetProfile(
     logger.severe("Missing target config; cannot provision baseline target definition for api-analyze.")
     return null
   }
-  val installerPath = targetConfig.installer?.takeUnless { it.isBlank() }
-  if (installerPath == null) {
-    logger.severe("target.installer is required to use a .target baseline in api-analyze.")
+  val installerJar = resolveTargetInstallerJar(context)
+  if (installerJar == null) {
+    logger.severe("target.installer is required to use a .target baseline in api-analyze unless the packaged target installer is available.")
     return null
   }
-  val installerJar = context.baseDir.resolve(installerPath).normalize()
-  if (Files.isDirectory(installerJar)) {
-    logger.severe("target.installer must point to a launcher jar, not a directory: $installerJar")
-    return null
-  }
-  if (!Files.exists(installerJar)) {
-    logger.severe("target.installer does not exist: $installerJar")
-    return null
-  }
-  if (!installerJar.toString().lowercase(Locale.ROOT).endsWith(".jar")) {
-    logger.severe("target.installer must be a launcher jar: $installerJar")
+  if (!validateTargetInstallerJar(installerJar, "target.installer does not exist: $installerJar")) {
     return null
   }
   val bundlePoolValue = targetConfig.bundlePool?.takeUnless { it.isBlank() }
@@ -2284,22 +2319,12 @@ internal fun targetMain(
     )
     return 2
   }
-  val installerPath = targetConfig.installer?.takeUnless { it.isBlank() }
-  if (installerPath == null) {
-    logger.severe("target.installer is required in ${issueContext.file}")
+  val installerJar = resolveTargetInstallerJar(issueContext)
+  if (installerJar == null) {
+    logger.severe("target.installer is required in ${issueContext.file} unless the packaged target installer is available")
     return 2
   }
-  val installerJar = issueContext.baseDir.resolve(installerPath).normalize()
-  if (Files.isDirectory(installerJar)) {
-    logger.severe("target.installer must point to the target-installer launcher jar, not a directory: $installerJar")
-    return 2
-  }
-  if (!Files.exists(installerJar)) {
-    logger.severe("target.installer does not exist: $installerJar")
-    return 2
-  }
-  if (!installerJar.toString().lowercase(Locale.ROOT).endsWith(".jar")) {
-    logger.severe("target.installer must be a launcher jar: $installerJar")
+  if (!validateTargetInstallerJar(installerJar, "target.installer does not exist: $installerJar")) {
     return 2
   }
   if (launchOpt != null) {

@@ -4,6 +4,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.logging.Handler
 import java.util.logging.Level
 import java.util.logging.LogRecord
@@ -73,5 +74,43 @@ class TargetInstallCopyPathTest {
       records.any { it.level == Level.INFO && it.message.contains(expected) },
       "Expected info message with copied path, got: ${records.joinToString { "${it.level}:${it.message}" }}"
     )
+  }
+
+  @Test
+  fun `target-install uses packaged installer when config omits installer`() {
+    val baseDir = tmp.newFolder("cfg-bundled").toPath()
+    val configFile = baseDir.resolve("pde.yaml")
+    Files.writeString(
+      configFile,
+      """
+        target:
+          definition: example.target
+        bundles: []
+      """.trimIndent()
+    )
+    Files.writeString(baseDir.resolve("example.target"), "<target></target>")
+    val packagedInstaller = tmp.newFile("target-installer-launcher.jar").toPath()
+    var invokedInstaller: Path? = null
+
+    val previous = System.getProperty("pde.targetInstaller")
+    try {
+      System.setProperty("pde.targetInstaller", packagedInstaller.toString())
+      val exit = targetMain(
+        arrayOf("--config", configFile.toString()),
+        runInstallerLauncher = { installerJar, _, _, _ ->
+          invokedInstaller = installerJar
+          0
+        }
+      )
+      assertEquals(0, exit)
+    } finally {
+      if (previous == null) {
+        System.clearProperty("pde.targetInstaller")
+      } else {
+        System.setProperty("pde.targetInstaller", previous)
+      }
+    }
+
+    assertEquals(packagedInstaller.toAbsolutePath().normalize(), invokedInstaller)
   }
 }

@@ -10,7 +10,7 @@ Basic configuration is put into `pde.yaml`:
 ```
 target:
   definition: /home/ben/Desktop/ap-dev-setup/target/KNIME-AP-internal.target
-  installer: /home/ben/repos/pde/tools/target-installer/dist/target-installer-launcher.jar
+  # installer is optional when using the packaged pde distribution
   bundlePool: /home/ben/Desktop/issues/bundle-pool/
 
 # the "workspace"
@@ -116,15 +116,19 @@ This repository contains:
 
 ## Target installer
 
-The standalone target-installer lives under `tools/target-installer`.
+The target-installer lives under `tools/target-installer` and is built as a
+Gradle-managed subproject. It remains a standalone Equinox/OSGi application at
+runtime because Eclipse p2 provisioning requires OSGi services.
 
-- Build the launcher jar: `./gradlew buildTargetInstallerLauncher`
+- Build the launcher jar: `./gradlew :target-installer:targetInstallerLauncherJar`
   - Configure either:
     - `runtimeZip=/path/to/eclipse-runtime.zip` (preferred; no local Eclipse SDK required), or
     - `eclipseSdk=/path/to/eclipse-sdk` (fallback)
   - Optional:
     - `p2Repositories=https://download.eclipse.org/releases/2024-12`
-  - Output: `tools/target-installer/dist/target-installer-launcher.jar`
+  - Output: `tools/target-installer/build/libs/target-installer-launcher.jar`
+- The `pde` distribution includes this launcher jar under `lib/`, so
+  `target.installer` can be omitted when running from the packaged CLI.
 
 ## Versioning
 

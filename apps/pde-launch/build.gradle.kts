@@ -3,6 +3,8 @@ plugins {
   application
 }
 
+evaluationDependsOn(":target-installer")
+
 repositories {
   mavenCentral()
 }
@@ -26,6 +28,23 @@ dependencies {
 application {
   mainClass = "cn.varsa.pde.launch.MainKt"
   applicationName = "pde"
+}
+
+distributions {
+  main {
+    contents {
+      val targetInstallerProject = project(":target-installer")
+      from(targetInstallerProject.layout.buildDirectory.file("libs/target-installer-launcher.jar")) {
+        into("lib")
+      }
+    }
+  }
+}
+
+listOf("assembleDist", "distTar", "distZip", "installDist").forEach { taskName ->
+  tasks.named(taskName) {
+    dependsOn(":target-installer:targetInstallerLauncherJar")
+  }
 }
 
 val mcpStartScript = layout.buildDirectory.file("mcp/pde-mcp")
