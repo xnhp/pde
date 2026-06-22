@@ -199,29 +199,48 @@ object Resolver {
       }
     }
 
+    // Expand a Require-Bundle closure. Selection is "first constraint wins", with selection split
+    // from recursion (via `closureProcessed`) so a bundle pre-selected in phase 1 below still has
+    // its own requires expanded.
+    val closureProcessed = HashSet<String>()
     fun addRequireWithClosure(bsn: String, range: VersionRange) {
       if (!selected.containsKey(bsn)) {
         val cand = select(bsn, range)
-        if (cand != null) {
-          selected.putIfAbsent(bsn, cand)
-          val requiresAll = if (cand.origin == BundleOrigin.WORKSPACE) {
-            cand.manifest.requiredBundleAndVersion(includeOptional = true) +
-              cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
-          } else {
-            val nav = target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
-            nav + cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
-          }
-          requiresAll.forEach { (childBsn, childRange) -> addRequireWithClosure(childBsn, childRange) }
-        } else {
+        if (cand == null) {
           unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
+          return
         }
+        selected[bsn] = cand
       }
+      if (!closureProcessed.add(bsn)) return
+      val cand = selected[bsn] ?: return
+      val requiresAll = if (cand.origin == BundleOrigin.WORKSPACE) {
+        cand.manifest.requiredBundleAndVersion(includeOptional = true) +
+          cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
+      } else {
+        val nav = target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
+        nav + cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
+      }
+      requiresAll.forEach { (childBsn, childRange) -> addRequireWithClosure(childBsn, childRange) }
     }
 
     val requires = LinkedHashMap(entry.manifest.requiredBundleAndVersion(includeOptional = true))
     fragmentHostCandidate?.manifest?.requiredBundleAndVersion(includeOptional = true)?.forEach { (bsn, range) ->
       requires.putIfAbsent(bsn, range)
     }
+    // Phase 1: lock the entry's (and fragment host's) DIRECT Require-Bundle constraints at their own
+    // ranges before expanding the transitive closure. When the target ships several versions of a
+    // library, a transitive path that requires it at a wider range (e.g. another bundle wanting
+    // Guava 33 while this one declares `[19,20)`) would otherwise grab the global-highest version
+    // first, and this bundle would compile against a newer library than its declared range binds at
+    // launch -> NoSuchMethodError. Equinox wires each bundle to its own range, so the compile
+    // classpath must match.
+    requires.forEach { (bsn, range) ->
+      if (!selected.containsKey(bsn)) {
+        select(bsn, range)?.let { selected[bsn] = it }
+      }
+    }
+    // Phase 2: expand the full transitive closure (recurses even into phase-1-selected bundles).
     requires.forEach { (bsn, range) -> addRequireWithClosure(bsn, range) }
 
     val imports = LinkedHashMap(entry.manifest.importedPackageAndVersion())

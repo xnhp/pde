@@ -251,4 +251,53 @@ class ResolverIndirectImportTest {
       result.unresolved.none { it.reason == "import-package-indirect" }
     )
   }
+
+  @Test
+  fun entrysOwnRequireRangeWinsOverWiderTransitiveRange() {
+    // Mirrors the Guava skew: `app` requires `mid` (which requires com.foo [2.0,3.0)) AND com.foo
+    // [1.0,2.0), with `mid` declared first. A greedy first-wins closure reaches com.foo via mid's
+    // wider range and binds 2.0 before app's own [1.0,2.0) is applied, so app would compile against
+    // 2.0 while equinox launches it against 1.0 (NoSuchMethodError). app must compile against the
+    // version it declares.
+    fun foo(version: String) = BundleManifest.parse(
+      mapOf(
+        "Bundle-SymbolicName" to "com.foo",
+        "Bundle-Version" to version,
+        "Export-Package" to "com.foo;version=\"$version\""
+      )
+    )
+    val mid = BundleManifest.parse(
+      mapOf(
+        "Bundle-SymbolicName" to "mid",
+        "Bundle-Version" to "1.0.0",
+        "Require-Bundle" to "com.foo;bundle-version=\"[2.0.0,3.0.0)\""
+      )
+    )
+    val app = WorkspaceBundleDescriptor(
+      Paths.get("/ws/app"),
+      BundleManifest.parse(
+        mapOf(
+          "Bundle-SymbolicName" to "app",
+          "Bundle-Version" to "1.0.0",
+          "Require-Bundle" to "mid;bundle-version=\"[1.0.0,2.0.0)\",com.foo;bundle-version=\"[1.0.0,2.0.0)\""
+        )
+      )
+    )
+    val index = TargetPlatformIndex(
+      navOf(
+        "mid" to ("1.0.0" to rb("mid", "/tp/mid", mid)),
+        "com.foo" to ("1.0.0" to rb("com.foo", "/tp/foo-1.0.0", foo("1.0.0"))),
+        "com.foo" to ("2.0.0" to rb("com.foo", "/tp/foo-2.0.0", foo("2.0.0")))
+      )
+    )
+
+    val result = Resolver.resolve(index, listOf(app), app, ResolveOptions())
+
+    assertTrue("mid resolved", result.bundles.any { it.bsn == "mid" })
+    assertEquals(
+      "com.foo selected at app's own declared range [1.0,2.0), not the global-highest 2.0",
+      Version.parseVersion("1.0.0"),
+      result.bundles.single { it.bsn == "com.foo" }.version
+    )
+  }
 }
