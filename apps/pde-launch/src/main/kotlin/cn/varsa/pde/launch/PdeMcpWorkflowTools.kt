@@ -26,7 +26,7 @@ internal val pdeMcpWorkflowCommand = CliCommandGroup(
       tool = CliToolBinding(
         id = "pde_compile_workspace",
         title = "Compile PDE workspace",
-        description = "Compile PDE Java bundles for a workspace or launch configuration.",
+        description = "Compile PDE Java bundles for a workspace or launch configuration. The config may set target.extraBundles to add already-installed target/workspace bundles to the classpath without editing the .target file.",
         inputSchema = workflowSchema(
           "config" to stringProperty("Path to pde.yaml or equivalent launch config."),
           "workspace" to stringArrayProperty("Workspace bundle directories to compile."),
@@ -48,7 +48,7 @@ internal val pdeMcpWorkflowCommand = CliCommandGroup(
       tool = CliToolBinding(
         id = "pde_run_launch",
         title = "Run PDE launch",
-        description = "Run a configured PDE launch.",
+        description = "Run a configured PDE launch. The config may set target.extraBundles to add already-installed target/workspace bundles to the runtime classpath without editing the .target file.",
         inputSchema = workflowSchema(
           "config" to stringProperty("Path to launch config."),
           "launch" to stringProperty("Launch name from the config.")
@@ -68,7 +68,7 @@ internal val pdeMcpWorkflowCommand = CliCommandGroup(
       tool = CliToolBinding(
         id = "pde_run_test",
         title = "Run PDE tests",
-        description = "Run one or more PDE test launches.",
+        description = "Run one or more PDE test launches. The config may set target.extraBundles to add already-installed target/workspace bundles to the test runtime classpath without editing the .target file.",
         inputSchema = workflowSchema(
           "config" to stringProperty("Path to launch config."),
           "tests" to stringArrayProperty("Test names or indexes; empty means all configured tests.")

@@ -65,6 +65,11 @@ tests:
 - `pde run` and `pde test` require compiled `.class` files in configured class roots.
 - `target.eclipseRuntimeCache` can pin where ad-hoc Eclipse runtime archives are cached.
 - `target.p2Repositories` can provide p2 source repositories used by runtime bootstrap provisioning.
+- `target.extraBundles` can add already-installed target/workspace bundles to `pde compile`,
+  `pde run`, and `pde test` classpaths without editing the `.target` file. Use `bsn` for the
+  highest available version or `bsn@version` for an exact version. It does not install missing
+  bundles from p2 repositories or recursively resolve dependencies of the forced bundle, and it is
+  appended after normal resolution, so multiple versions of the same symbolic name can coexist.
 - If `bundles[].classRoots` is omitted, `pde run/test` first infers roots from
   bundle `build.properties` `output..`, then falls back to `bin`.
 - `pde compile` is the explicit ECJ-based compile step.

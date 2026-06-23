@@ -211,6 +211,20 @@ $defs:
         description: >-
           Optional list of p2 repositories used when provisioning Eclipse runtime
           artifacts from update sites.
+      extraBundles:
+        type: array
+        items:
+          type: string
+        description: >-
+          Bundle symbolic names to add to compile, run, and test classpaths in addition to
+          normal dependency resolution, without editing the `.target` file. Each entry is either
+          `bsn` or `bsn@version`. The bundle must already exist in the indexed target platform
+          or workspace; this property does not provision missing bundles from p2 repositories and
+          does not recursively resolve dependencies of the forced bundle. A bare `bsn` selects the
+          highest available version according to normal workspace/target preference. An explicit
+          `bsn@version` selects exactly that version. Extra bundles are appended after resolution
+          and are not deduplicated by symbolic name, so a forced version can coexist with a
+          different version selected by normal dependency resolution.
       mirror:
         $ref: "#/$defs/targetMirror"
         description: Mirror options used by `pde target mirror`.

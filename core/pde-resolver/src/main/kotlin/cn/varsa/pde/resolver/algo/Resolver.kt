@@ -34,7 +34,9 @@ data class WorkspaceBundleDescriptor(
 data class ResolveOptions(
   val whitelistPrefixes: Set<String> = emptySet(),
   val preferWorkspace: Boolean = true,
-  val includeHostsForFragments: Boolean = true
+  val includeHostsForFragments: Boolean = true,
+  /** BSNs, optionally `bsn@version`, to add after normal resolution. */
+  val extraBundles: List<String> = emptyList()
 )
 
 enum class BundleOrigin { WORKSPACE, TARGET }
@@ -338,6 +340,28 @@ object Resolver {
     if (hostBsn != null) selected[hostBsn]?.let { bundles.add(toResolved(it)) }
     selected.forEach { (bsn, cand) ->
       if (bsn != hostBsn) bundles.add(toResolved(cand))
+    }
+
+    options.extraBundles.forEach { spec ->
+      val at = spec.indexOf('@')
+      val bsn = (if (at >= 0) spec.substring(0, at) else spec).trim()
+      if (bsn.isEmpty()) return@forEach
+      val cand = if (at >= 0) {
+        val version = runCatching { Version.parseVersion(spec.substring(at + 1).trim()) }.getOrNull()
+        if (version == null) {
+          unresolved.add(UnresolvedBundle(bsn, null, "extra-bundle"))
+          return@forEach
+        }
+        workspaceByBsn[bsn]
+          ?.firstOrNull { it.manifest.bundleVersion == version }
+          ?.let { candidateFromWorkspace(it) }
+          ?: target.get(bsn, VersionRange(VersionRange.LEFT_CLOSED, version, version, VersionRange.RIGHT_CLOSED))
+            ?.let { candidateFromTarget(it) }
+      } else {
+        select(bsn, null)
+      }
+      if (cand != null) bundles.add(toResolved(cand))
+      else unresolved.add(UnresolvedBundle(bsn, null, "extra-bundle"))
     }
 
     val moduleDependencies = bundles

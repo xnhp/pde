@@ -308,7 +308,8 @@ private fun buildCompilePlanForWarning(
     resolverOptions = ResolveOptions(
       whitelistPrefixes = emptySet(),
       preferWorkspace = hasWorkspaceModules,
-      includeHostsForFragments = true
+      includeHostsForFragments = true,
+      extraBundles = context.config.target?.extraBundles ?: emptyList()
     ),
     autoStartBundles = emptyMap(),
     startupLevels = emptyMap(),
@@ -386,7 +387,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
-    description = "YAML launch configuration (supports launches/tests)"
+    description = "YAML launch configuration (supports launches/tests and target.extraBundles)"
   )
   val logLevelOpt by parser.option(
     ArgType.String,
@@ -641,7 +642,7 @@ private fun parseProfileArtifacts(snapshot: Path): List<ProfileArtifact> {
 internal fun targetInspectProfileMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
   val parser = ArgParser("pde target inspect profile ${maturityTag("usable")}")
-  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration (supports target.extraBundles)")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   parser.parse(normalizedArgs)
@@ -1483,7 +1484,8 @@ private fun prepareLaunch(
     resolverOptions = ResolveOptions(
       whitelistPrefixes = resolverWhitelist,
       preferWorkspace = hasWorkspaceModules,
-      includeHostsForFragments = true
+      includeHostsForFragments = true,
+      extraBundles = context.config.target?.extraBundles ?: emptyList()
     ),
     requiredStartupBundles = combinedStartup.keys,
     startupLevels = combinedStartup,
@@ -3035,7 +3037,7 @@ fun compileMain(args: Array<String>): Int {
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
-    description = "YAML launch configuration"
+    description = "YAML launch configuration (supports target.extraBundles)"
   )
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
@@ -3091,7 +3093,8 @@ fun compileMain(args: Array<String>): Int {
       resolverOptions = ResolveOptions(
         whitelistPrefixes = emptySet(),
         preferWorkspace = hasWorkspaceModules,
-        includeHostsForFragments = true
+        includeHostsForFragments = true,
+        extraBundles = configContext.config.target?.extraBundles ?: emptyList()
       ),
       autoStartBundles = emptyMap(),
       startupLevels = emptyMap(),

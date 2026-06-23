@@ -12,6 +12,10 @@ target:
   definition: /home/ben/Desktop/ap-dev-setup/target/KNIME-AP-internal.target
   # installer is optional when using the packaged pde distribution
   bundlePool: /home/ben/Desktop/issues/bundle-pool/
+  # optional: force already-installed target/workspace bundles onto compile/run/test classpaths
+  extraBundles:
+    - org.example.some.bundle
+    - org.example.other.bundle@1.2.3
 
 # the "workspace"
 bundles:
@@ -52,6 +56,10 @@ Example commands are:
 
 The full CLI command reference is available directly in `--help` output
 (`pde --help` and `pde <command> --help`).
+
+Use `target.extraBundles` when a compile/run/test classpath needs bundles that are already present
+in the target platform but are not selected by normal dependency resolution. It avoids editing the
+`.target` file, but it does not install missing bundles or resolve dependencies of the forced bundle.
 
 ## IntelliJ integration
 

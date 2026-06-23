@@ -189,4 +189,22 @@ class LaunchConfigLoaderTest {
       target?.p2Repositories
     )
   }
+
+  @Test
+  fun targetSupportsExtraBundles() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      target:
+        extraBundles:
+          - org.example.extra
+          - org.example.other@1.2.3
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+
+    assertEquals(listOf("org.example.extra", "org.example.other@1.2.3"), loaded.config.target?.extraBundles)
+  }
 }

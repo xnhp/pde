@@ -98,6 +98,69 @@ class ResolverTest {
   }
 
   @Test
+  fun extraBundles_forceAddsBundleNotSelectedByResolution() {
+    val target = tpIndex(
+      rb("b", "1.0.0"),
+      rb("extra.bundle", "2.0.0")
+    )
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b"
+    )
+
+    val result = Resolver.resolve(target, emptyList(), entry, ResolveOptions(extraBundles = listOf("extra.bundle")))
+    val picked = result.bundles.firstOrNull { it.bsn == "extra.bundle" }
+
+    assertNotNull("extra bundle should be present even though nothing requires it", picked)
+    assertEquals(Version.parseVersion("2.0.0"), picked!!.version)
+  }
+
+  @Test
+  fun extraBundles_canSelectExactVersion() {
+    val target = tpIndex(
+      rb("extra.bundle", "1.0.0"),
+      rb("extra.bundle", "2.0.0")
+    )
+    val entry = wbd("a", "1.0.0")
+
+    val result = Resolver.resolve(target, emptyList(), entry, ResolveOptions(extraBundles = listOf("extra.bundle@1.0.0")))
+    val picked = result.bundles.single { it.bsn == "extra.bundle" }
+
+    assertEquals(Version.parseVersion("1.0.0"), picked.version)
+  }
+
+  @Test
+  fun extraBundles_areNotDeduplicatedAcrossVersions() {
+    val target = tpIndex(
+      rb("com.foo", "1.0.0"),
+      rb("com.foo", "2.0.0")
+    )
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "com.foo;bundle-version=\"[2.0.0,3.0.0)\""
+    )
+
+    val result = Resolver.resolve(target, emptyList(), entry, ResolveOptions(extraBundles = listOf("com.foo@1.0.0")))
+    val versions = result.bundles.filter { it.bsn == "com.foo" }.map { it.version }.toSet()
+
+    assertEquals(setOf(Version.parseVersion("1.0.0"), Version.parseVersion("2.0.0")), versions)
+  }
+
+  @Test
+  fun extraBundles_reportsMissingOrInvalidSpecsAsUnresolved() {
+    val target = tpIndex()
+    val entry = wbd("a", "1.0.0")
+
+    val result = Resolver.resolve(target, emptyList(), entry, ResolveOptions(extraBundles = listOf("missing.bundle", "bad.version@nope")))
+
+    assertEquals(setOf("missing.bundle", "bad.version"), result.unresolved.map { it.bsn }.toSet())
+    assertTrue(result.unresolved.all { it.reason == "extra-bundle" })
+    assertTrue(result.problems.all { it.type == ResolveProblemType.MISSING_BUNDLE })
+  }
+
+  @Test
   fun requireBundle_prefers_workspace_on_version_ties() {
     val target = tpIndex(
       rb("b", "1.0.0"),
