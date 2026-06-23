@@ -296,6 +296,8 @@ private fun buildCompilePlanForWarning(
   targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex,
   workspaceInputs: cn.varsa.pde.resolver.launch.WorkspaceInputs
 ): LaunchPlanner.PlanResult {
+  val extraBundles = configuredExtraBundles(context)
+  logActiveExtraBundles(extraBundles)
   val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
   val workspaceEntries = if (hasWorkspaceModules) {
     workspaceInputs.descriptors
@@ -309,7 +311,7 @@ private fun buildCompilePlanForWarning(
       whitelistPrefixes = emptySet(),
       preferWorkspace = hasWorkspaceModules,
       includeHostsForFragments = true,
-      extraBundles = context.config.target?.extraBundles ?: emptyList()
+      extraBundles = extraBundles
     ),
     autoStartBundles = emptyMap(),
     startupLevels = emptyMap(),
@@ -864,6 +866,7 @@ private fun describeConfig(
   logger.info("  profile path: ${profilePath ?: "<unspecified>"}")
   logger.info("  target vm args: ${targetArgs?.vmArgs?.size ?: 0}")
   logger.info("  target program args: ${targetArgs?.programArgs?.size ?: 0}")
+  logActiveExtraBundles(configuredExtraBundles(config))
   if (config.jvmDebug) {
     val requiresTestApp = config.jvmDebugRequiresPdeTestApp
     val isTestApp = runtime.application?.equals(PDE_JUNIT_PLUGIN_TEST_APPLICATION, ignoreCase = true) == true
@@ -873,6 +876,17 @@ private fun describeConfig(
       "requested but only applies when application=$PDE_JUNIT_PLUGIN_TEST_APPLICATION"
     }
     logger.info("  jvm debug: $message")
+  }
+}
+
+private fun configuredExtraBundles(config: LaunchConfigContext): List<String> =
+  config.config.target?.extraBundles.orEmpty()
+    .map { it.trim() }
+    .filter { it.isNotEmpty() }
+
+private fun logActiveExtraBundles(extraBundles: List<String>) {
+  if (extraBundles.isNotEmpty()) {
+    logger.info("target.extraBundles active: ${extraBundles.joinToString(", ")}")
   }
 }
 
@@ -1476,6 +1490,7 @@ private fun prepareLaunch(
       }
   }
   val devProperties = workspaceInputs.devProperties
+  val extraBundles = configuredExtraBundles(context)
   val env = LaunchEnvironment(
     targetIndex = targetIndex,
     workspaceEntries = workspaceEntries,
@@ -1485,7 +1500,7 @@ private fun prepareLaunch(
       whitelistPrefixes = resolverWhitelist,
       preferWorkspace = hasWorkspaceModules,
       includeHostsForFragments = true,
-      extraBundles = context.config.target?.extraBundles ?: emptyList()
+      extraBundles = extraBundles
     ),
     requiredStartupBundles = combinedStartup.keys,
     startupLevels = combinedStartup,
@@ -2154,6 +2169,7 @@ private fun runTestLaunch(
   logger.info("Listening on ${announcement.host}:${announcement.port}")
   logger.info("Waiting up to ${timeoutSeconds}s for RemoteTestRunner connection...")
 
+  logActiveExtraBundles(configuredExtraBundles(configContext))
   val prepared = runCatching { prepareLaunch(configContext, targetArgs, listOf("-port", server.localPort.toString())) }
     .getOrElse { error ->
       server.close()
@@ -3067,6 +3083,8 @@ fun compileMain(args: Array<String>): Int {
       logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig)
+    val extraBundles = configuredExtraBundles(configContext)
+    logActiveExtraBundles(extraBundles)
     val profilePath = resolveProfilePath(configContext)
     if (profilePath == null) {
       logger.severe("target profile path missing in YAML config; set target.profileId + target.p2Path.")
@@ -3094,7 +3112,7 @@ fun compileMain(args: Array<String>): Int {
         whitelistPrefixes = emptySet(),
         preferWorkspace = hasWorkspaceModules,
         includeHostsForFragments = true,
-        extraBundles = configContext.config.target?.extraBundles ?: emptyList()
+        extraBundles = extraBundles
       ),
       autoStartBundles = emptyMap(),
       startupLevels = emptyMap(),

@@ -6,6 +6,8 @@ import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.nio.file.Path
 
 class ConfigDiscoveryTest {
@@ -42,6 +44,37 @@ class ConfigDiscoveryTest {
     launchMain(arrayOf(config.absolutePath, "--dry-run"))
 
     assertNotNull(config) // reached without exceptions
+  }
+
+  @Test
+  fun logsActiveExtraBundlesInLaunchConfigSummary() {
+    val root: Path = tmp.root.toPath()
+    val config = root.resolve("pde.yaml").toFile()
+    config.writeText(
+      """
+      target:
+        extraBundles:
+          - org.example.extra
+          - org.example.other@1.2.3
+      launches:
+        - name: run
+      """.trimIndent()
+    )
+
+    val err = ByteArrayOutputStream()
+    val savedErr = System.err
+    System.setErr(PrintStream(err))
+    try {
+      launchMain(arrayOf(config.absolutePath, "--dry-run", "--verbose"))
+    } finally {
+      System.err.flush()
+      System.setErr(savedErr)
+    }
+
+    assertNotNull(config) // reached without exceptions
+    org.junit.Assert.assertTrue(
+      err.toString().contains("target.extraBundles active: org.example.extra, org.example.other@1.2.3")
+    )
   }
 
   @Test
