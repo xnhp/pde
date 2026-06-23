@@ -42,6 +42,9 @@ launches:
     vmArgs:
       - -ea
       [...]
+    env:
+      KNIME_PROFILE: development
+      FEATURE_FLAG: "true"
 ```
 
 

@@ -75,6 +75,7 @@ import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
 import cn.varsa.pde.resolver.launch.LaunchContext
+import org.osgi.framework.Version
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val PDE_API_ANALYZER_APPLICATION = "org.eclipse.pde.api.tools.apiAnalyzer"
@@ -298,6 +299,7 @@ private fun buildCompilePlanForWarning(
 ): LaunchPlanner.PlanResult {
   val extraBundles = configuredExtraBundles(context)
   logActiveExtraBundles(extraBundles)
+  val pinnedVersions = configuredPinnedVersions(context)
   val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
   val workspaceEntries = if (hasWorkspaceModules) {
     workspaceInputs.descriptors
@@ -311,6 +313,7 @@ private fun buildCompilePlanForWarning(
       whitelistPrefixes = emptySet(),
       preferWorkspace = hasWorkspaceModules,
       includeHostsForFragments = true,
+      pinnedVersions = pinnedVersions,
       extraBundles = extraBundles
     ),
     autoStartBundles = emptyMap(),
@@ -389,7 +392,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
-    description = "YAML launch configuration (supports launches/tests and target.extraBundles)"
+    description = "YAML launch configuration (supports launches/tests, target.extraBundles, and target.pinnedVersions)"
   )
   val logLevelOpt by parser.option(
     ArgType.String,
@@ -541,7 +544,7 @@ private fun printTargetInspectHelp() {
   println()
   println("Examples:")
   println("  pde target inspect profile --config pde.yaml")
-  println("  pde target inspect ius --json --limit 100")
+  println("  pde target inspect ius --list")
   println("  pde target inspect health")
 }
 
@@ -644,7 +647,7 @@ private fun parseProfileArtifacts(snapshot: Path): List<ProfileArtifact> {
 internal fun targetInspectProfileMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
   val parser = ArgParser("pde target inspect profile ${maturityTag("usable")}")
-  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration (supports target.extraBundles)")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration (supports target.extraBundles and target.pinnedVersions)")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   parser.parse(normalizedArgs)
@@ -705,6 +708,7 @@ internal fun targetInspectIusMain(args: Array<String>): Int {
   val parser = ArgParser("pde target inspect ius ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
+  val list by parser.option(ArgType.Boolean, fullName = "list", description = "Print bundle names only, one per line").default(false)
   val limit by parser.option(ArgType.Int, fullName = "limit", description = "Maximum number of IUs to print").default(200)
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   parser.parse(normalizedArgs)
@@ -716,12 +720,13 @@ internal fun targetInspectIusMain(args: Array<String>): Int {
     .filter { it.classifier == "osgi.bundle" }
     .sortedWith(compareBy<ProfileArtifact> { it.id }.thenBy { it.version })
   val selected = filtered.take(limit.coerceAtLeast(1))
-  if (json) {
+  if (list) {
+    selected.forEach { println(it.id) }
+  } else if (json) {
     println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(selected))
   } else {
     println("Profile snapshot: ${context.latestSnapshot.fileName}")
-    println("Bundles: ${filtered.size} (showing ${selected.size})")
-    selected.forEach { println("- ${it.id}@${it.version}") }
+    println("Bundles: ${filtered.size}")
   }
   return 0
 }
@@ -883,6 +888,18 @@ private fun configuredExtraBundles(config: LaunchConfigContext): List<String> =
   config.config.target?.extraBundles.orEmpty()
     .map { it.trim() }
     .filter { it.isNotEmpty() }
+
+private fun configuredPinnedVersions(config: LaunchConfigContext): Map<String, Version> =
+  config.config.target?.pinnedVersions.orEmpty()
+    .mapKeys { it.key.trim() }
+    .filterKeys { it.isNotEmpty() }
+    .mapValues { (bsn, version) ->
+      try {
+        Version.parseVersion(version.trim())
+      } catch (ex: IllegalArgumentException) {
+        error("Invalid target.pinnedVersions entry for '$bsn': '$version'")
+      }
+    }
 
 private fun logActiveExtraBundles(extraBundles: List<String>) {
   if (extraBundles.isNotEmpty()) {
@@ -1491,6 +1508,7 @@ private fun prepareLaunch(
   }
   val devProperties = workspaceInputs.devProperties
   val extraBundles = configuredExtraBundles(context)
+  val pinnedVersions = configuredPinnedVersions(context)
   val env = LaunchEnvironment(
     targetIndex = targetIndex,
     workspaceEntries = workspaceEntries,
@@ -1500,6 +1518,7 @@ private fun prepareLaunch(
       whitelistPrefixes = resolverWhitelist,
       preferWorkspace = hasWorkspaceModules,
       includeHostsForFragments = true,
+      pinnedVersions = pinnedVersions,
       extraBundles = extraBundles
     ),
     requiredStartupBundles = combinedStartup.keys,
@@ -3053,7 +3072,7 @@ fun compileMain(args: Array<String>): Int {
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
-    description = "YAML launch configuration (supports target.extraBundles)"
+    description = "YAML launch configuration (supports target.extraBundles and target.pinnedVersions)"
   )
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
@@ -3084,6 +3103,7 @@ fun compileMain(args: Array<String>): Int {
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig)
     val extraBundles = configuredExtraBundles(configContext)
+    val pinnedVersions = configuredPinnedVersions(configContext)
     logActiveExtraBundles(extraBundles)
     val profilePath = resolveProfilePath(configContext)
     if (profilePath == null) {
@@ -3112,6 +3132,7 @@ fun compileMain(args: Array<String>): Int {
         whitelistPrefixes = emptySet(),
         preferWorkspace = hasWorkspaceModules,
         includeHostsForFragments = true,
+        pinnedVersions = pinnedVersions,
         extraBundles = extraBundles
       ),
       autoStartBundles = emptyMap(),
@@ -3123,6 +3144,7 @@ fun compileMain(args: Array<String>): Int {
       autoStartDefault = false
     )
     val planResult = LaunchPlanner.build(env, options)
+    logPlanSummary(planResult)
     val specs = CompileService.buildSpecs(planResult, workspaceInputs.descriptors)
       .specs
       .map { spec ->

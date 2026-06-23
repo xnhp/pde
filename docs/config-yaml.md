@@ -49,6 +49,9 @@ launches:
     dataDir: .runtime/data
     configDir: .runtime/config
     workDir: .runtime/work
+    env:
+      KNIME_PROFILE: development
+      FEATURE_FLAG: "true"
 ```
 
 ### Test preset
@@ -70,6 +73,12 @@ tests:
   highest available version or `bsn@version` for an exact version. It does not install missing
   bundles from p2 repositories or recursively resolve dependencies of the forced bundle, and it is
   appended after normal resolution, so multiple versions of the same symbolic name can coexist.
+- `target.pinnedVersions` maps bundle symbolic names to exact bundle versions when the target
+  platform contains multiple versions. Pins apply when a bundle is selected by dependency,
+  `Import-Package` provider selection, whitelist, or `target.extraBundles`. Invalid version strings
+  fail config validation. If a pin is outside a requested `Require-Bundle` or fragment-host range,
+  pde warns and still uses the pin. For `Import-Package`, the pinned bundle must still export the
+  requested package with an export version matching the import range.
 - If `bundles[].classRoots` is omitted, `pde run/test` first infers roots from
   bundle `build.properties` `output..`, then falls back to `bin`.
 - `pde compile` is the explicit ECJ-based compile step.

@@ -34,6 +34,9 @@ launches:
       vmArgs:
         - -ea
         - [...]
+      env:
+        KNIME_PROFILE: development
+        FEATURE_FLAG: "true"
 # run JUnit Plug-In tests
 tests:
     - className: com.knime.gateway.executor.server.GatewayServerTest
@@ -60,6 +63,11 @@ The full CLI command reference is available directly in `--help` output
 Use `target.extraBundles` when a compile/run/test classpath needs bundles that are already present
 in the target platform but are not selected by normal dependency resolution. It avoids editing the
 `.target` file, but it does not install missing bundles or resolve dependencies of the forced bundle.
+
+Use `target.pinnedVersions` when the target platform contains several versions of the same bundle
+and pde should select a specific bundle version. Pins still use normal dependency/import checks:
+invalid version strings fail config validation, out-of-range `Require-Bundle` pins are warned about,
+and `Import-Package` providers must still export the requested package version.
 
 ## IntelliJ integration
 

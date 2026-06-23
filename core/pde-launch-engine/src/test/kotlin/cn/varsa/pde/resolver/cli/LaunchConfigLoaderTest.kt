@@ -6,6 +6,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class LaunchConfigLoaderTest {
   @Rule @JvmField val tmp = TemporaryFolder()
@@ -126,6 +127,51 @@ class LaunchConfigLoaderTest {
   }
 
   @Test
+  fun launchEntryLoadsInlineEnvAsMap() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      launches:
+        - name: AP
+          env:
+            KNIME_PROFILE: development
+            FEATURE_FLAG: "true"
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val launch = loaded.config.launches.single()
+
+    assertEquals(
+      mapOf(
+        "KNIME_PROFILE" to "development",
+        "FEATURE_FLAG" to "true"
+      ),
+      launch.env
+    )
+  }
+
+  @Test
+  fun launchEntryRejectsInlineEnvListShape() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      launches:
+        - name: AP
+          env:
+            - name: KNIME_PROFILE
+              value: development
+      """.trimIndent()
+    )
+
+    assertFailsWith<IllegalStateException> {
+      LaunchConfigLoader.load(configFile.toPath(), root)
+    }
+  }
+
+  @Test
   fun concatenatesBundlesAcrossIncludes() {
     val root: Path = tmp.root.toPath()
     val baseFile = root.resolve("base.yaml").toFile()
@@ -206,5 +252,46 @@ class LaunchConfigLoaderTest {
     val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
 
     assertEquals(listOf("org.example.extra", "org.example.other@1.2.3"), loaded.config.target?.extraBundles)
+  }
+
+  @Test
+  fun targetSupportsPinnedVersions() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      target:
+        pinnedVersions:
+          org.example.bundle: 1.2.3
+          org.example.other: 4.5.6.qualifier
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+
+    assertEquals(
+      mapOf(
+        "org.example.bundle" to "1.2.3",
+        "org.example.other" to "4.5.6.qualifier"
+      ),
+      loaded.config.target?.pinnedVersions
+    )
+  }
+
+  @Test
+  fun targetPinnedVersionsRejectInvalidVersionStrings() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      target:
+        pinnedVersions:
+          org.example.bundle: nope
+      """.trimIndent()
+    )
+
+    assertFailsWith<IllegalStateException> {
+      LaunchConfigLoader.load(configFile.toPath(), root)
+    }
   }
 }

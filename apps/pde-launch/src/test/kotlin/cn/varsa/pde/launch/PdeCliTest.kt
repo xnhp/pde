@@ -130,6 +130,22 @@ class PdeCliTest {
   }
 
   @Test
+  fun `target inspect ius subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("target", "inspect", "ius", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde target inspect ius"))
+    assertTrue(output.contains("--list"))
+  }
+
+  @Test
   fun `target inspect health subcommand is routed through pde launcher`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out

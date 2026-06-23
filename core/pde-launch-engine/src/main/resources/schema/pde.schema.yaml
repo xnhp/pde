@@ -19,6 +19,13 @@ $defs:
     description: Ordered list of strings.
     items:
       type: string
+  envVars:
+    type: object
+    description: Map of environment variable names to string values.
+    patternProperties:
+      "^[A-Za-z_][A-Za-z0-9_]*$":
+        type: string
+    additionalProperties: false
   workspaceBundle:
     type: object
     description: Workspace bundle declaration.
@@ -79,14 +86,11 @@ $defs:
           Launch working directory override for this launch preset.
           If omitted, a temporary working directory is created.
       env:
-        type: object
-        patternProperties:
-          "^[A-Za-z_][A-Za-z0-9_]*$":
-            type: string
-        additionalProperties: false
+        $ref: "#/$defs/envVars"
         description: >-
-          Extra environment variables for this launch preset. Merged with the
-          current process environment; values here take precedence over envFile.
+          Extra environment variables for this launch preset, as a map from
+          variable name to string value. Merged with the current process
+          environment; values here take precedence over envFile.
       envFile:
         type: string
         description: >-
@@ -225,6 +229,22 @@ $defs:
           `bsn@version` selects exactly that version. Extra bundles are appended after resolution
           and are not deduplicated by symbolic name, so a forced version can coexist with a
           different version selected by normal dependency resolution.
+      pinnedVersions:
+        type: object
+        patternProperties:
+          '^.+$':
+            type: string
+            pattern: '^[0-9]+(\.[0-9]+(\.[0-9]+(\.[A-Za-z0-9_-]+)?)?)?$'
+        additionalProperties: false
+        description: >-
+          Bundle symbolic-name to exact bundle-version map for target platforms that contain
+          multiple versions of the same bundle. When a pinned bundle is selected by dependency,
+          import-package provider, whitelist, or `extraBundles`, pde uses the pinned version
+          instead of the highest available matching version. If the pinned version is outside a
+          requested `Require-Bundle` or fragment-host range, pde reports a warning and still uses
+          the pin. For `Import-Package`, the pinned bundle version must still export the requested
+          package with an export version matching the import range. Invalid version strings fail
+          config validation.
       mirror:
         $ref: "#/$defs/targetMirror"
         description: Mirror options used by `pde target mirror`.

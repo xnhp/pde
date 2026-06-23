@@ -31,6 +31,7 @@ data class TargetConfig(
   val eclipseRuntimeCache: String? = null,
   val p2Repositories: List<String>? = null,
   val extraBundles: List<String>? = null,
+  val pinnedVersions: Map<String, String>? = null,
   val mirror: TargetMirrorConfig? = null
 )
 

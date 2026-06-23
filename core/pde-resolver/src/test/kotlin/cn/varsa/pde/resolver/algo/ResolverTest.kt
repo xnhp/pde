@@ -161,6 +161,119 @@ class ResolverTest {
   }
 
   @Test
+  fun pinnedVersions_selectExactRequireBundleVersionWithinRange() {
+    val target = tpIndex(
+      rb("b", "1.0.0"),
+      rb("b", "1.8.0")
+    )
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b;bundle-version=\"[1.0.0,2.0.0)\""
+    )
+
+    val result = Resolver.resolve(
+      target,
+      emptyList(),
+      entry,
+      ResolveOptions(pinnedVersions = mapOf("b" to Version.parseVersion("1.0.0")))
+    )
+    val picked = result.bundles.single { it.bsn == "b" }
+
+    assertEquals(Version.parseVersion("1.0.0"), picked.version)
+    assertTrue("in-range pin must not emit problems", result.problems.isEmpty())
+  }
+
+  @Test
+  fun pinnedVersions_warnWhenRequireBundlePinIsOutsideRange() {
+    val target = tpIndex(
+      rb("b", "1.0.0"),
+      rb("b", "2.1.0")
+    )
+    val entry = wbd(
+      "a",
+      "1.0.0",
+      REQUIRE_BUNDLE to "b;bundle-version=\"[2.0.0,3.0.0)\""
+    )
+
+    val result = Resolver.resolve(
+      target,
+      emptyList(),
+      entry,
+      ResolveOptions(pinnedVersions = mapOf("b" to Version.parseVersion("1.0.0")))
+    )
+    val picked = result.bundles.single { it.bsn == "b" }
+    val problem = result.problems.single { it.symbol == "b" }
+
+    assertEquals(Version.parseVersion("1.0.0"), picked.version)
+    assertEquals(ResolveProblemType.VERSION_OUT_OF_RANGE, problem.type)
+    assertTrue(problem.message.contains("pinned version 1.0.0 is outside the requested range"))
+  }
+
+  @Test
+  fun pinnedVersions_importPackageProviderMustStillSatisfyPackageRange() {
+    val target = tpIndex(
+      rb("provider", "1.0.0", EXPORT_PACKAGE to "p;version=\"0.5.0\""),
+      rb("provider", "2.0.0", EXPORT_PACKAGE to "p;version=\"1.5.0\"")
+    )
+    val entry = wbd("a", "1.0.0", IMPORT_PACKAGE to "p;version=\"[1.0.0,2.0.0)\"")
+
+    val result = Resolver.resolve(
+      target,
+      emptyList(),
+      entry,
+      ResolveOptions(pinnedVersions = mapOf("provider" to Version.parseVersion("1.0.0")))
+    )
+
+    assertFalse("pinned provider with incompatible package export must not resolve", result.bundles.any { it.bsn == "provider" })
+    assertTrue(result.problems.any { it.type == ResolveProblemType.MISSING_PACKAGE && it.symbol == "p" })
+  }
+
+  @Test
+  fun pinnedVersions_applyToWhitelistSelection() {
+    val target = tpIndex(
+      rb("org.eclipse.swt", "3.0.0"),
+      rb("org.eclipse.swt", "4.0.0")
+    )
+    val entry = wbd("a", "1.0.0")
+
+    val result = Resolver.resolve(
+      target,
+      emptyList(),
+      entry,
+      ResolveOptions(
+        whitelistPrefixes = setOf("org.eclipse."),
+        pinnedVersions = mapOf("org.eclipse.swt" to Version.parseVersion("3.0.0"))
+      )
+    )
+    val picked = result.bundles.single { it.bsn == "org.eclipse.swt" }
+
+    assertEquals(Version.parseVersion("3.0.0"), picked.version)
+  }
+
+  @Test
+  fun pinnedVersions_applyToBareExtraBundles() {
+    val target = tpIndex(
+      rb("extra.bundle", "1.0.0"),
+      rb("extra.bundle", "2.0.0")
+    )
+    val entry = wbd("a", "1.0.0")
+
+    val result = Resolver.resolve(
+      target,
+      emptyList(),
+      entry,
+      ResolveOptions(
+        pinnedVersions = mapOf("extra.bundle" to Version.parseVersion("1.0.0")),
+        extraBundles = listOf("extra.bundle")
+      )
+    )
+    val picked = result.bundles.single { it.bsn == "extra.bundle" }
+
+    assertEquals(Version.parseVersion("1.0.0"), picked.version)
+  }
+
+  @Test
   fun requireBundle_prefers_workspace_on_version_ties() {
     val target = tpIndex(
       rb("b", "1.0.0"),

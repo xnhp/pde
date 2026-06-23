@@ -106,6 +106,7 @@ private val targetInspectProfileOptions = listOf(
 private val targetInspectIusOptions = listOf(
   CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--json"), "Emit JSON output"),
+  CliOption(listOf("--list"), "Print bundle names only, one per line"),
   CliOption(listOf("--limit"), "Maximum number of IUs to print", takesValue = true, valueLabel = "Int", defaultValue = "200")
 )
 

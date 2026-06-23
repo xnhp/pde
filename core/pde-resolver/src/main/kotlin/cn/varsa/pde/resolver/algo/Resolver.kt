@@ -35,6 +35,8 @@ data class ResolveOptions(
   val whitelistPrefixes: Set<String> = emptySet(),
   val preferWorkspace: Boolean = true,
   val includeHostsForFragments: Boolean = true,
+  /** Exact bundle versions to select when a BSN has multiple matching candidates. */
+  val pinnedVersions: Map<String, Version> = emptyMap(),
   /** BSNs, optionally `bsn@version`, to add after normal resolution. */
   val extraBundles: List<String> = emptyList()
 )
@@ -132,7 +134,44 @@ object Resolver {
       )
     }
 
+    val unresolved = LinkedHashSet<UnresolvedBundle>()
+    val directProblems = mutableListOf<ResolveProblem>()
+
+    fun exactVersionRange(version: Version) =
+      VersionRange(VersionRange.LEFT_CLOSED, version, version, VersionRange.RIGHT_CLOSED)
+
+    fun selectExact(bsn: String, version: Version): Candidate? {
+      if (options.preferWorkspace) {
+        val ws = workspaceByBsn[bsn]
+          ?.firstOrNull { it.manifest.bundleVersion == version }
+        if (ws != null) return candidateFromWorkspace(ws)
+      }
+
+      return target.get(bsn, exactVersionRange(version))?.let { candidateFromTarget(it) }
+    }
+
+    val pinnedRangeWarnings = LinkedHashSet<String>()
+    fun recordPinnedRangeWarning(bsn: String, requestedRange: VersionRange, pinnedVersion: Version) {
+      val key = "$bsn|$requestedRange|$pinnedVersion"
+      if (pinnedRangeWarnings.add(key)) {
+        directProblems += ResolveProblem(
+          type = ResolveProblemType.VERSION_OUT_OF_RANGE,
+          symbol = bsn,
+          range = requestedRange,
+          message = "pinned version $pinnedVersion is outside the requested range; using the pin anyway"
+        )
+      }
+    }
+
     fun select(bsn: String, range: VersionRange?): Candidate? {
+      val pinnedVersion = options.pinnedVersions[bsn]
+      if (pinnedVersion != null) {
+        if (range != null && !range.includes(pinnedVersion)) {
+          recordPinnedRangeWarning(bsn, range, pinnedVersion)
+        }
+        return selectExact(bsn, pinnedVersion)
+      }
+
       if (options.preferWorkspace) {
         val ws = workspaceByBsn[bsn]
           ?.asSequence()
@@ -149,7 +188,6 @@ object Resolver {
 
     val selected = LinkedHashMap<String, Candidate>()
     var fragmentHostCandidate: Candidate? = null
-    val unresolved = LinkedHashSet<UnresolvedBundle>()
 
     val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, Version>>()
     fun exportsOf(manifest: BundleManifest): Map<String, Version> =
@@ -261,6 +299,24 @@ object Resolver {
       map
     }
 
+    fun providerToCandidate(provider: PkgProvider) = Candidate(
+      bsn = provider.bsn,
+      version = provider.version,
+      path = provider.path,
+      manifest = provider.manifest,
+      origin = provider.origin,
+      classPathEntries = provider.classPathEntries,
+      sourceEntries = provider.sourceEntries,
+      fragmentHost = provider.manifest.fragmentHost?.key
+    )
+
+    fun pinnedProviderCandidate(provider: PkgProvider, pkg: String, range: VersionRange): Candidate? {
+      val pinnedVersion = options.pinnedVersions[provider.bsn] ?: return providerToCandidate(provider)
+      val pinned = selectExact(provider.bsn, pinnedVersion) ?: return null
+      val exported = exportsOf(pinned.manifest)[pkg] ?: return null
+      return if (range.includes(exported)) pinned else null
+    }
+
     fun findProviderForPackage(pkg: String, range: VersionRange): Candidate? {
       if (options.preferWorkspace) {
         val ws = wsProvidersByPkg[pkg]
@@ -271,36 +327,18 @@ object Resolver {
           }
           ?.maxByOrNull { it.version }
         if (ws != null) {
-          return Candidate(
-            bsn = ws.bsn,
-            version = ws.version,
-            path = ws.path,
-            manifest = ws.manifest,
-            origin = BundleOrigin.WORKSPACE,
-            classPathEntries = ws.classPathEntries,
-            sourceEntries = ws.sourceEntries,
-            fragmentHost = ws.manifest.fragmentHost?.key
-          )
+          val pinned = pinnedProviderCandidate(ws, pkg, range)
+          if (pinned != null) return pinned
         }
       }
 
       val nav = tpProvidersByPkg[pkg] ?: return null
-      val entry = nav.descendingMap().entries.firstOrNull { e ->
-        val man = nav[e.key]?.manifest ?: return@firstOrNull false
+      val provider = nav.descendingMap().entries.asSequence().mapNotNull { e ->
+        val man = e.value.manifest
         val ver = exportsOf(man)[pkg]
-        ver != null && range.includes(ver)
-      } ?: return null
-      val provider = entry.value
-      return Candidate(
-        bsn = provider.bsn,
-        version = provider.version,
-        path = provider.path,
-        manifest = provider.manifest,
-        origin = provider.origin,
-        classPathEntries = provider.classPathEntries,
-        sourceEntries = provider.sourceEntries,
-        fragmentHost = provider.manifest.fragmentHost?.key
-      )
+        if (ver != null && range.includes(ver)) pinnedProviderCandidate(e.value, pkg, range) else null
+      }.firstOrNull()
+      return provider
     }
 
     imports.forEach { (pkg, range) ->
@@ -315,11 +353,7 @@ object Resolver {
     if (options.whitelistPrefixes.isNotEmpty()) {
       target.bundlesByBsn().keys.forEach { bsn ->
         if (!selected.containsKey(bsn) && options.whitelistPrefixes.any { bsn.startsWith(it) }) {
-          val nav = target.bundlesByBsn()[bsn]
-          val rb = nav?.lastEntry()?.value
-          if (rb != null) {
-            selected[bsn] = candidateFromTarget(rb)
-          }
+          select(bsn, null)?.let { selected[bsn] = it }
         }
       }
     }
@@ -355,7 +389,7 @@ object Resolver {
         workspaceByBsn[bsn]
           ?.firstOrNull { it.manifest.bundleVersion == version }
           ?.let { candidateFromWorkspace(it) }
-          ?: target.get(bsn, VersionRange(VersionRange.LEFT_CLOSED, version, version, VersionRange.RIGHT_CLOSED))
+          ?: target.get(bsn, exactVersionRange(version))
             ?.let { candidateFromTarget(it) }
       } else {
         select(bsn, null)
@@ -371,7 +405,7 @@ object Resolver {
       .apply { remove(entrySymbolicName) }
       .toSet()
 
-    val problems = unresolved.map { u ->
+    val problems = directProblems + unresolved.map { u ->
       val type = when (u.reason) {
         "fragmentHost" -> ResolveProblemType.FRAGMENT_HOST
         "import-package" -> ResolveProblemType.MISSING_PACKAGE

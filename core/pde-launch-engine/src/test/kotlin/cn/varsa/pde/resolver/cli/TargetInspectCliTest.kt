@@ -42,6 +42,55 @@ class TargetInspectCliTest {
   }
 
   @Test
+  fun `inspect ius default output does not list concrete bundles`() {
+    val baseDir = tmp.newFolder("cfg-summary").toPath()
+    val profileDir = createProfileDir(baseDir)
+    writeSnapshot(
+      profileDir.resolve("200.profile"),
+      listOf("com.example.bundle" to "1.0.0")
+    )
+    val configFile = writeConfig(baseDir)
+
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      val exit = targetInspectIusMain(arrayOf("--config", configFile.toString()))
+      assertEquals(0, exit)
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Profile snapshot: 200.profile"), "Expected snapshot summary: $output")
+    assertTrue(output.contains("Bundles: 1"), "Expected bundle count: $output")
+    assertTrue(!output.contains("com.example.bundle"), "Expected no concrete bundle list: $output")
+  }
+
+  @Test
+  fun `inspect ius list prints selected bundle names`() {
+    val baseDir = tmp.newFolder("cfg-list").toPath()
+    val profileDir = createProfileDir(baseDir)
+    writeSnapshot(
+      profileDir.resolve("200.profile"),
+      listOf("com.example.beta" to "2.0.0", "com.example.alpha" to "1.0.0")
+    )
+    val configFile = writeConfig(baseDir)
+
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      val exit = targetInspectIusMain(arrayOf("--config", configFile.toString(), "--list", "--limit", "1"))
+      assertEquals(0, exit)
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    assertEquals("com.example.alpha\n", out.toString())
+  }
+
+  @Test
   fun `inspect diff reports changed bundle versions`() {
     val baseDir = tmp.newFolder("cfg-diff").toPath()
     val profileDir = createProfileDir(baseDir)
