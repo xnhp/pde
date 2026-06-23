@@ -15,9 +15,13 @@ open class DirectoryBundleProvider : TargetBundleProvider {
     if (!rootDirectory.exists()) return false
 
     val index = TargetPlatformCache.buildWithCache(listOf(rootDirectory.toPath()))
+    var found = false
     index.bundlesByBsn().values.forEach { versions ->
-      versions.values.forEach { rb -> processBundle(rb.location.toFile()) }
+      versions.values.forEach { rb ->
+        processBundle(rb.location.toFile())
+        found = true
+      }
     }
-    return true
+    return found
   }
 }

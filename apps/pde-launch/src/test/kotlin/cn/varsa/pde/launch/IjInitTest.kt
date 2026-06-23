@@ -32,10 +32,10 @@ class IjInitTest {
     val targetDir = Files.createTempDirectory("ij-init-target")
     IjInit.copyIjTemplate(targetDir)
 
-    IjInit.updateEclipseTargetLocation(targetDir, "/opt/knime/target/Profile.profile")
+    IjInit.updateEclipseTargetLocation(targetDir, "/opt/knime/target/profile.profile")
 
     val updated = Files.readString(targetDir.resolve(".idea/eclipse-partial.xml"))
-    assertTrue(updated.contains("location=\"/opt/knime/target/Profile.profile\""))
+    assertTrue(updated.contains("location=\"/opt/knime/target/profile.profile\""))
   }
 
   @Test
@@ -53,13 +53,13 @@ class IjInitTest {
 
   @Test
   fun `normalizeProfilePath trims trailing separator`() {
-    assertEquals("/opt/knime/target/Profile.profile", IjInit.normalizeProfilePath("/opt/knime/target/Profile.profile/"))
+    assertEquals("/opt/knime/target/profile.profile", IjInit.normalizeProfilePath("/opt/knime/target/profile.profile/"))
   }
 
   @Test
   fun `resolveProfilePath resolves relative paths`() {
     val baseDir = Files.createTempDirectory("ij-init-profile")
-    val relative = "target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile"
+    val relative = "target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile"
     val expected = baseDir.resolve(relative).normalize().toString()
     assertEquals(expected, IjInit.resolveProfilePath(baseDir, relative))
   }
@@ -80,20 +80,18 @@ class IjInitTest {
           - path: knime-core/org.knime.core
       """.trimIndent()
     )
-    val profileFile = configDir
+    val profileDir = configDir
       .resolve("target")
       .resolve("p2")
       .resolve("org.eclipse.equinox.p2.engine")
       .resolve("profileRegistry")
       .resolve("profile.profile")
-      .resolve("Profile.profile")
-    Files.createDirectories(profileFile.parent)
-    Files.writeString(profileFile, "")
+    Files.createDirectories(profileDir)
 
     IjInit.initIjProjectFromConfig(configPath, issueDir)
 
     val eclipsePartial = Files.readString(configDir.resolve("ij-project/.idea/eclipse-partial.xml"))
-    val expected = profileFile.toAbsolutePath().normalize().toString()
+    val expected = profileDir.toAbsolutePath().normalize().toString()
     assertTrue(eclipsePartial.contains("location=\"${expected}\""))
   }
 

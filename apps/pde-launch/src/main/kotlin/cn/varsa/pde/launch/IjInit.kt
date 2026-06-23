@@ -225,11 +225,8 @@ object IjInit {
       ?: context.workingDir.resolve("target").resolve("p2")
     val registry = p2Path.resolve("org.eclipse.equinox.p2.engine").resolve("profileRegistry")
     val profileDir = registry.resolve("${profileId}.profile")
-    val profileFile = profileDir.resolve("Profile.profile")
-    val profileFileLegacy = profileDir.resolve("Profile.Profile")
     return when {
-      Files.exists(profileFile) -> profileFile
-      Files.exists(profileFileLegacy) -> profileFileLegacy
+      Files.isDirectory(profileDir) -> profileDir
       else -> null
     }
   }
