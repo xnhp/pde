@@ -168,4 +168,52 @@ class CompileServiceTest {
 
     assertEquals(listOf("org.example.b", "org.example.a"), specs.filter { it.isWorkspace }.map { it.bsn })
   }
+
+  @Test
+  fun `workspace bundle uses its own per-entry classpath, not the multi-version union`() {
+    // Aggregate selection carries BOTH library versions (as the accumulator does when one bundle
+    // requires lib 1.0 and another 2.0). org.example.a's own closure only has 1.0, so its compile
+    // spec must not see 2.0 -- otherwise ecj could bind a 2.0-only overload it won't have at runtime.
+    val aPath = Paths.get("/workspace/org.example.a")
+    val lib1 = Paths.get("/tp/lib-1.0.0.jar")
+    val lib2 = Paths.get("/tp/lib-2.0.0.jar")
+    val aDesc = WorkspaceBundleDescriptor(
+      path = aPath,
+      manifest = dummyManifest("org.example.a", "1.0.0"),
+      classPathEntries = listOf(aPath)
+    )
+    val selected = listOf(
+      ResolvedBundle(
+        bsn = "org.example.a", version = Version.parseVersion("1.0.0"), path = aPath,
+        origin = cn.varsa.pde.resolver.algo.BundleOrigin.WORKSPACE, classPathEntries = listOf(aPath)
+      ),
+      ResolvedBundle(
+        bsn = "com.lib", version = Version.parseVersion("1.0.0"), path = lib1,
+        origin = cn.varsa.pde.resolver.algo.BundleOrigin.TARGET, classPathEntries = listOf(lib1)
+      ),
+      ResolvedBundle(
+        bsn = "com.lib", version = Version.parseVersion("2.0.0"), path = lib2,
+        origin = cn.varsa.pde.resolver.algo.BundleOrigin.TARGET, classPathEntries = listOf(lib2)
+      )
+    )
+    val plan = LaunchPlanner.PlanResult(
+      plan = LauncherPlan(emptyList(), null, emptyMap()),
+      context = LaunchContext(emptyMap(), emptyMap()),
+      selectedBundles = selected,
+      workspaceDependencies = emptyMap()
+    )
+    val lib1Cp = lib1.toAbsolutePath().normalize().toString()
+    val lib2Cp = lib2.toAbsolutePath().normalize().toString()
+    val perEntry = mapOf(
+      "org.example.a" to listOf(aPath.toAbsolutePath().normalize().toString(), lib1Cp)
+    )
+
+    val spec = CompileService.buildSpecs(plan, listOf(aDesc), perEntry).specs.single { it.bsn == "org.example.a" }
+    assertTrue(spec.classpath.contains(lib1Cp), "own version (lib 1.0) on classpath")
+    assertTrue(!spec.classpath.contains(lib2Cp), "foreign version (lib 2.0) NOT on classpath")
+
+    // Without a per-entry classpath the union (both versions) leaks in -- the prior behavior.
+    val unionSpec = CompileService.buildSpecs(plan, listOf(aDesc)).specs.single { it.bsn == "org.example.a" }
+    assertTrue(unionSpec.classpath.contains(lib2Cp), "fallback union contains both versions")
+  }
 }
