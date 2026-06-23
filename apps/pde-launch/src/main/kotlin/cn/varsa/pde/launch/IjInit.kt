@@ -171,7 +171,7 @@ object IjInit {
       }
       val moduleFileName = "${bundle}.iml"
       val moduleFile = moduleDir.resolve(moduleFileName)
-      val contentRoot = "file://${toProjectPath(projectDir, bundlePath)}"
+      val contentRoot = "file://${toModulePath(moduleDir, bundlePath)}"
       val relativeSourceRoots = sourceRoots.map { root ->
         bundlePath.relativize(root).toString().replace('\\', '/')
       }
@@ -181,7 +181,6 @@ object IjInit {
     }
 
     writeModulesXml(projectDir, modules)
-    vcsMappings.add("\$PROJECT_DIR\$")
     writeVcsXml(projectDir, vcsMappings.sorted())
     return modules.size
   }
@@ -468,6 +467,13 @@ object IjInit {
     val normalizedPath = path.toAbsolutePath().normalize()
     val relative = normalizedProjectDir.relativize(normalizedPath).toString().replace('\\', '/')
     return if (relative.isBlank()) "\$PROJECT_DIR\$" else "\$PROJECT_DIR\$/${relative}"
+  }
+
+  private fun toModulePath(moduleDir: Path, path: Path): String {
+    val normalizedModuleDir = moduleDir.toAbsolutePath().normalize()
+    val normalizedPath = path.toAbsolutePath().normalize()
+    val relative = normalizedModuleDir.relativize(normalizedPath).toString().replace('\\', '/')
+    return if (relative.isBlank()) "\$MODULE_DIR\$" else "\$MODULE_DIR\$/${relative}"
   }
 
   private fun xmlEscape(value: String): String {

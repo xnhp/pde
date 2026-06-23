@@ -123,7 +123,7 @@ class IjInitTest {
     val moduleFile = baseDir.resolve("ij-project/ij-module-files/org.knime.core.iml")
     assertTrue(Files.exists(moduleFile))
     val moduleContents = Files.readString(moduleFile)
-    val expectedRoot = "file://\$PROJECT_DIR\$/../knime-core/org.knime.core"
+    val expectedRoot = "file://\$MODULE_DIR\$/../../knime-core/org.knime.core"
     assertTrue(moduleContents.contains("content url=\"${expectedRoot}\""))
     assertTrue(moduleContents.contains("sourceFolder url=\"${expectedRoot}/src\""))
     assertTrue(moduleContents.contains("excludeFolder url=\"${expectedRoot}/node_modules\""))
@@ -175,12 +175,12 @@ class IjInitTest {
     assertTrue(!formatter.contains("\\\""))
 
     val vcs = Files.readString(projectDir.resolve(".idea/vcs.xml"))
-    assertTrue(vcs.contains("directory=\"\$PROJECT_DIR\$\""))
+    assertTrue(!vcs.contains("directory=\"\$PROJECT_DIR\$\""))
     assertTrue(vcs.contains("directory=\"\$PROJECT_DIR\$/../repo\""))
 
     val module = Files.readString(projectDir.resolve("ij-module-files/org.example.bundle.iml"))
-    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../repo/org.example.bundle/src-deprecated\""))
-    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../repo/org.example.bundle/src/eclipse\""))
+    assertTrue(module.contains("sourceFolder url=\"file://\$MODULE_DIR\$/../../repo/org.example.bundle/src-deprecated\""))
+    assertTrue(module.contains("sourceFolder url=\"file://\$MODULE_DIR\$/../../repo/org.example.bundle/src/eclipse\""))
   }
 
   @Test
