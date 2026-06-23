@@ -97,8 +97,8 @@ class IjInitTest {
 
     IjInit.initIjProjectFromConfig(configPath, issueDir)
 
-    val eclipsePartial = Files.readString(issueDir.resolve("ij-project/EX-9/.idea/eclipse-partial.xml"))
-    val expected = "\$PROJECT_DIR\$/../../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile"
+    val eclipsePartial = Files.readString(issueDir.resolve("ij-project/.idea/eclipse-partial.xml"))
+    val expected = "\$PROJECT_DIR\$/../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile"
     assertTrue(eclipsePartial.contains("location=\"${expected}\""))
   }
 
@@ -120,10 +120,10 @@ class IjInitTest {
 
     IjInit.initIjProjectFromConfig(configPath)
 
-    val moduleFile = baseDir.resolve("ij-project/EX-9/ij-module-files/org.knime.core.iml")
+    val moduleFile = baseDir.resolve("ij-project/ij-module-files/org.knime.core.iml")
     assertTrue(Files.exists(moduleFile))
     val moduleContents = Files.readString(moduleFile)
-    val expectedRoot = "file://\$PROJECT_DIR\$/../../knime-core/org.knime.core"
+    val expectedRoot = "file://\$PROJECT_DIR\$/../knime-core/org.knime.core"
     assertTrue(moduleContents.contains("content url=\"${expectedRoot}\""))
     assertTrue(moduleContents.contains("sourceFolder url=\"${expectedRoot}/src\""))
     assertTrue(moduleContents.contains("excludeFolder url=\"${expectedRoot}/node_modules\""))
@@ -131,7 +131,7 @@ class IjInitTest {
     assertTrue(moduleContents.contains("name=\"PDE Tools\""))
     assertTrue(!moduleContents.contains("//src"))
     assertTrue(!moduleContents.contains("//node_modules"))
-    val modulesXml = Files.readString(baseDir.resolve("ij-project/EX-9/.idea/modules.xml"))
+    val modulesXml = Files.readString(baseDir.resolve("ij-project/.idea/modules.xml"))
     assertTrue(modulesXml.contains("EX-9.iml"))
     assertTrue(modulesXml.contains("org.knime.core.iml"))
   }
@@ -165,22 +165,22 @@ class IjInitTest {
 
     IjInit.initIjProjectFromConfig(configPath, issueDir)
 
-    val projectDir = issueDir.resolve("ij-project/EX-9")
+    val projectDir = issueDir.resolve("ij-project")
     val eclipsePartial = Files.readString(projectDir.resolve(".idea/eclipse-partial.xml"))
-    assertTrue(eclipsePartial.contains("location=\"\$PROJECT_DIR\$/../../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile\""))
-    assertTrue(eclipsePartial.contains("launcherJar=\"\$PROJECT_DIR\$/../../../bundle-pool/plugins/org.eclipse.equinox.launcher_1.0.0.jar\""))
+    assertTrue(eclipsePartial.contains("location=\"\$PROJECT_DIR\$/../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile\""))
+    assertTrue(eclipsePartial.contains("launcherJar=\"\$PROJECT_DIR\$/../../bundle-pool/plugins/org.eclipse.equinox.launcher_1.0.0.jar\""))
 
     val formatter = Files.readString(projectDir.resolve(".idea/eclipseCodeFormatter.xml"))
-    assertTrue(formatter.contains("pathToConfigFileJava\" value=\"\$PROJECT_DIR\$/../../../org.eclipse.jdt.core.prefs\""))
+    assertTrue(formatter.contains("pathToConfigFileJava\" value=\"\$PROJECT_DIR\$/../../org.eclipse.jdt.core.prefs\""))
     assertTrue(!formatter.contains("\\\""))
 
     val vcs = Files.readString(projectDir.resolve(".idea/vcs.xml"))
     assertTrue(vcs.contains("directory=\"\$PROJECT_DIR\$\""))
-    assertTrue(vcs.contains("directory=\"\$PROJECT_DIR\$/../../repo\""))
+    assertTrue(vcs.contains("directory=\"\$PROJECT_DIR\$/../repo\""))
 
     val module = Files.readString(projectDir.resolve("ij-module-files/org.example.bundle.iml"))
-    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../../repo/org.example.bundle/src-deprecated\""))
-    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../../repo/org.example.bundle/src/eclipse\""))
+    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../repo/org.example.bundle/src-deprecated\""))
+    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../repo/org.example.bundle/src/eclipse\""))
   }
 
   @Test

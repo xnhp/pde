@@ -126,7 +126,7 @@ object IjInit {
 
   private fun ensureIjProjectDir(issueDir: Path): Path {
     val projectName = determineProjectName(issueDir)
-    val targetDir = issueDir.resolve("ij-project").resolve(projectName)
+    val targetDir = issueDir.resolve("ij-project")
     if (!Files.exists(targetDir)) {
       copyIjTemplate(targetDir, projectName)
     } else if (!Files.isDirectory(targetDir)) {
@@ -352,7 +352,7 @@ object IjInit {
   }
 
   private fun writeModulesXml(projectDir: Path, moduleFiles: List<String>) {
-    val projectName = projectDir.fileName?.toString() ?: "ij-project"
+    val projectName = determineProjectName(projectDir.parent ?: projectDir)
     val builder = StringBuilder()
     builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
     builder.appendLine("<project version=\"4\">")
