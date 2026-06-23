@@ -80,8 +80,10 @@ $defs:
           If omitted, a temporary working directory is created.
       env:
         type: object
-        additionalProperties:
-          type: string
+        patternProperties:
+          "^[A-Za-z_][A-Za-z0-9_]*$":
+            type: string
+        additionalProperties: false
         description: >-
           Extra environment variables for this launch preset. Merged with the
           current process environment; values here take precedence over envFile.
