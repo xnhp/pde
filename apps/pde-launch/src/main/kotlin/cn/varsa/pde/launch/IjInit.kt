@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.Properties
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -42,6 +43,7 @@ object IjInit {
   )
 
   private val eclipseTargetLocationRegex = Regex("""(<location[^>]*?\slocation=\")([^\"]+)(\")""")
+  private val launcherJarRegex = Regex("""(\slauncherJar=\")([^\"]*)(\")""")
 
   fun main(args: Array<String>): Int {
     CliLogging.configure(CliLogLevel.INFO, CliStyle.useColor(ColorMode.AUTO))
@@ -76,12 +78,12 @@ object IjInit {
     }
 
     return try {
-      val workingDir = if (issueDirOpt != null) {
+      val issueRoot = if (issueDirOpt != null) {
         issueDir.toAbsolutePath().normalize()
       } else {
         configPath.parent?.toAbsolutePath()?.normalize() ?: issueDir.toAbsolutePath().normalize()
       }
-      val moduleCount = initIjProjectFromConfig(configPath, workingDir)
+      val moduleCount = initIjProjectFromConfig(configPath, issueRoot)
       logger.info("IntelliJ PDE project initialized for ${moduleCount} workspace bundles.")
       0
     } catch (ex: Exception) {
@@ -90,22 +92,28 @@ object IjInit {
     }
   }
 
-  internal fun initIjProjectFromConfig(configPath: Path, workingDir: Path = configPath.parent ?: configPath): Int {
-    val baseDir = configPath.parent ?: fail("Config file has no parent directory: ${configPath}")
-    val context = LaunchConfigLoader.load(configPath, workingDir)
+  internal fun initIjProjectFromConfig(configPath: Path, issueDir: Path = configPath.parent ?: configPath): Int {
+    configPath.parent ?: fail("Config file has no parent directory: ${configPath}")
+    val issueRoot = issueDir.toAbsolutePath().normalize()
+    val context = LaunchConfigLoader.load(configPath, issueRoot)
     if (context.config.bundles.isEmpty()) {
       fail("No bundle entries found in config; add bundles to generate modules.")
     }
-    val projectDir = ensureIjProjectDir(baseDir)
-    applyIjConfig(context, projectDir)
+    val projectDir = ensureIjProjectDir(issueRoot)
+    applyIjConfig(context, projectDir, issueRoot)
     return writeIjModules(context, projectDir)
   }
 
-  internal fun copyIjTemplate(targetDir: Path) {
+  internal fun copyIjTemplate(targetDir: Path, projectName: String = projectNameFromDirectory(targetDir)) {
     templateDirs.forEach { dir -> Files.createDirectories(targetDir.resolve(dir)) }
     val loader = IjInit::class.java.classLoader
     templateFiles.forEach { template ->
-      val destination = targetDir.resolve(template.destinationPath)
+      val destinationPath = if (template.destinationPath == "ij-project.iml") {
+        "${projectName}.iml"
+      } else {
+        template.destinationPath
+      }
+      val destination = targetDir.resolve(destinationPath)
       Files.createDirectories(destination.parent)
       val stream = loader.getResourceAsStream(template.resourcePath)
         ?: fail("Template resource missing: ${template.resourcePath}")
@@ -113,23 +121,32 @@ object IjInit {
         Files.copy(input, destination)
       }
     }
-    ensureModuleExcludesBin(targetDir.resolve("ij-project.iml"))
+    ensureModuleExcludesBin(targetDir.resolve("${projectName}.iml"))
   }
 
-  private fun ensureIjProjectDir(baseDir: Path): Path {
-    val targetDir = baseDir.resolve("ij-project")
+  private fun ensureIjProjectDir(issueDir: Path): Path {
+    val projectName = determineProjectName(issueDir)
+    val targetDir = issueDir.resolve("ij-project").resolve(projectName)
     if (!Files.exists(targetDir)) {
-      copyIjTemplate(targetDir)
+      copyIjTemplate(targetDir, projectName)
     } else if (!Files.isDirectory(targetDir)) {
       fail("Expected ${targetDir} to be a directory")
+    }
+    val moduleFile = targetDir.resolve("${projectName}.iml")
+    if (!Files.exists(moduleFile)) {
+      copyProjectModuleTemplate(targetDir, projectName)
     }
     return targetDir
   }
 
-  private fun applyIjConfig(context: LaunchConfigContext, projectDir: Path) {
-    val profilePath = resolveProfilePath(context)
-    if (profilePath != null) {
-      updateEclipseTargetLocation(projectDir, normalizeProfilePath(profilePath.toString()))
+  private fun applyIjConfig(context: LaunchConfigContext, projectDir: Path, issueDir: Path) {
+    val profilePath = resolveProfilePath(context, issueDir)
+    updateEclipseTargetLocation(projectDir, toProjectPath(projectDir, profilePath))
+    resolveLauncherJar(context)?.let { launcherJar ->
+      updateEclipseLauncherJar(projectDir, toProjectPath(projectDir, launcherJar))
+    }
+    resolveFormatterConfig(issueDir)?.let { formatterConfig ->
+      updateEclipseFormatterConfig(projectDir, toProjectPath(projectDir, formatterConfig))
     }
   }
 
@@ -145,12 +162,7 @@ object IjInit {
       if (!Files.exists(bundlePath) || !Files.isDirectory(bundlePath)) {
         fail("Bundle directory does not exist: ${bundlePath}")
       }
-      bundlePath.parent?.let { parent ->
-        val relativeParent = baseDir.relativize(parent.toAbsolutePath().normalize()).toString().replace('\\', '/')
-        if (relativeParent.isNotBlank() && !relativeParent.startsWith("..")) {
-          vcsMappings.add(relativeParent)
-        }
-      }
+      vcsMappings.add(toProjectPath(projectDir, findVcsRoot(bundlePath) ?: bundlePath.parent ?: bundlePath))
       val bundle = bundlePath.fileName?.toString() ?: fail("Bundle path has no final segment: ${bundlePath}")
       val sourceRoots = determineSourceRoots(bundlePath)
       if (sourceRoots.isEmpty()) {
@@ -159,7 +171,7 @@ object IjInit {
       }
       val moduleFileName = "${bundle}.iml"
       val moduleFile = moduleDir.resolve(moduleFileName)
-      val contentRoot = normalizeContentRoot(bundlePath.toAbsolutePath().normalize().toUri().toString())
+      val contentRoot = "file://${toProjectPath(projectDir, bundlePath)}"
       val relativeSourceRoots = sourceRoots.map { root ->
         bundlePath.relativize(root).toString().replace('\\', '/')
       }
@@ -169,6 +181,7 @@ object IjInit {
     }
 
     writeModulesXml(projectDir, modules)
+    vcsMappings.add("\$PROJECT_DIR\$")
     writeVcsXml(projectDir, vcsMappings.sorted())
     return modules.size
   }
@@ -180,10 +193,24 @@ object IjInit {
       ?: fail("Could not find eclipse location entry in ${file}")
     val escaped = xmlEscape(profilePath)
     val replaced = contents.replaceRange(match.range, "${match.groupValues[1]}${escaped}${match.groupValues[3]}")
-    if (replaced == contents) {
-      fail("Target location already up to date in ${file}")
+    if (replaced != contents) {
+      Files.writeString(file, replaced)
     }
-    Files.writeString(file, replaced)
+  }
+
+  internal fun updateEclipseLauncherJar(projectDir: Path, launcherJarPath: String) {
+    val file = projectDir.resolve(".idea/eclipse-partial.xml")
+    val contents = Files.readString(file)
+    val escaped = xmlEscape(launcherJarPath)
+    if (!launcherJarRegex.containsMatchIn(contents)) {
+      fail("Could not find launcherJar entries in ${file}")
+    }
+    val replaced = launcherJarRegex.replace(contents) { match ->
+      "${match.groupValues[1]}${escaped}${match.groupValues[3]}"
+    }
+    if (replaced != contents) {
+      Files.writeString(file, replaced)
+    }
   }
 
   internal fun updateEclipseFormatterConfig(projectDir: Path, formatterConfigPath: String) {
@@ -191,13 +218,14 @@ object IjInit {
     Files.createDirectories(file.parent)
     val escaped = xmlEscape(formatterConfigPath)
     val xml = """
-      <project version=\"4\">
-        <component name=\"EclipseCodeFormatterProjectSettings\">
-          <option name=\"projectSpecificProfile\">
+      <?xml version="1.0" encoding="UTF-8"?>
+      <project version="4">
+        <component name="EclipseCodeFormatterProjectSettings">
+          <option name="projectSpecificProfile">
             <ProjectSpecificProfile>
-              <option name=\"formatter\" value=\"ECLIPSE\" />
-              <option name=\"pathToConfigFileJava\" value=\"${escaped}\" />
-              <option name=\"selectedJavaProfile\" value=\"valid 'org.eclipse.jdt.core.prefs' config\" />
+              <option name="formatter" value="ECLIPSE" />
+              <option name="pathToConfigFileJava" value="${escaped}" />
+              <option name="selectedJavaProfile" value="valid 'org.eclipse.jdt.core.prefs' config" />
             </ProjectSpecificProfile>
           </option>
         </component>
@@ -215,21 +243,46 @@ object IjInit {
     return (if (path.isAbsolute) path else baseDir.resolve(path)).normalize().toString()
   }
 
-  private fun resolveProfilePath(context: LaunchConfigContext): Path? {
+  private fun resolveProfilePath(context: LaunchConfigContext, issueDir: Path): Path {
     val baseDir = context.baseDir
     val targetConfig = context.config.target
-    if (targetConfig == null) return null
-
-    val profileId = targetConfig.profileId ?: "profile"
-    val p2Path = targetConfig.p2Path?.let { resolvePath(baseDir, it) }
-      ?: context.workingDir.resolve("target").resolve("p2")
+    val profileId = targetConfig?.profileId ?: "profile"
+    val p2Path = targetConfig?.p2Path
+      ?.takeUnless { isDefaultP2Path(it) }
+      ?.let { resolvePath(baseDir, it) }
+      ?: issueDir.resolve("target").resolve("p2")
     val registry = p2Path.resolve("org.eclipse.equinox.p2.engine").resolve("profileRegistry")
-    val profileDir = registry.resolve("${profileId}.profile")
-    return when {
-      Files.isDirectory(profileDir) -> profileDir
-      else -> null
+    return registry.resolve("${profileId}.profile").toAbsolutePath().normalize()
+  }
+
+  private fun resolveLauncherJar(context: LaunchConfigContext): Path? {
+    val bundlePool = context.config.target?.bundlePool?.takeUnless { it.isBlank() } ?: return null
+    val pluginsDir = resolvePath(context.baseDir, bundlePool).resolve("plugins")
+    if (!Files.isDirectory(pluginsDir)) return null
+    Files.list(pluginsDir).use { stream ->
+      return stream
+        .filter { path ->
+          val name = path.fileName?.toString() ?: return@filter false
+          Files.isRegularFile(path) && name.startsWith("org.eclipse.equinox.launcher_") && name.endsWith(".jar")
+        }
+        .sorted { left, right -> left.fileName.toString().compareTo(right.fileName.toString()) }
+        .reduce { _, next -> next }
+        .orElse(null)
+        ?.toAbsolutePath()
+        ?.normalize()
     }
   }
+
+  private fun resolveFormatterConfig(issueDir: Path): Path? {
+    val candidates = listOf(
+      issueDir.parent?.resolve("org.eclipse.jdt.core.prefs"),
+      issueDir.resolve("org.eclipse.jdt.core.prefs")
+    ).filterNotNull()
+    return candidates.firstOrNull { Files.isRegularFile(it) }?.toAbsolutePath()?.normalize()
+  }
+
+  private fun isDefaultP2Path(value: String): Boolean =
+    Paths.get(normalizeProfilePath(value)).normalize().toString().replace('\\', '/') == "target/p2"
 
   private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
     val candidate = configOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
@@ -265,15 +318,29 @@ object IjInit {
   }
 
   private fun determineSourceRoots(bundleDir: Path): List<Path> {
-    val srcDir = bundleDir.resolve("src")
-    if (!Files.exists(srcDir) || !Files.isDirectory(srcDir)) return emptyList()
-    val roots = mutableListOf<Path>()
-    val eclipseDir = srcDir.resolve("eclipse")
-    if (Files.isDirectory(eclipseDir)) roots.add(eclipseDir)
-    val generatedDir = srcDir.resolve("generated")
-    if (Files.isDirectory(generatedDir)) roots.add(generatedDir)
-    if (roots.isEmpty()) roots.add(srcDir)
-    return roots
+    val props = loadBuildProperties(bundleDir)
+    val roots = props?.stringPropertyNames()
+      ?.filter { it.startsWith("source.") }
+      ?.sorted()
+      ?.flatMap { key -> props.getProperty(key).split(',').map { it.trim() } }
+      ?.filter { it.isNotEmpty() }
+      ?.map { bundleDir.resolve(it).normalize() }
+      ?.filter { Files.isDirectory(it) }
+      ?.distinct()
+      ?: emptyList()
+    if (roots.isNotEmpty()) return roots
+
+    return listOf("src/eclipse", "src/generated", "src-deprecated", "js-src", "src")
+      .map { bundleDir.resolve(it).normalize() }
+      .filter { Files.isDirectory(it) }
+  }
+
+  private fun loadBuildProperties(bundleDir: Path): Properties? {
+    val file = bundleDir.resolve("build.properties")
+    if (!Files.isRegularFile(file)) return null
+    return Properties().apply {
+      Files.newInputStream(file).use { load(it) }
+    }
   }
 
   private fun determineExcludedFolders(bundleDir: Path): List<String> {
@@ -284,18 +351,14 @@ object IjInit {
     return excludes
   }
 
-  private fun normalizeContentRoot(url: String): String {
-    if (!url.endsWith("/") || url.length <= "file:///".length) return url
-    return url.removeSuffix("/")
-  }
-
   private fun writeModulesXml(projectDir: Path, moduleFiles: List<String>) {
+    val projectName = projectDir.fileName?.toString() ?: "ij-project"
     val builder = StringBuilder()
     builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
     builder.appendLine("<project version=\"4\">")
     builder.appendLine("  <component name=\"ProjectModuleManager\">")
     builder.appendLine("    <modules>")
-    builder.appendLine("      <module fileurl=\"file://\$PROJECT_DIR\$/ij-project.iml\" filepath=\"\$PROJECT_DIR\$/ij-project.iml\" />")
+    builder.appendLine("      <module fileurl=\"file://\$PROJECT_DIR\$/${projectName}.iml\" filepath=\"\$PROJECT_DIR\$/${projectName}.iml\" />")
     moduleFiles.forEach { file ->
       builder.appendLine("      <module fileurl=\"file://\$PROJECT_DIR\$/ij-module-files/${file}\" filepath=\"\$PROJECT_DIR\$/ij-module-files/${file}\" />")
     }
@@ -315,7 +378,7 @@ object IjInit {
     builder.appendLine("  <component name=\"VcsDirectoryMappings\">")
     repos.forEach { repo ->
       val normalized = repo.replace('\\', '/').trimEnd('/')
-      builder.appendLine("    <mapping directory=\"\$PROJECT_DIR\$/../${normalized}\" vcs=\"Git\" />")
+      builder.appendLine("    <mapping directory=\"${xmlEscape(normalized)}\" vcs=\"Git\" />")
     }
     builder.appendLine("  </component>")
     builder.appendLine("</project>")
@@ -332,7 +395,7 @@ object IjInit {
     builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
     builder.appendLine("<module type=\"JAVA_MODULE\" version=\"4\">")
     builder.appendLine("  <component name=\"FacetManager\">")
-    builder.appendLine("    <facet type=\"cn.varsa.idea.pde.partial.plugin\" name=\"Eclipse PDE\">")
+    builder.appendLine("    <facet type=\"cn.varsa.idea.pde.tools.plugin\" name=\"PDE Tools\">")
     builder.appendLine("      <configuration />")
     builder.appendLine("    </facet>")
     builder.appendLine("  </component>")
@@ -363,6 +426,48 @@ object IjInit {
     if (index == -1) fail("Could not update ${moduleFile} to exclude bin")
     val updated = content.replace(marker, "${excludeLine}\n${marker}")
     Files.writeString(moduleFile, updated)
+  }
+
+  private fun copyProjectModuleTemplate(targetDir: Path, projectName: String) {
+    val loader = IjInit::class.java.classLoader
+    val destination = targetDir.resolve("${projectName}.iml")
+    val stream = loader.getResourceAsStream("ij-project/ij-project.iml")
+      ?: fail("Template resource missing: ij-project/ij-project.iml")
+    stream.use { input -> Files.copy(input, destination) }
+    ensureModuleExcludesBin(destination)
+  }
+
+  private fun determineProjectName(issueDir: Path): String {
+    val issueYaml = issueDir.resolve("issue.yaml")
+    if (Files.isRegularFile(issueYaml)) {
+      val match = Regex("""(?m)^\s*id:\s*([A-Za-z][A-Za-z0-9]*-\d+)\s*$""")
+        .find(Files.readString(issueYaml))
+      if (match != null) return match.groupValues[1]
+    }
+    val dirName = issueDir.fileName?.toString().orEmpty()
+    Regex("[A-Z]+-\\d+").find(dirName)?.let { return it.value }
+    return sanitizeProjectName(dirName).ifBlank { "ij-project" }
+  }
+
+  private fun projectNameFromDirectory(projectDir: Path): String =
+    sanitizeProjectName(projectDir.fileName?.toString().orEmpty()).ifBlank { "ij-project" }
+
+  private fun sanitizeProjectName(value: String): String =
+    value.replace(Regex("[^A-Za-z0-9_.-]+"), "-").trim('-', '.', '_')
+
+  private fun findVcsRoot(path: Path): Path? {
+    var current = path.toAbsolutePath().normalize()
+    while (true) {
+      if (Files.exists(current.resolve(".git"))) return current
+      current = current.parent ?: return null
+    }
+  }
+
+  private fun toProjectPath(projectDir: Path, path: Path): String {
+    val normalizedProjectDir = projectDir.toAbsolutePath().normalize()
+    val normalizedPath = path.toAbsolutePath().normalize()
+    val relative = normalizedProjectDir.relativize(normalizedPath).toString().replace('\\', '/')
+    return if (relative.isBlank()) "\$PROJECT_DIR\$" else "\$PROJECT_DIR\$/${relative}"
   }
 
   private fun xmlEscape(value: String): String {

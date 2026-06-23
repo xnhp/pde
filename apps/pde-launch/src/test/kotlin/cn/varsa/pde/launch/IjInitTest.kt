@@ -2,7 +2,6 @@ package cn.varsa.pde.launch
 
 import org.junit.Test
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -11,7 +10,7 @@ class IjInitTest {
   @Test
   fun `copyIjTemplate creates expected files`() {
     val targetDir = Files.createTempDirectory("ij-init-template")
-    IjInit.copyIjTemplate(targetDir)
+    IjInit.copyIjTemplate(targetDir, "ij-project")
 
     assertTrue(Files.isDirectory(targetDir.resolve(".idea")))
     assertTrue(Files.isDirectory(targetDir.resolve("src")))
@@ -30,7 +29,7 @@ class IjInitTest {
   @Test
   fun `updateEclipseTargetLocation replaces profile location`() {
     val targetDir = Files.createTempDirectory("ij-init-target")
-    IjInit.copyIjTemplate(targetDir)
+    IjInit.copyIjTemplate(targetDir, "ij-project")
 
     IjInit.updateEclipseTargetLocation(targetDir, "/opt/knime/target/profile.profile")
 
@@ -41,7 +40,7 @@ class IjInitTest {
   @Test
   fun `updateEclipseFormatterConfig writes formatter settings`() {
     val targetDir = Files.createTempDirectory("ij-init-formatter")
-    IjInit.copyIjTemplate(targetDir)
+    IjInit.copyIjTemplate(targetDir, "ij-project")
 
     IjInit.updateEclipseFormatterConfig(targetDir, "/opt/knime/org.eclipse.jdt.core.prefs")
 
@@ -67,6 +66,7 @@ class IjInitTest {
   @Test
   fun `initIjProjectFromConfig defaults profile path to issue dir`() {
     val issueDir = Files.createTempDirectory("ij-init-issue")
+    Files.writeString(issueDir.resolve("issue.yaml"), "id: EX-9\n")
     val configDir = issueDir.resolve("config")
     Files.createDirectories(configDir)
     val repoDir = configDir.resolve("knime-core").resolve("org.knime.core")
@@ -87,17 +87,25 @@ class IjInitTest {
       .resolve("profileRegistry")
       .resolve("profile.profile")
     Files.createDirectories(profileDir)
+    val issueProfileDir = issueDir
+      .resolve("target")
+      .resolve("p2")
+      .resolve("org.eclipse.equinox.p2.engine")
+      .resolve("profileRegistry")
+      .resolve("profile.profile")
+    Files.createDirectories(issueProfileDir)
 
     IjInit.initIjProjectFromConfig(configPath, issueDir)
 
-    val eclipsePartial = Files.readString(configDir.resolve("ij-project/.idea/eclipse-partial.xml"))
-    val expected = profileDir.toAbsolutePath().normalize().toString()
+    val eclipsePartial = Files.readString(issueDir.resolve("ij-project/EX-9/.idea/eclipse-partial.xml"))
+    val expected = "\$PROJECT_DIR\$/../../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile"
     assertTrue(eclipsePartial.contains("location=\"${expected}\""))
   }
 
   @Test
   fun `initIjProjectFromConfig writes module files`() {
     val baseDir = Files.createTempDirectory("ij-init-config")
+    Files.writeString(baseDir.resolve("issue.yaml"), "id: EX-9\n")
     val configPath = baseDir.resolve("pde.yaml")
     val repoDir = baseDir.resolve("knime-core").resolve("org.knime.core")
     Files.createDirectories(repoDir.resolve("src"))
@@ -112,18 +120,67 @@ class IjInitTest {
 
     IjInit.initIjProjectFromConfig(configPath)
 
-    val moduleFile = baseDir.resolve("ij-project/ij-module-files/org.knime.core.iml")
+    val moduleFile = baseDir.resolve("ij-project/EX-9/ij-module-files/org.knime.core.iml")
     assertTrue(Files.exists(moduleFile))
     val moduleContents = Files.readString(moduleFile)
-    val expectedRoot = repoDir.toAbsolutePath().normalize().toUri().toString().removeSuffix("/")
+    val expectedRoot = "file://\$PROJECT_DIR\$/../../knime-core/org.knime.core"
     assertTrue(moduleContents.contains("content url=\"${expectedRoot}\""))
     assertTrue(moduleContents.contains("sourceFolder url=\"${expectedRoot}/src\""))
     assertTrue(moduleContents.contains("excludeFolder url=\"${expectedRoot}/node_modules\""))
-    assertTrue(moduleContents.contains("name=\"Eclipse PDE\""))
+    assertTrue(moduleContents.contains("type=\"cn.varsa.idea.pde.tools.plugin\""))
+    assertTrue(moduleContents.contains("name=\"PDE Tools\""))
     assertTrue(!moduleContents.contains("//src"))
     assertTrue(!moduleContents.contains("//node_modules"))
-    val modulesXml = Files.readString(baseDir.resolve("ij-project/.idea/modules.xml"))
+    val modulesXml = Files.readString(baseDir.resolve("ij-project/EX-9/.idea/modules.xml"))
+    assertTrue(modulesXml.contains("EX-9.iml"))
     assertTrue(modulesXml.contains("org.knime.core.iml"))
+  }
+
+  @Test
+  fun `initIjProjectFromConfig writes launcher formatter and vcs settings`() {
+    val rootDir = Files.createTempDirectory("ij-init-root")
+    val issueDir = rootDir.resolve("todo_EX-9-example")
+    Files.createDirectories(issueDir)
+    Files.writeString(issueDir.resolve("issue.yaml"), "id: EX-9\n")
+    Files.writeString(rootDir.resolve("org.eclipse.jdt.core.prefs"), "eclipse.preferences.version=1\n")
+    val bundlePoolPlugins = rootDir.resolve("bundle-pool/plugins")
+    Files.createDirectories(bundlePoolPlugins)
+    Files.writeString(bundlePoolPlugins.resolve("org.eclipse.equinox.launcher_1.0.0.jar"), "")
+    val repoDir = issueDir.resolve("repo")
+    Files.createDirectories(repoDir.resolve(".git"))
+    val bundleDir = repoDir.resolve("org.example.bundle")
+    Files.createDirectories(bundleDir.resolve("src/eclipse"))
+    Files.createDirectories(bundleDir.resolve("src-deprecated"))
+    Files.writeString(bundleDir.resolve("build.properties"), "source.. = src-deprecated/, src/eclipse/\n")
+    val configPath = issueDir.resolve("pde.yaml")
+    Files.writeString(
+      configPath,
+      """
+        target:
+          bundlePool: ../bundle-pool
+        bundles:
+          - path: repo/org.example.bundle
+      """.trimIndent()
+    )
+
+    IjInit.initIjProjectFromConfig(configPath, issueDir)
+
+    val projectDir = issueDir.resolve("ij-project/EX-9")
+    val eclipsePartial = Files.readString(projectDir.resolve(".idea/eclipse-partial.xml"))
+    assertTrue(eclipsePartial.contains("location=\"\$PROJECT_DIR\$/../../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile\""))
+    assertTrue(eclipsePartial.contains("launcherJar=\"\$PROJECT_DIR\$/../../../bundle-pool/plugins/org.eclipse.equinox.launcher_1.0.0.jar\""))
+
+    val formatter = Files.readString(projectDir.resolve(".idea/eclipseCodeFormatter.xml"))
+    assertTrue(formatter.contains("pathToConfigFileJava\" value=\"\$PROJECT_DIR\$/../../../org.eclipse.jdt.core.prefs\""))
+    assertTrue(!formatter.contains("\\\""))
+
+    val vcs = Files.readString(projectDir.resolve(".idea/vcs.xml"))
+    assertTrue(vcs.contains("directory=\"\$PROJECT_DIR\$\""))
+    assertTrue(vcs.contains("directory=\"\$PROJECT_DIR\$/../../repo\""))
+
+    val module = Files.readString(projectDir.resolve("ij-module-files/org.example.bundle.iml"))
+    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../../repo/org.example.bundle/src-deprecated\""))
+    assertTrue(module.contains("sourceFolder url=\"file://\$PROJECT_DIR\$/../../repo/org.example.bundle/src/eclipse\""))
   }
 
   @Test
