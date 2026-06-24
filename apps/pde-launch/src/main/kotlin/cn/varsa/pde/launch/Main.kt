@@ -34,12 +34,6 @@ private val launchOptions = listOf(
   CliOption(listOf("--osgiDebug"), "Enable OSGi debug output (-debug)"),
   CliOption(listOf("--clean"), "Launch with Eclipse -clean and rebuild OSGi framework state"),
   CliOption(listOf("--dry-run"), "Parse configuration only"),
-  CliOption(listOf("--target-root", "-t"), "Target root (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--workspace", "-w"), "Workspace bundle directory (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--dev-prop"), "Dev properties entry in form bsn=path1,path2", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--product"), "Product identifier", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--application"), "Application identifier", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--splash"), "Splash bundle symbolic name", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--framework"), "Framework BSN", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.osgi"),
   CliOption(listOf("--output", "-o"), "Output directory for config.ini/bundles.info/dev.properties", takesValue = true, valueLabel = "String")
 )
@@ -60,8 +54,8 @@ private val testOptions = listOf(
   CliOption(listOf("--listen-port"), "Fixed port to bind", takesValue = true, valueLabel = "Int"),
   CliOption(listOf("--port-range"), "Inclusive port range start-end", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--timeout"), "Seconds to wait for PDE connection", takesValue = true, valueLabel = "Int", defaultValue = "180"),
-  CliOption(listOf("--report"), "Reporting sink (teamcity, junit-xml:/path)", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--forward-log"), "Prefix and stream an existing log source (label=path)", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--report"), "Reporting sink (teamcity, junit-xml:/path)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--forward-log"), "Prefix and stream an existing log source (label=path)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--quiet"), "Suppress console test logs"),
 )
 
@@ -132,7 +126,6 @@ private val compilePositionals = listOf(
 
 private val compileOptions = listOf(
   CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--workspace", "-w"), "Workspace bundle directory (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--framework"), "Framework BSN", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.osgi"),
   CliOption(listOf("--json"), "Emit compile specs as JSON"),
   CliOption(listOf("--full-rebuild"), "Force full rebuild of all workspace bundles (skip incremental cache)"),
@@ -168,11 +161,11 @@ private val apiFiltersAddFromReportPositionals = listOf(
 
 private val apiFiltersAddFromReportOptions = listOf(
   CliOption(listOf("--report"), "Path to api-analyze --report JSON", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--problem"), "Select a problemRef from the report (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--problem"), "Select a problemRef from the report (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--all"), "Select all report problems (can still be narrowed by filters)"),
-  CliOption(listOf("--bundle"), "Keep only selected bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--category"), "Keep only selected categories (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
-  CliOption(listOf("--severity"), "Keep only selected severities (repeatable)", takesValue = true, valueLabel = "String", arity = "1"),
+  CliOption(listOf("--bundle"), "Keep only selected bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--category"), "Keep only selected categories (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--severity"), "Keep only selected severities (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--comment-template"), "Set filter comment with {problemRef},{bundleBsn},{timestamp}", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--dry-run"), "Preview .api_filters changes without writing files (default mode)"),
   CliOption(listOf("--apply"), "Write .settings/.api_filters changes to disk"),
@@ -395,7 +388,7 @@ private fun pdeMcpHelpText(): String = """
   ${pdeMcpWorkflowCommand.cliMcpToolsListText()}
 """.trimIndent()
 
-internal fun runPde(args: Array<String>): Int = createPdeCommandLine().execute(*args)
+internal fun runPde(args: Array<String>): Int = CliMain.run(createPdeCommandLine(), args)
 
 fun main(args: Array<String>) {
   exitProcess(runPde(args))

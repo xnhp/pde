@@ -1134,13 +1134,22 @@ private fun executeLaunch(
     processBuilder.redirectOutput(outputLog.toFile())
   } else {
     processBuilder.redirectErrorStream(true)
-    processBuilder.redirectOutput(ProcessBuilder.Redirect.DISCARD)
   }
   val process = processBuilder
     .directory(prepared.layout.workDir.toFile())
-    .inheritIO()
     .start()
+  val outputThread = if (outputLog == null) {
+    Thread {
+      process.inputStream.use { input -> input.copyTo(System.out) }
+    }.also { thread ->
+      thread.isDaemon = true
+      thread.start()
+    }
+  } else {
+    null
+  }
   val exit = process.waitFor()
+  outputThread?.join()
   if (exit != 0) error("Launcher exited with code $exit")
 }
 

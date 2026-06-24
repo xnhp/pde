@@ -22,20 +22,18 @@ internal val pdeMcpWorkflowCommand = CliCommandGroup(
   children = listOf(
     workflowLeaf(
       name = "compile-workspace",
-      description = "Compile PDE Java bundles for a workspace or launch configuration.",
+      description = "Compile PDE Java bundles from a launch configuration.",
       tool = CliToolBinding(
         id = "pde_compile_workspace",
         title = "Compile PDE workspace",
-        description = "Compile PDE Java bundles for a workspace or launch configuration. The config may set target.extraBundles to add already-installed target/workspace bundles to the classpath and target.pinnedVersions to select exact bundle versions when several are present.",
+        description = "Compile PDE Java bundles from a pde.yaml launch configuration. Workspace bundles must be configured via the config's bundles entries.",
         inputSchema = workflowSchema(
           "config" to stringProperty("Path to pde.yaml or equivalent launch config."),
-          "workspace" to stringArrayProperty("Workspace bundle directories to compile."),
           "fullRebuild" to booleanProperty("Force full rebuild of all workspace bundles.", default = false)
         ),
         decodeArguments = { arguments ->
           buildArgs {
             addOptional("--config", arguments.string("config"))
-            addRepeated("--workspace", arguments.stringArray("workspace"))
             addFlag("--full-rebuild", arguments.boolean("fullRebuild"))
           }
         }

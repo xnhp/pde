@@ -176,6 +176,12 @@ class PdeCliTest {
     assertTrue(output.contains("Usage: pde launch"))
     assertTrue(output.contains("--config=String"))
     assertTrue(output.contains("Enable JDWP for launch JVM"))
+    assertTrue(!output.contains("--workspace"))
+    assertTrue(!output.contains("--target-root"))
+    assertTrue(!output.contains("--dev-prop"))
+    assertTrue(!output.contains("--product"))
+    assertTrue(!output.contains("--application"))
+    assertTrue(!output.contains("--splash"))
     assertTrue(output.contains("[launchPos]"))
   }
 
@@ -213,6 +219,7 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("pde compile"))
     assertTrue(!output.contains("--execute"))
+    assertTrue(!output.contains("--workspace"))
     assertTrue(output.contains("--full-rebuild"))
   }
 
