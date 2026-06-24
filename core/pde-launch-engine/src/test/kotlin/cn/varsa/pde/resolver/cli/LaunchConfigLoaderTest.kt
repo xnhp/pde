@@ -5,8 +5,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Path
+import java.util.logging.Handler
+import java.util.logging.Level
+import java.util.logging.LogRecord
+import java.util.logging.Logger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class LaunchConfigLoaderTest {
   @Rule @JvmField val tmp = TemporaryFolder()
@@ -292,6 +297,49 @@ class LaunchConfigLoaderTest {
 
     assertFailsWith<IllegalStateException> {
       LaunchConfigLoader.load(configFile.toPath(), root)
+    }
+  }
+
+  @Test
+  fun warnsOnDuplicateYamlKeys() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      target:
+        definition: first.target
+        definition: second.target
+      """.trimIndent()
+    )
+    val logger = Logger.getLogger(LaunchConfigLoader::class.java.name)
+    val messages = mutableListOf<String>()
+    val handler = object : Handler() {
+      override fun publish(record: LogRecord) {
+        messages.add(record.message)
+      }
+
+      override fun flush() = Unit
+
+      override fun close() = Unit
+    }
+    val previousLevel = logger.level
+    val previousUseParent = logger.useParentHandlers
+    logger.level = Level.WARNING
+    logger.useParentHandlers = false
+    logger.addHandler(handler)
+
+    try {
+      val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+
+      assertEquals("second.target", loaded.config.target?.definition)
+      assertTrue(
+        messages.any { it.contains("Duplicate YAML key 'definition'") && it.contains("pde.yaml") },
+        "Expected duplicate key warning, got: $messages"
+      )
+    } finally {
+      logger.removeHandler(handler)
+      logger.level = previousLevel
+      logger.useParentHandlers = previousUseParent
     }
   }
 }

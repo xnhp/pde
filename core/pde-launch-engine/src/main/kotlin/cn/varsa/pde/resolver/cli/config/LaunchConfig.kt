@@ -11,6 +11,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.logging.Logger
 import kotlin.io.path.inputStream
 
 data class LaunchConfig(
@@ -98,6 +99,7 @@ data class LaunchConfigContext(
 )
 
 object LaunchConfigLoader {
+  private val logger: Logger = Logger.getLogger(LaunchConfigLoader::class.java.name)
   private val mapper = ObjectMapper(YAMLFactory())
     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     .registerModule(KotlinModule.Builder().build())
@@ -123,6 +125,7 @@ object LaunchConfigLoader {
   private fun loadMergedNode(path: Path, visited: MutableSet<Path>): ObjectNode {
     val normalized = path.toAbsolutePath().normalize()
     require(visited.add(normalized)) { "Include cycle detected at ${normalized.toAbsolutePath()}" }
+    warnDuplicateKeys(normalized)
     val node = normalized.inputStream().use { mapper.readTree(it) }
     val objectNode = node as? ObjectNode ?: mapper.nodeFactory.objectNode()
     val baseDir = normalized.parent ?: normalized
@@ -136,6 +139,28 @@ object LaunchConfigLoader {
     merged.remove("includes")
     visited.remove(normalized)
     return merged
+  }
+
+  private fun warnDuplicateKeys(path: Path) {
+    val stack = ArrayDeque<MutableSet<String>>()
+    path.inputStream().use { input ->
+      mapper.factory.createParser(input).use { parser ->
+        while (parser.nextToken() != null) {
+          when (parser.currentToken()) {
+            com.fasterxml.jackson.core.JsonToken.START_OBJECT -> stack.addLast(mutableSetOf())
+            com.fasterxml.jackson.core.JsonToken.END_OBJECT -> if (stack.isNotEmpty()) stack.removeLast()
+            com.fasterxml.jackson.core.JsonToken.FIELD_NAME -> {
+              val key = parser.currentName()
+              val keys = stack.lastOrNull()
+              if (key != null && keys != null && !keys.add(key)) {
+                logger.warning("Duplicate YAML key '$key' in ${path.toAbsolutePath().normalize()}; the later value will override the earlier one.")
+              }
+            }
+            else -> Unit
+          }
+        }
+      }
+    }
   }
 
   private fun parseIncludes(node: ObjectNode, baseDir: Path): List<Path> {
