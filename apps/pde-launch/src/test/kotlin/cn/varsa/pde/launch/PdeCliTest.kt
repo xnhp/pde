@@ -39,6 +39,7 @@ class PdeCliTest {
     assertTrue(output.contains("Usage:"))
     assertTrue(output.contains("run"))
     assertTrue(output.contains("target"))
+    assertTrue(output.contains("validate-config"))
     assertTrue(output.contains("schema"))
   }
 
@@ -221,6 +222,23 @@ class PdeCliTest {
     assertTrue(!output.contains("--execute"))
     assertTrue(!output.contains("--workspace"))
     assertTrue(output.contains("--full-rebuild"))
+  }
+
+  @Test
+  fun `validate config subcommand help uses command name`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("validate-config", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde validate-config"))
+    assertTrue(output.contains("file"))
+    assertTrue(output.contains("YAML config file to validate"))
   }
 
   @Test

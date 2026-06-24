@@ -172,6 +172,10 @@ private val apiFiltersAddFromReportOptions = listOf(
   CliOption(listOf("--allow-empty-selection"), "Return success when selection yields no problems")
 )
 
+private val validateConfigPositionals = listOf(
+  CliPositionalArg(0, "file", "YAML config file to validate", "1")
+)
+
 internal val pdeCommand = CliCommandGroup(
   name = "pde",
   description = "PDE tooling CLI",
@@ -332,6 +336,13 @@ internal val pdeCommand = CliCommandGroup(
           positionalArgs = apiFiltersAddFromReportPositionals
         )
       )
+    ),
+    CliCommandLeaf(
+      name = "validate-config",
+      description = "Validate a pde YAML config against the schema",
+      handler = { args -> ValidateConfigCommand.main(args) },
+      mixinStandardHelpOptions = true,
+      positionalArgs = validateConfigPositionals
     ),
     CliCommandLeaf(
       name = "schema",
