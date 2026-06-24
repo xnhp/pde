@@ -3,6 +3,7 @@ package cn.varsa.pde.launch
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PdeCliTest {
@@ -41,6 +42,39 @@ class PdeCliTest {
     assertTrue(output.contains("target"))
     assertTrue(output.contains("validate-config"))
     assertTrue(output.contains("schema"))
+  }
+
+  @Test
+  fun `top-level help omits mcp tool details`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde mcp tools list"))
+    assertFalse(output.contains("MCP tools for pde"))
+    assertFalse(output.contains("pde_compile_workspace"))
+  }
+
+  @Test
+  fun `mcp tools list prints mcp tool details`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("mcp", "tools", "list"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("MCP tools for pde"))
+    assertTrue(output.contains("pde_compile_workspace"))
   }
 
   @Test
