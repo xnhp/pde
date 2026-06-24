@@ -27,6 +27,7 @@ object WorkspaceBundleLoader {
     val sourceRoots = computeSourceRoots(absolute, buildProps)
     val resources = computeResourceRules(buildProps)
     val compilerPrefs = if (file.isDirectory) loadCompilerPrefs(file) else emptyMap()
+    val moduleAccess = if (file.isDirectory) loadModuleAccess(file) else ModuleAccess()
     val executionEnvironment = manifest[org.osgi.framework.Constants.BUNDLE_REQUIREDEXECUTIONENVIRONMENT]
     val outputInfo = if (file.isDirectory) computeOutputDir(absolute, buildProps) else null
     val fragmentHost = manifest.fragmentHost?.let { entry ->
@@ -47,13 +48,20 @@ object WorkspaceBundleLoader {
       compilerPrefs = compilerPrefs,
       executionEnvironment = executionEnvironment,
       outputDirectory = outputInfo?.directory,
-      outputDirectoryFromBuildProperties = outputInfo?.fromBuildProperties ?: false
+      outputDirectoryFromBuildProperties = outputInfo?.fromBuildProperties ?: false,
+      addExports = moduleAccess.addExports,
+      addOpens = moduleAccess.addOpens
     )
   }
 
   private data class OutputDirInfo(
     val directory: Path,
     val fromBuildProperties: Boolean
+  )
+
+  private data class ModuleAccess(
+    val addExports: List<String> = emptyList(),
+    val addOpens: List<String> = emptyList()
   )
 
   private fun loadDirectoryManifest(dir: File): BundleManifest {
@@ -117,6 +125,49 @@ object WorkspaceBundleLoader {
     return java.util.Properties().apply { prefsFile.inputStream().use { load(it) } }
       .entries.associate { it.key.toString() to it.value.toString() }
   }
+
+  /**
+   * Read `--add-exports`/`--add-opens` tokens declared on the JDT JRE_CONTAINER entry in
+   * `<dir>/.classpath`. Each attribute value is a `:`-separated list of `module/pkg=TARGET` tokens.
+   */
+  private fun loadModuleAccess(dir: File): ModuleAccess {
+    val classpathFile = File(dir, ".classpath")
+    if (!classpathFile.isFile) return ModuleAccess()
+    val document = runCatching {
+      val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+        setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+        isNamespaceAware = false
+      }
+      classpathFile.inputStream().use { factory.newDocumentBuilder().parse(it) }
+    }.getOrNull() ?: return ModuleAccess()
+
+    val entries = document.getElementsByTagName("classpathentry")
+    for (i in 0 until entries.length) {
+      val entry = entries.item(i) as? org.w3c.dom.Element ?: continue
+      if (entry.getAttribute("kind") != "con") continue
+      if (!entry.getAttribute("path").contains("org.eclipse.jdt.launching.JRE_CONTAINER")) continue
+      val attributes = attributeValues(entry)
+      return ModuleAccess(
+        addExports = splitTokens(attributes["add-exports"]),
+        addOpens = splitTokens(attributes["add-opens"])
+      )
+    }
+    return ModuleAccess()
+  }
+
+  private fun attributeValues(entry: org.w3c.dom.Element): Map<String, String> {
+    val result = linkedMapOf<String, String>()
+    val attributeNodes = entry.getElementsByTagName("attribute")
+    for (i in 0 until attributeNodes.length) {
+      val attribute = attributeNodes.item(i) as? org.w3c.dom.Element ?: continue
+      val name = attribute.getAttribute("name")
+      if (name.isNotEmpty()) result[name] = attribute.getAttribute("value")
+    }
+    return result
+  }
+
+  private fun splitTokens(value: String?): List<String> =
+    value?.split(':')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
 
   private fun computeOutputDir(base: Path, props: Properties?): OutputDirInfo {
     val output = props?.getProperty("output..")

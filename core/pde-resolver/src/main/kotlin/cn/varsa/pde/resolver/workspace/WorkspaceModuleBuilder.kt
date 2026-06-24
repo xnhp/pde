@@ -10,7 +10,9 @@ import java.util.logging.Logger
 data class WorkspaceModuleDefinition(
   val moduleDir: Path,
   val classRoots: List<String>? = null,
-  val manifestOverride: BundleManifest? = null
+  val manifestOverride: BundleManifest? = null,
+  val addExports: List<String> = emptyList(),
+  val addOpens: List<String> = emptyList()
 )
 
 object WorkspaceModuleBuilder {
@@ -56,7 +58,9 @@ object WorkspaceModuleBuilder {
 
       descriptors += descriptor.copy(
         manifest = manifest,
-        classPathEntries = effectiveClassPath
+        classPathEntries = effectiveClassPath,
+        addExports = mergeTokens(descriptor.addExports, definition.addExports),
+        addOpens = mergeTokens(descriptor.addOpens, definition.addOpens)
       )
       if (devClassPaths.isNotEmpty()) {
         devProps[bsn] = classRoots
@@ -100,6 +104,12 @@ object WorkspaceModuleBuilder {
       .ifEmpty { "." }
     return relative
   }
+
+  private fun mergeTokens(fromClasspath: List<String>, fromConfig: List<String>): List<String> =
+    (fromClasspath + fromConfig)
+      .map { it.trim() }
+      .filter { it.isNotEmpty() }
+      .distinct()
 
   private fun containsClasses(classPaths: List<Path>): Boolean =
     classPaths.any { path ->

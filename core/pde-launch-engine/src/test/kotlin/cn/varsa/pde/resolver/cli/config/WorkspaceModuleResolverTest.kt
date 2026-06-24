@@ -35,4 +35,21 @@ class WorkspaceModuleResolverTest {
     assertEquals(emptyList(), definitions.first { it.moduleDir.endsWith("bundle.empty") }.classRoots)
     assertEquals(listOf("bin/eclipse"), definitions.first { it.moduleDir.endsWith("bundle.explicit") }.classRoots)
   }
+
+  @Test
+  fun resolvesRelativeBundlePathAgainstBaseDirNotWorkingDir() {
+    val configDir = tmp.newFolder("config-dir").toPath()
+    val workingDir = tmp.newFolder("working-dir").toPath()
+
+    val context = LaunchConfigContext(
+      file = configDir.resolve("pde.yaml"),
+      baseDir = configDir,
+      workingDir = workingDir,
+      config = LaunchConfig(bundles = listOf(WorkspaceBundleConfig(path = "my.bundle")))
+    )
+
+    val moduleDir = WorkspaceModuleResolver.resolveDefinitions(context).single().moduleDir
+
+    assertEquals(configDir.resolve("my.bundle").toAbsolutePath().normalize(), moduleDir)
+  }
 }

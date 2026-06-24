@@ -29,10 +29,15 @@ object WorkspaceModuleResolver {
     val seen = linkedSetOf<String>()
     return context.config.bundles.mapNotNull { bundle ->
       val path = Paths.get(bundle.path)
-      val modulePath = (if (path.isAbsolute) path else context.workingDir.resolve(path)).toAbsolutePath().normalize()
+      val modulePath = (if (path.isAbsolute) path else context.baseDir.resolve(path)).toAbsolutePath().normalize()
       val normalized = modulePath.toString()
       if (!seen.add(normalized)) return@mapNotNull null
-      WorkspaceModuleDefinition(moduleDir = modulePath, classRoots = bundle.classRoots)
+      WorkspaceModuleDefinition(
+        moduleDir = modulePath,
+        classRoots = bundle.classRoots,
+        addExports = bundle.addExports,
+        addOpens = bundle.addOpens
+      )
     }
   }
 }
