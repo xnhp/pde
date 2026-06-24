@@ -89,6 +89,24 @@ private const val TARGET_INSTALLER_LAUNCHER_JAR = "target-installer-launcher.jar
 private const val TARGET_INSTALLER_OVERRIDE_PROPERTY = "pde.targetInstaller"
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-launch-engine")
+
+internal data class TargetInstallInputs(
+  val profileId: String,
+  val p2Path: Path,
+  val targetDefinition: Path,
+  val installRoot: Path,
+  val bundlePool: Path,
+  val installerJar: Path
+) {
+  fun installerArgs(): List<String> = buildTargetInstallerArgs(
+    profileId = profileId,
+    p2Path = p2Path,
+    targetDefinition = targetDefinition,
+    installPath = installRoot,
+    bundlePool = bundlePool
+  )
+}
+
 private fun createFormatter(useColor: Boolean) = object : Formatter() {
   override fun format(record: LogRecord): String {
     val message = formatMessage(record)
@@ -1966,9 +1984,13 @@ private fun validateTargetInstallerJar(installerJar: Path, missingMessage: Strin
   return true
 }
 
-private fun buildTargetInstallerArgs(context: LaunchConfigContext, targetDefinition: Path): List<String> {
+internal fun buildTargetInstallInputs(
+  context: LaunchConfigContext,
+  installerJar: Path,
+  targetDefinition: Path
+): TargetInstallInputs {
   val targetConfig = context.config.target
-    ?: error("Missing target config while building installer args. See docs/config-yaml.md#target.")
+    ?: error("Missing target config while building target install inputs. See docs/config-yaml.md#target.")
   val baseDir = context.baseDir
   val profileId = targetConfig.profileId?.takeUnless { it.isBlank() }
     ?: error("Missing target.profileId after schema validation")
@@ -1981,13 +2003,30 @@ private fun buildTargetInstallerArgs(context: LaunchConfigContext, targetDefinit
   val resolvedP2 = baseDir.resolve(p2Path).normalize()
   val resolvedInstall = baseDir.resolve(installPath).normalize()
   val resolvedBundlePool = baseDir.resolve(bundlePool).normalize()
-  return buildTargetInstallerArgs(
+  return TargetInstallInputs(
     profileId = profileId,
     p2Path = resolvedP2,
     targetDefinition = targetDefinition,
-    installPath = resolvedInstall,
-    bundlePool = resolvedBundlePool
+    installRoot = resolvedInstall,
+    bundlePool = resolvedBundlePool,
+    installerJar = installerJar.toAbsolutePath().normalize()
   )
+}
+
+private fun validateTargetDefinition(targetDefinition: Path, configFile: Path): Boolean {
+  if (Files.isDirectory(targetDefinition)) {
+    logger.severe("target.definition must point to a .target file, not a directory: $targetDefinition")
+    return false
+  }
+  if (!Files.exists(targetDefinition)) {
+    logger.severe("target.definition does not exist: $targetDefinition (from $configFile)")
+    return false
+  }
+  if (!targetDefinition.toString().lowercase(Locale.ROOT).endsWith(".target")) {
+    logger.severe("target.definition must point to a .target file: $targetDefinition")
+    return false
+  }
+  return true
 }
 
 private fun buildTargetInstallerArgs(
@@ -2451,9 +2490,12 @@ internal fun targetMain(
     logger.severe("Missing target.definition (or a discoverable .target) in ${issueContext.file}")
     return 2
   }
-  val installerArgs = buildTargetInstallerArgs(issueContext, targetDefinition)
+  if (!validateTargetDefinition(targetDefinition, issueContext.file)) {
+    return 2
+  }
+  val installInputs = buildTargetInstallInputs(issueContext, installerJar, targetDefinition)
   val logFile = logFileOpt?.let { Paths.get(it) }
-  val exit = runInstallerLauncher(installerJar, installerArgs, issueContext.baseDir, logFile)
+  val exit = runInstallerLauncher(installInputs.installerJar, installInputs.installerArgs(), issueContext.baseDir, logFile)
   if (exit != 0) error("Target installer exited with code $exit")
   if (copyPath) {
     val profilePath = resolveProfilePath(issueContext)
