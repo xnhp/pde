@@ -35,6 +35,18 @@ $defs:
           Relative class output roots inside the bundle directory.
           When omitted, roots are inferred from `build.properties` `output..`
           if present; otherwise defaults to `bin`.
+      addExports:
+        $ref: "#/$defs/stringArray"
+        description: >-
+          Additional Java `--add-exports` tokens (`module/pkg=TARGET`) applied when
+          compiling this bundle. Merged (union, de-duplicated) with any `add-exports`
+          declared on the bundle's `.classpath` JRE_CONTAINER entry.
+      addOpens:
+        $ref: "#/$defs/stringArray"
+        description: >-
+          Additional Java `--add-opens` tokens (`module/pkg=TARGET`) applied when
+          compiling this bundle. Merged (union, de-duplicated) with any `add-opens`
+          declared on the bundle's `.classpath` JRE_CONTAINER entry.
     required: [path]
   launchEntry:
     type: object
