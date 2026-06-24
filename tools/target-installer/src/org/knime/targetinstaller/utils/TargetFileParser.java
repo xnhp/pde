@@ -58,7 +58,7 @@ import java.util.List;
 
 public class TargetFileParser {
 
-    public record ParsedTargetFile(List<URI> repoURIs, List<Types.IURef> iuRefs, boolean includeConfigurePhase) {}
+    public record ParsedTargetFile(List<URI> repoURIs, List<Types.IURef> iuRefs) {}
 
 
     public record IUReference(String id, String version) {}
@@ -71,7 +71,6 @@ public class TargetFileParser {
     public static ParsedTargetFile parseTargetFile(String path) {
         List<URI> repoURIs = new ArrayList<>();
         List<Types.IURef> iuRefs = new ArrayList<>();
-        Boolean includeConfigurePhase = null;
 
         File file = (new File(path)).toPath().toAbsolutePath().toFile();
         if (!file.exists()) {
@@ -90,19 +89,6 @@ public class TargetFileParser {
             for (int i = 0; i < locationNodes.getLength(); i++) {
                 Element locationElem = (Element) locationNodes.item(i);
                 if (locationElem == null) continue;
-
-                // PDE only persists includeConfigurePhase on IU bundle containers (TargetDefinitionPersistenceHelper),
-                // and IULocationFactory reads it to set IUBundleContainer.INCLUDE_CONFIGURE_PHASE
-                // (see eclipse.pde/ui/org.eclipse.pde.core/.../IULocationFactory.java). When the attribute is absent we
-                // default to true so fully provisioned installs still run the configure phase even though PDE generally
-                // skips it for IDE launches.
-                var locationType = locationElem.getAttribute("type");
-                if ("InstallableUnit".equalsIgnoreCase(locationType)) {
-                    var includeAttr = locationElem.getAttribute("includeConfigurePhase");
-                    if (!includeAttr.isBlank()) {
-                        includeConfigurePhase = Boolean.parseBoolean(includeAttr);
-                    }
-                }
 
                 // 1) Repositories
                 NodeList repoNodes = locationElem.getElementsByTagName("repository");
@@ -141,6 +127,6 @@ public class TargetFileParser {
             throw new IllegalStateException("Failed to parse target definition " + file + ": " + e.getMessage(), e);
         }
 
-        return new ParsedTargetFile(repoURIs, iuRefs, includeConfigurePhase == null || includeConfigurePhase);
+        return new ParsedTargetFile(repoURIs, iuRefs);
     }
 }

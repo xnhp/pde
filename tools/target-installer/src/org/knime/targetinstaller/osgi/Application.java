@@ -80,7 +80,7 @@ public class Application implements IApplication{
         var operation = new InstallOperation(session, installableUnits);
         initProvisioningContext(agent, targetDefinition, operation);
 
-        new Operation(profile.getProfileId(), operation, arguments.isDryRun(), targetDefinition.includeConfigurePhase())
+        new Operation(profile.getProfileId(), operation, arguments.isDryRun(), resolvedConfig.includeConfigurePhase())
                 .resolve()
                 .ifPresent(Operation::execute);
 

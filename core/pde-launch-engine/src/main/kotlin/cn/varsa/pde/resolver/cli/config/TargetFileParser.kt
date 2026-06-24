@@ -14,7 +14,8 @@ data class TargetLaunchArgs(
 
 data class TargetDefinitionContents(
   val repositories: List<URI>,
-  val installUnits: List<InstallUnitRef>
+  val installUnits: List<InstallUnitRef>,
+  val includeConfigurePhase: Boolean
 )
 
 data class InstallUnitRef(
@@ -34,7 +35,12 @@ object TargetFileParser {
     val document = parseDocument(path)
     val repositories = extractRepositoryLocations(document)
     val units = extractInstallUnits(document)
-    return TargetDefinitionContents(repositories = repositories, installUnits = units)
+    val includeConfigurePhase = extractIncludeConfigurePhase(document)
+    return TargetDefinitionContents(
+      repositories = repositories,
+      installUnits = units,
+      includeConfigurePhase = includeConfigurePhase
+    )
   }
 
   private fun parseDocument(path: Path): Document {
@@ -85,5 +91,19 @@ object TargetFileParser {
       results += InstallUnitRef(id = id, version = version)
     }
     return results
+  }
+
+  private fun extractIncludeConfigurePhase(doc: Document): Boolean {
+    val locationNodes = doc.getElementsByTagName("location")
+    var includeConfigurePhase: Boolean? = null
+    for (index in 0 until locationNodes.length) {
+      val node = locationNodes.item(index) as? Element ?: continue
+      if (!node.getAttribute("type").equals("InstallableUnit", ignoreCase = true)) continue
+      val includeAttr = node.getAttribute("includeConfigurePhase")?.trim().orEmpty()
+      if (includeAttr.isNotBlank()) {
+        includeConfigurePhase = includeAttr.equals("true", ignoreCase = true)
+      }
+    }
+    return includeConfigurePhase ?: true
   }
 }

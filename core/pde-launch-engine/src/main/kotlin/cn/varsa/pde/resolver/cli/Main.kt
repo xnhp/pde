@@ -96,14 +96,16 @@ internal data class TargetInstallInputs(
   val targetDefinition: Path,
   val installRoot: Path,
   val bundlePool: Path,
-  val installerJar: Path
+  val installerJar: Path,
+  val includeConfigurePhase: Boolean
 ) {
   fun installerArgs(): List<String> = buildTargetInstallerArgs(
     profileId = profileId,
     p2Path = p2Path,
     targetDefinition = targetDefinition,
     installPath = installRoot,
-    bundlePool = bundlePool
+    bundlePool = bundlePool,
+    includeConfigurePhase = includeConfigurePhase
   )
 }
 
@@ -2003,13 +2005,15 @@ internal fun buildTargetInstallInputs(
   val resolvedP2 = baseDir.resolve(p2Path).normalize()
   val resolvedInstall = baseDir.resolve(installPath).normalize()
   val resolvedBundlePool = baseDir.resolve(bundlePool).normalize()
+  val targetContents = TargetFileParser.parseContents(targetDefinition)
   return TargetInstallInputs(
     profileId = profileId,
     p2Path = resolvedP2,
     targetDefinition = targetDefinition,
     installRoot = resolvedInstall,
     bundlePool = resolvedBundlePool,
-    installerJar = installerJar.toAbsolutePath().normalize()
+    installerJar = installerJar.toAbsolutePath().normalize(),
+    includeConfigurePhase = targetContents.includeConfigurePhase
   )
 }
 
@@ -2034,14 +2038,16 @@ private fun buildTargetInstallerArgs(
   p2Path: Path,
   targetDefinition: Path,
   installPath: Path,
-  bundlePool: Path
+  bundlePool: Path,
+  includeConfigurePhase: Boolean = true
 ): List<String> {
   return listOf(
     "-profileId", profileId,
     "-p2Path", p2Path.toString(),
     "-targetDefinition", targetDefinition.toString(),
     "-install-folder", installPath.toString(),
-    "-bundlePool", bundlePool.toString()
+    "-bundlePool", bundlePool.toString(),
+    "-includeConfigurePhase", includeConfigurePhase.toString()
   )
 }
 
@@ -2104,13 +2110,19 @@ private fun provisionBaselineTargetProfile(
   val baselineP2Path = baselineInstallRoot.resolve("p2")
   val baselineInstallPath = baselineInstallRoot.resolve("install")
   val baselineProfileId = API_ANALYZER_BASELINE_PROFILE_ID
+  val baselineTargetContents = runCatching { TargetFileParser.parseContents(baselineTargetDefinition) }
+    .getOrElse { error ->
+      logger.severe("Failed to parse baseline target definition $baselineTargetDefinition: ${error.message}")
+      return null
+    }
 
   val installerArgs = buildTargetInstallerArgs(
     profileId = baselineProfileId,
     p2Path = baselineP2Path,
     targetDefinition = baselineTargetDefinition,
     installPath = baselineInstallPath,
-    bundlePool = bundlePoolPath
+    bundlePool = bundlePoolPath,
+    includeConfigurePhase = baselineTargetContents.includeConfigurePhase
   )
   val exitCode = runTargetInstallerLauncher(
     installerJar = installerJar,
@@ -2493,7 +2505,11 @@ internal fun targetMain(
   if (!validateTargetDefinition(targetDefinition, issueContext.file)) {
     return 2
   }
-  val installInputs = buildTargetInstallInputs(issueContext, installerJar, targetDefinition)
+  val installInputs = runCatching { buildTargetInstallInputs(issueContext, installerJar, targetDefinition) }
+    .getOrElse { error ->
+      logger.severe("Failed to parse target.definition $targetDefinition: ${error.message}")
+      return 2
+    }
   val logFile = logFileOpt?.let { Paths.get(it) }
   val exit = runInstallerLauncher(installInputs.installerJar, installInputs.installerArgs(), issueContext.baseDir, logFile)
   if (exit != 0) error("Target installer exited with code $exit")

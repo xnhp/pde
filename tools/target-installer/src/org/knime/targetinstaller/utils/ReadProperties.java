@@ -94,6 +94,11 @@ public class ReadProperties {
                     values.put("bundlePool", value);
                     i++;
                     break;
+                case "-includeConfigurePhase":
+                case "-include-configure-phase":
+                    values.put("includeConfigurePhase", value);
+                    i++;
+                    break;
                 default:
                     break;
             }
@@ -111,7 +116,8 @@ public class ReadProperties {
                 resolvePath(resolvedBase, values.get("p2Path")),
                 resolvePath(resolvedBase, values.get("targetDefinition")),
                 resolvePath(resolvedBase, values.get("installFolder")),
-                resolvePath(resolvedBase, values.get("bundlePool"))
+                resolvePath(resolvedBase, values.get("bundlePool")),
+                Boolean.parseBoolean(values.getOrDefault("includeConfigurePhase", "true"))
         ));
     }
 
@@ -127,7 +133,7 @@ public class ReadProperties {
     }
 
     public record InstallConfiguration(String profileId, Path p2Path, Path targetDefinition, Path installFolder,
-                                       Path bundlePool) {
+                                       Path bundlePool, boolean includeConfigurePhase) {
 
     }
 

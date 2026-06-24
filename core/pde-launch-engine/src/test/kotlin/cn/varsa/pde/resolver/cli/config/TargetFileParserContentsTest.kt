@@ -34,6 +34,7 @@ class TargetFileParserContentsTest {
     assertEquals(2, contents.installUnits.size)
     assertEquals(InstallUnitRef(id = "org.example.feature", version = "1.2.3"), contents.installUnits[0])
     assertEquals(InstallUnitRef(id = "org.example.bundle", version = null), contents.installUnits[1])
+    assertTrue(contents.includeConfigurePhase)
   }
 
   @Test
@@ -55,5 +56,41 @@ class TargetFileParserContentsTest {
 
     assertEquals(listOf(URI("https://example.com/updates")), contents.repositories)
     assertTrue(contents.installUnits.isEmpty())
+    assertTrue(contents.includeConfigurePhase)
+  }
+
+  @Test
+  fun parsesIncludeConfigurePhaseFromInstallableUnitLocations() {
+    val xml = """
+      <target name="example" sequenceNumber="1">
+        <locations>
+          <location type="Directory" includeConfigurePhase="false"/>
+          <location type="InstallableUnit" includeConfigurePhase="false"/>
+        </locations>
+      </target>
+    """.trimIndent()
+    val path = createTempFile(prefix = "target", suffix = ".target")
+    path.writeText(xml)
+
+    val contents = TargetFileParser.parseContents(path)
+
+    assertEquals(false, contents.includeConfigurePhase)
+  }
+
+  @Test
+  fun defaultsIncludeConfigurePhaseToTrueWhenMissing() {
+    val xml = """
+      <target name="example" sequenceNumber="1">
+        <locations>
+          <location type="InstallableUnit"/>
+        </locations>
+      </target>
+    """.trimIndent()
+    val path = createTempFile(prefix = "target", suffix = ".target")
+    path.writeText(xml)
+
+    val contents = TargetFileParser.parseContents(path)
+
+    assertTrue(contents.includeConfigurePhase)
   }
 }

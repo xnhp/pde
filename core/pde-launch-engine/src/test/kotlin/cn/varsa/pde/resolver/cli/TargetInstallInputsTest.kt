@@ -52,7 +52,8 @@ class TargetInstallInputsTest {
         "-p2Path", baseDir.resolve("target/p2").normalize().toString(),
         "-targetDefinition", targetDefinition.toAbsolutePath().normalize().toString(),
         "-install-folder", baseDir.resolve("target/install").normalize().toString(),
-        "-bundlePool", baseDir.resolve("target/bundle-pool").normalize().toString()
+        "-bundlePool", baseDir.resolve("target/bundle-pool").normalize().toString(),
+        "-includeConfigurePhase", "true"
       ),
       invokedArgs
     )
@@ -79,7 +80,16 @@ class TargetInstallInputsTest {
     Files.writeString(installerJar, "stub")
     val selectedTarget = baseDir.resolve("targets/selected.target")
     Files.createDirectories(selectedTarget.parent)
-    Files.writeString(selectedTarget, "<target></target>")
+    Files.writeString(
+      selectedTarget,
+      """
+        <target>
+          <locations>
+            <location type="InstallableUnit" includeConfigurePhase="false"/>
+          </locations>
+        </target>
+      """.trimIndent()
+    )
     Files.writeString(baseDir.resolve("ignored.target"), "<target></target>")
 
     var invokedArgs: List<String>? = null
@@ -99,7 +109,8 @@ class TargetInstallInputsTest {
         "-p2Path", baseDir.resolve(".p2-state").normalize().toString(),
         "-targetDefinition", selectedTarget.normalize().toString(),
         "-install-folder", baseDir.resolve("eclipse-install").normalize().toString(),
-        "-bundlePool", baseDir.resolve("shared-pool").normalize().toString()
+        "-bundlePool", baseDir.resolve("shared-pool").normalize().toString(),
+        "-includeConfigurePhase", "false"
       ),
       invokedArgs
     )
