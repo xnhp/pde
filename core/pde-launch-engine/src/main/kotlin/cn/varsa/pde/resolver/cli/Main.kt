@@ -39,7 +39,6 @@ import cn.varsa.pde.resolver.cli.config.TargetFileParser
 import cn.varsa.pde.resolver.cli.config.TargetLaunchArgs
 import cn.varsa.pde.resolver.cli.config.TestEntry
 import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
-import io.github.cdimascio.dotenv.Dotenv
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
@@ -119,9 +118,21 @@ private fun configureLogging(level: Level, useColor: Boolean) {
   root.level = level
   val formatter = createFormatter(useColor)
   root.handlers?.forEach { handler ->
-    handler.level = level
-    handler.formatter = formatter
+    root.removeHandler(handler)
   }
+  val handler = object : java.util.logging.StreamHandler(System.err, formatter) {
+    override fun publish(record: LogRecord) {
+      super.publish(record)
+      flush()
+    }
+
+    override fun close() {
+      flush()
+    }
+  }.apply {
+    this.level = level
+  }
+  root.addHandler(handler)
 }
 private fun parseLogLevel(value: String?): Level = when (value?.lowercase()) {
   "error", "severe" -> Level.SEVERE
@@ -290,6 +301,12 @@ private fun logCommand(command: List<String>) {
   if (logger.isLoggable(Level.INFO)) {
     logger.log(Level.INFO, "Executing: {0}", command.joinToString(" "))
   }
+}
+
+internal fun resolveJavaBin(env: Map<String, String> = emptyMap()): String {
+  val javaExecutable = if (System.getProperty("os.name").lowercase(Locale.ROOT).contains("windows")) "java.exe" else "java"
+  val javaHome = env["JAVA_HOME"] ?: System.getenv("JAVA_HOME")
+  return javaHome?.let { Path.of(it, "bin", javaExecutable).toString() } ?: javaExecutable
 }
 
 private fun buildCompilePlanForWarning(
@@ -913,17 +930,35 @@ private fun parseEnvFile(path: Path): Map<String, String> {
     return emptyMap()
   }
   return try {
-    Dotenv.configure()
-      .directory(path.parent?.toString() ?: ".")
-      .filename(path.fileName.toString())
-      .ignoreIfMissing()
-      .load()
-      .entries()
-      .associate { entry -> entry.key to entry.value }
+    Files.readAllLines(path, StandardCharsets.UTF_8)
+      .mapNotNull(::parseEnvLine)
+      .toMap()
   } catch (ex: RuntimeException) {
     logger.warning("Failed to load envFile $path: ${ex.message}")
     emptyMap()
   }
+}
+
+private fun parseEnvLine(line: String): Pair<String, String>? {
+  val trimmed = line.trim()
+  if (trimmed.isEmpty() || trimmed.startsWith('#')) return null
+  val assignment = trimmed.removePrefix("export ").trimStart()
+  val separator = assignment.indexOf('=')
+  if (separator <= 0) return null
+  val key = assignment.substring(0, separator).trim()
+  if (key.isEmpty()) return null
+  val value = parseEnvValue(assignment.substring(separator + 1))
+  return key to value
+}
+
+private fun parseEnvValue(raw: String): String {
+  val trimmed = raw.trim()
+  if (trimmed.length >= 2 && (trimmed.first() == '"' || trimmed.first() == '\'')) {
+    val quote = trimmed.first()
+    val end = trimmed.indexOf(quote, startIndex = 1)
+    if (end > 0) return trimmed.substring(1, end)
+  }
+  return trimmed.replace(Regex("\\s+#.*$"), "").trim()
 }
 
 private fun selectLaunchConfig(
@@ -1578,7 +1613,7 @@ private fun assembleCommand(
   extraProgramArgs: List<String> = emptyList(),
   includeDevProperties: Boolean = true
 ): List<String> {
-  val javaBin = System.getenv("JAVA_HOME")?.let { Path.of(it, "bin", "java").toString() } ?: "java"
+  val javaBin = resolveJavaBin(context.runtime.env)
   val configVmArgs = expandArgs(context.runtime.vmArgs)
   val configProgramArgs = expandArgs(context.runtime.programArgs)
   val vmArgs = mutableListOf<String>().apply {
@@ -1945,7 +1980,7 @@ private fun runTargetInstallerLauncher(
   workingDir: Path,
   logFile: Path?
 ): Int {
-  val javaBin = System.getenv("JAVA_HOME")?.let { Path.of(it, "bin", "java").toString() } ?: "java"
+  val javaBin = resolveJavaBin()
   val command = mutableListOf(
     javaBin,
     "-jar",
@@ -2216,6 +2251,9 @@ private fun runTestLaunch(
   logCommand(prepared.command)
   val processBuilder = ProcessBuilder(prepared.command)
     .directory(prepared.layout.workDir.toFile())
+  if (configContext.runtime.env.isNotEmpty()) {
+    processBuilder.environment().putAll(configContext.runtime.env)
+  }
   val outputLog = logFile?.toAbsolutePath()?.normalize()
   if (outputLog != null) {
     outputLog.parent?.let { Files.createDirectories(it) }
