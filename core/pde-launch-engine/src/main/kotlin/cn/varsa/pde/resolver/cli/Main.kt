@@ -78,6 +78,8 @@ import org.osgi.framework.Version
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 internal const val PDE_API_ANALYZER_APPLICATION = "org.eclipse.pde.api.tools.apiAnalyzer"
+private const val CRAC_CHECKPOINT_EXIT_CODE = 137
+private const val CRAC_CHECKPOINT_ARG_PREFIX = "-XX:CRaCCheckpointTo="
 internal const val KNIME_API_ANALYZER_APPLICATION = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"
 internal const val API_ANALYZER_BASELINE_PROFILE_ID = "api-analyzer-baseline"
 internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
@@ -1185,7 +1187,37 @@ private fun executeLaunch(
   }
   val exit = process.waitFor()
   outputThread?.join()
+  if (isSuccessfulCracCheckpointExit(exit, prepared.command, prepared.layout.workDir)) {
+    logger.info("Checkpoint completed; launcher exited with CRaC checkpoint code $exit")
+    return
+  }
   if (exit != 0) error("Launcher exited with code $exit")
+}
+
+private fun isSuccessfulCracCheckpointExit(exit: Int, command: List<String>, workDir: Path): Boolean {
+  if (exit != CRAC_CHECKPOINT_EXIT_CODE) return false
+  val checkpointDir = cracCheckpointDirectory(command, workDir) ?: return false
+  return hasCheckpointImageFiles(checkpointDir)
+}
+
+private fun cracCheckpointDirectory(command: List<String>, workDir: Path): Path? {
+  for (index in command.indices) {
+    val rawPath = when {
+      command[index].startsWith(CRAC_CHECKPOINT_ARG_PREFIX) -> command[index].removePrefix(CRAC_CHECKPOINT_ARG_PREFIX)
+      command[index] == "-XX:CRaCCheckpointTo" -> command.getOrNull(index + 1)
+      else -> null
+    }?.takeIf { it.isNotBlank() } ?: continue
+    val path = Paths.get(rawPath)
+    return if (path.isAbsolute) path.normalize() else workDir.resolve(path).normalize()
+  }
+  return null
+}
+
+private fun hasCheckpointImageFiles(checkpointDir: Path): Boolean {
+  if (!Files.isDirectory(checkpointDir)) return false
+  return Files.newDirectoryStream(checkpointDir).use { entries ->
+    entries.iterator().hasNext()
+  }
 }
 
 private fun writePdeTargetPreferences(layout: LaunchLayout, targetDefinition: Path) {

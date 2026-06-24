@@ -86,6 +86,56 @@ class LaunchCliTest {
     assertEquals(javaHome.toAbsolutePath().toString(), capturedJavaHome.readText().trim())
   }
 
+  @Test
+  fun cracCheckpointExitCodeSucceedsWhenImageFilesExist() {
+    val root = tmp.root.toPath()
+    val workspace = tmp.newFolder("workspace").also {
+      createBundle(it, "org.example.app", "1.0.0", require = "org.eclipse.osgi")
+    }
+    setupLaunchProfile(root)
+    val checkpointDir = root.resolve("checkpoint")
+    val javaHome = writeFakeJava(
+      root,
+      """
+        #!/bin/sh
+        mkdir -p '${checkpointDir.toAbsolutePath()}'
+        : > '${checkpointDir.toAbsolutePath()}/core.img'
+        : > '${checkpointDir.toAbsolutePath()}/engine'
+        exit 137
+      """.trimIndent()
+    )
+    val configFile = writeLaunchConfig(root, workspace.toPath(), javaHome, checkpointDir)
+
+    launchMain(arrayOf("--config", configFile.toString()))
+  }
+
+  @Test
+  fun cracCheckpointExitCodeFailsWhenImageFilesAreMissing() {
+    val root = tmp.root.toPath()
+    val workspace = tmp.newFolder("workspace").also {
+      createBundle(it, "org.example.app", "1.0.0", require = "org.eclipse.osgi")
+    }
+    setupLaunchProfile(root)
+    val checkpointDir = root.resolve("checkpoint")
+    val javaHome = writeFakeJava(
+      root,
+      """
+        #!/bin/sh
+        exit 137
+      """.trimIndent()
+    )
+    val configFile = writeLaunchConfig(root, workspace.toPath(), javaHome, checkpointDir)
+
+    val thrown = try {
+      launchMain(arrayOf("--config", configFile.toString()))
+      null
+    } catch (ex: IllegalStateException) {
+      ex
+    }
+
+    assertEquals("Launcher exited with code 137", thrown?.message)
+  }
+
   private fun createBundle(root: File, bsn: String, version: String, require: String? = null) {
     val metaInf = File(root, "META-INF")
     metaInf.mkdirs()
@@ -108,6 +158,42 @@ class LaunchCliTest {
       mainAttributes.putValue("Bundle-Version", version)
     }
     JarOutputStream(Files.newOutputStream(pluginsDir.resolve("${bsn}_$version.jar")), mf).use { /* empty */ }
+  }
+
+  private fun setupLaunchProfile(root: Path) {
+    createProfileWithFramework(root)
+    createBundleJar(root.resolve("target/p2/bundle-pool/plugins"), "org.eclipse.equinox.launcher", "1.0.0")
+    writeProfile(root, listOf("org.eclipse.osgi" to "1.0.0", "org.eclipse.equinox.launcher" to "1.0.0"))
+  }
+
+  private fun writeFakeJava(root: Path, script: String): Path {
+    val javaHome = root.resolve("fake-java-home")
+    val javaBinDir = javaHome.resolve("bin").createDirectories()
+    val javaExecutable = javaBinDir.resolve("java")
+    javaExecutable.writeText(script)
+    assertTrue(javaExecutable.toFile().setExecutable(true))
+    return javaHome
+  }
+
+  private fun writeLaunchConfig(root: Path, workspace: Path, javaHome: Path, checkpointDir: Path): Path {
+    root.resolve(".env").writeText("JAVA_HOME=${javaHome.toAbsolutePath()}\n")
+    val configFile = root.resolve("pde.yaml")
+    configFile.writeText(
+      """
+        target:
+          profileId: profile
+          p2Path: target/p2
+        bundles:
+          - path: ${workspace.toAbsolutePath()}
+        launches:
+          - name: run
+            application: org.example.app
+            envFile: .env
+            vmArgs:
+              - -XX:CRaCCheckpointTo=${checkpointDir.toAbsolutePath()}
+      """.trimIndent()
+    )
+    return configFile
   }
 
   private fun writeProfile(root: Path, bundles: List<Pair<String, String>>) {
