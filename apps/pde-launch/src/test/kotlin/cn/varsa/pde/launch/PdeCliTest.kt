@@ -76,6 +76,7 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage: pde target install"))
     assertTrue(output.contains("--launch=String"))
+    assertTrue(output.contains("--copy-path"))
   }
 
   @Test

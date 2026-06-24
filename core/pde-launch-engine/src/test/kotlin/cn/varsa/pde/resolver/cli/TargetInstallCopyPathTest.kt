@@ -113,4 +113,54 @@ class TargetInstallCopyPathTest {
 
     assertEquals(packagedInstaller.toAbsolutePath().normalize(), invokedInstaller)
   }
+
+  @Test
+  fun `target-install discovers packaged installer beside classpath entry`() {
+    val baseDir = tmp.newFolder("cfg-classpath").toPath()
+    val configFile = baseDir.resolve("pde.yaml")
+    Files.writeString(
+      configFile,
+      """
+        target:
+          definition: example.target
+        bundles: []
+      """.trimIndent()
+    )
+    Files.writeString(baseDir.resolve("example.target"), "<target></target>")
+
+    val appLib = tmp.newFolder("app-lib").toPath()
+    val appJar = appLib.resolve("pde-cli.jar")
+    val packagedInstaller = appLib.resolve("target-installer-launcher.jar")
+    Files.writeString(appJar, "stub")
+    Files.writeString(packagedInstaller, "stub")
+    var invokedInstaller: Path? = null
+
+    val previousInstaller = System.getProperty("pde.targetInstaller")
+    val previousClasspath = System.getProperty("java.class.path")
+    try {
+      System.clearProperty("pde.targetInstaller")
+      System.setProperty("java.class.path", appJar.toString())
+      val exit = targetMain(
+        arrayOf("--config", configFile.toString()),
+        runInstallerLauncher = { installerJar, _, _, _ ->
+          invokedInstaller = installerJar
+          0
+        }
+      )
+      assertEquals(0, exit)
+    } finally {
+      if (previousInstaller == null) {
+        System.clearProperty("pde.targetInstaller")
+      } else {
+        System.setProperty("pde.targetInstaller", previousInstaller)
+      }
+      if (previousClasspath == null) {
+        System.clearProperty("java.class.path")
+      } else {
+        System.setProperty("java.class.path", previousClasspath)
+      }
+    }
+
+    assertEquals(packagedInstaller.toAbsolutePath().normalize(), invokedInstaller)
+  }
 }

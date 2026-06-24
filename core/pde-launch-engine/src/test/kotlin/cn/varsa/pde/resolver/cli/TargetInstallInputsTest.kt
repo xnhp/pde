@@ -143,4 +143,33 @@ class TargetInstallInputsTest {
     assertEquals(2, exit)
     assertFalse(launched)
   }
+
+  @Test
+  fun `target-install rejects non-jar installer before launching`() {
+    val baseDir = tmp.newFolder("invalid-installer").toPath()
+    val configFile = baseDir.resolve("pde.yaml")
+    Files.writeString(
+      configFile,
+      """
+        target:
+          installer: target-installer.txt
+          definition: example.target
+        bundles: []
+      """.trimIndent()
+    )
+    Files.writeString(baseDir.resolve("target-installer.txt"), "stub")
+    Files.writeString(baseDir.resolve("example.target"), "<target></target>")
+
+    var launched = false
+    val exit = targetMain(
+      arrayOf("--config", configFile.toString()),
+      runInstallerLauncher = { _, _, _, _ ->
+        launched = true
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertFalse(launched)
+  }
 }

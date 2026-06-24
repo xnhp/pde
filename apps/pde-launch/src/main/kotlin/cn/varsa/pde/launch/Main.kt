@@ -68,6 +68,7 @@ private val targetInstallOptions = listOf(
   CliOption(listOf("--launch"), "Installer launch name (defaults to 'install' if present)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log"), "Write application stdout/stderr to log file", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--copy-path"), "Copy installed profile path to the clipboard"),
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),
   CliOption(listOf("--debug"), "Enable DEBUG logging")
 )

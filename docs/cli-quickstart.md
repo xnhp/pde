@@ -14,6 +14,11 @@ directory, based on a _shared_ bundle pool. This means
 1. You have to download dependencies only once
 2. The individual profiles are still completely isolated
 
+The installed `pde` distribution includes `target-installer-launcher.jar`, so `target.installer` is normally optional.
+Set `target.installer` in `pde.yaml` or `-Dpde.targetInstaller=/path/to/target-installer-launcher.jar` only when
+debugging or testing a different launcher. Relative target paths such as `target.definition`, `target.install`,
+`target.p2Path`, and `target.bundlePool` are resolved against the `pde.yaml` directory.
+
 ## Compile your sources: `pde compile`
 
 <details>
