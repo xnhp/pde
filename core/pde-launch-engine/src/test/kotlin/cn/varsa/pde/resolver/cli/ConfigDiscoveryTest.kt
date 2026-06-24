@@ -1,5 +1,7 @@
 package cn.varsa.pde.resolver.cli
 
+import cn.varsa.pde.cli.support.discoverConfigFile
+import cn.varsa.pde.cli.support.normalizeArgsWithImplicitConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

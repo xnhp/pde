@@ -62,11 +62,17 @@ import java.util.Locale
 import java.util.Properties
 import java.util.jar.Manifest
 import java.util.zip.GZIPInputStream
-import java.util.logging.Formatter
 import java.util.logging.Level
-import java.util.logging.LogRecord
 import java.util.logging.Logger
 import cn.varsa.pde.remoterunner.ConsoleTags
+import cn.varsa.pde.cli.support.configureLogging
+import cn.varsa.pde.cli.support.discoverConfigFile
+import cn.varsa.pde.cli.support.discoverTargetDefinition
+import cn.varsa.pde.cli.support.logCommand
+import cn.varsa.pde.cli.support.looksLikeYamlFile
+import cn.varsa.pde.cli.support.normalizeArgsWithImplicitConfig
+import cn.varsa.pde.cli.support.resolveLogLevel
+import cn.varsa.pde.cli.support.shouldUseColor
 import javax.xml.stream.XMLInputFactory
 import javax.xml.stream.XMLStreamConstants
 import kotlin.io.path.inputStream
@@ -87,57 +93,7 @@ private const val TARGET_INSTALLER_LAUNCHER_JAR = "target-installer-launcher.jar
 private const val TARGET_INSTALLER_OVERRIDE_PROPERTY = "pde.targetInstaller"
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-launch-engine")
-private fun createFormatter(useColor: Boolean) = object : Formatter() {
-  override fun format(record: LogRecord): String {
-    val message = formatMessage(record)
-    val builder = StringBuilder()
-    builder.append(logPrefix(record.level, useColor)).append(' ').append(message).append('\n')
-    record.thrown?.let { thrown ->
-      val writer = java.io.StringWriter()
-      val printer = java.io.PrintWriter(writer)
-      thrown.printStackTrace(printer)
-      printer.flush()
-      builder.append(writer.toString())
-    }
-    return builder.toString()
-  }
-}
-private fun logPrefix(level: Level, useColor: Boolean): String {
-  val value = level.intValue()
-  return when {
-    value >= Level.SEVERE.intValue() -> ConsoleTags.error(useColor)
-    value >= Level.WARNING.intValue() -> ConsoleTags.warn(useColor)
-    value >= Level.INFO.intValue() -> ConsoleTags.info(useColor)
-    value >= Level.FINE.intValue() -> ConsoleTags.debug(useColor)
-    else -> ConsoleTags.trace(useColor)
-  }
-}
-private fun configureLogging(level: Level, useColor: Boolean) {
-  logger.level = level
-  val root = Logger.getLogger("")
-  root.level = level
-  val formatter = createFormatter(useColor)
-  root.handlers?.forEach { handler ->
-    handler.level = level
-    handler.formatter = formatter
-  }
-}
-private fun parseLogLevel(value: String?): Level = when (value?.lowercase()) {
-  "error", "severe" -> Level.SEVERE
-  "warn", "warning" -> Level.WARNING
-  "info" -> Level.INFO
-  "debug", "fine" -> Level.FINE
-  "trace", "finest" -> Level.FINEST
-  else -> Level.WARNING
-}
-private fun resolveLogLevel(logLevel: String?, verbose: Boolean, debug: Boolean): Level = when {
-  logLevel != null -> parseLogLevel(logLevel)
-  debug -> Level.FINE
-  verbose -> Level.INFO
-  else -> Level.WARNING
-}
-private fun shouldUseColor(noColor: Boolean = false): Boolean = !noColor && System.console() != null
-private fun maturityTag(label: String): String {
+fun maturityTag(label: String): String {
   val useColor = shouldUseColor()
   return when (label.lowercase()) {
     "usable" -> ConsoleTags.success(label, useColor)
@@ -168,7 +124,9 @@ internal val testOptionsRequiringValue = setOf(
   "--port-range",
   "--timeout",
   "--report",
-  "--forward-log"
+  "--forward-log",
+  "--coverage",
+  "--jacoco-agent"
 )
 internal val compileOptionsRequiringValue = setOf(
   "--config",
@@ -200,42 +158,6 @@ internal val targetInspectOptionsRequiringValue = setOf(
   "--config",
   "--limit"
 )
-
-private fun looksLikeYamlFile(arg: String): Boolean {
-  val lower = arg.lowercase()
-  return lower.endsWith(".yaml") || lower.endsWith(".yml")
-}
-
-internal fun normalizeArgsWithImplicitConfig(
-  rawArgs: Array<String>,
-  optionsRequiringValue: Set<String>
-): Array<String> {
-  if (rawArgs.any { it == "--config" || it.startsWith("--config=") }) return rawArgs
-
-  var skipNext = false
-  rawArgs.forEachIndexed { index, arg ->
-    if (skipNext) {
-      skipNext = false
-      return@forEachIndexed
-    }
-
-    if (arg.startsWith("-")) {
-      val optionName = arg.substringBefore('=')
-      if (optionsRequiringValue.contains(optionName) && !arg.contains('=')) {
-        skipNext = true
-      }
-      return@forEachIndexed
-    }
-
-    if (looksLikeYamlFile(arg)) {
-      val normalized = rawArgs.toMutableList()
-      normalized.add(index, "--config")
-      return normalized.toTypedArray()
-    }
-  }
-
-  return rawArgs
-}
 
 internal data class NormalizedTestArgs(
   val parserArgs: Array<String>,
@@ -284,12 +206,6 @@ data class PreparedLaunch(
   val planResult: LaunchPlanner.PlanResult,
   val layout: LaunchLayout
 )
-
-private fun logCommand(command: List<String>) {
-  if (logger.isLoggable(Level.INFO)) {
-    logger.log(Level.INFO, "Executing: {0}", command.joinToString(" "))
-  }
-}
 
 private fun buildCompilePlanForWarning(
   context: LaunchConfigContext,
@@ -1089,9 +1005,9 @@ private fun applyTestEntry(
   return withDebug
 }
 
-private fun executeLaunch(
+fun executeLaunch(
   context: LaunchConfigContext,
-  targetArgs: TargetLaunchArgs?,
+  targetArgs: TargetLaunchArgs? = resolveTargetArgs(context),
   showLogPathWhenDebugging: Boolean,
   logFile: Path?,
   extraProgramArgs: List<String> = emptyList(),
@@ -1740,19 +1656,6 @@ private fun parseDevProperties(entries: List<String>): Map<String, List<String>>
   }
   .toMap()
 
-internal fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()): Path? {
-  val candidates = listOf(
-    "pde.yaml",
-    "launch.yaml",
-    "launch.yml",
-    "pde-launch.yaml",
-    "pde-launch.yml"
-  )
-  return candidates
-    .map { baseDir.resolve(it) }
-    .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
-}
-
 private fun resolveTargetArgs(
   context: LaunchConfigContext,
   targetDefinition: Path? = resolveTargetDefinition(context)
@@ -1779,18 +1682,6 @@ private fun resolveTargetDefinition(context: LaunchConfigContext): Path? {
     logger.info("Discovered target definition at ${discovered.toAbsolutePath()}")
   }
   return discovered
-}
-
-private fun discoverTargetDefinition(baseDir: Path): Path? {
-  if (!Files.isDirectory(baseDir)) return null
-  val matches = Files.newDirectoryStream(baseDir, "*.target").use { stream ->
-    stream.toList()
-  }
-  return when {
-    matches.isEmpty() -> null
-    matches.size == 1 -> matches.first().toAbsolutePath().normalize()
-    else -> error("Multiple .target files found in $baseDir; set target.definition explicitly.")
-  }
 }
 
 private fun resolveProfilePath(context: LaunchConfigContext): Path? {
@@ -2698,6 +2589,8 @@ private fun testMain(args: Array<String>): Int {
     fullName = "clean",
     description = "Launch with Eclipse -clean and rebuild OSGi framework state"
   ).default(false)
+  val coverageOpt by parser.option(ArgType.String, fullName = "coverage", description = "Record JaCoCo coverage (.exec) into this directory")
+  val jacocoAgentOpt by parser.option(ArgType.String, fullName = "jacoco-agent", description = "Path to jacocoagent.jar (default: resolved from the target)")
   parser.parse(normalizedTestArgs.parserArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
 
@@ -2715,6 +2608,28 @@ private fun testMain(args: Array<String>): Int {
 
   val loaded = LaunchConfigLoader.load(discoveredConfig).copy(clean = clean)
   val logFile = logFileOpt?.let { Paths.get(it) }
+
+  val coverageDirPath = coverageOpt?.let { resolveCoverageDir(it).also { d -> Files.createDirectories(d) } }
+  val coverageAgent = if (coverageDirPath != null) {
+    val resolved = jacocoAgentOpt?.let { Paths.get(it) } ?: findBundledJacocoAgent()
+    if (resolved == null || !Files.isRegularFile(resolved)) {
+      logger.severe(
+        "No JaCoCo agent available (expected a bundled org.jacoco.agent jar in pde's lib/). " +
+          "Pass --jacoco-agent <path>."
+      )
+      return 2
+    }
+    logger.info("Recording JaCoCo coverage into $coverageDirPath")
+    resolved
+  } else {
+    null
+  }
+  fun instrument(ctx: LaunchConfigContext): LaunchConfigContext =
+    if (coverageAgent != null && coverageDirPath != null) {
+      ctx.copy(runtime = ctx.runtime.copy(vmArgs = ctx.runtime.vmArgs + jacocoAgentVmArgFor(coverageAgent, coverageDirPath, "test")))
+    } else {
+      ctx
+    }
 
   val reports = runCatching { reportValues.map(::parseReportTarget) }
     .getOrElse { error ->
@@ -2734,8 +2649,10 @@ private fun testMain(args: Array<String>): Int {
     var exitCode = 0
     for ((index, selectedTest) in loaded.config.tests.withIndex()) {
       logger.info("Running test ${index + 1}/${loaded.config.tests.size}: '${testLabel(selectedTest)}'.")
-      val configContext = applyTestEntry(loaded, selectedTest, null, logSelection = false)
-        .let { applyOsgiDebug(it, osgiDebug) }
+      val configContext = instrument(
+        applyTestEntry(loaded, selectedTest, null, logSelection = false)
+          .let { applyOsgiDebug(it, osgiDebug) }
+      )
       val targetArgs = resolveTargetArgs(configContext)
       val testExit = runTestLaunch(
         configContext = configContext,
@@ -2764,7 +2681,7 @@ private fun testMain(args: Array<String>): Int {
     if (requestedTests.size > 1) {
       logger.info("Running requested test ${index + 1}/${requestedTests.size}: '$testName'.")
     }
-    val configContext = applyOsgiDebug(selected, osgiDebug)
+    val configContext = instrument(applyOsgiDebug(selected, osgiDebug))
     val targetArgs = resolveTargetArgs(configContext)
     val testExit = runTestLaunch(
       configContext = configContext,
@@ -2785,6 +2702,7 @@ private fun testMain(args: Array<String>): Int {
   }
   return exitCode
 }
+
 
 private fun apiAnalyzeMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)

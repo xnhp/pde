@@ -20,7 +20,10 @@ dependencies {
   implementation(project(":pde-remote-test-runtime"))
   implementation(project(":pde-resolver"))
   implementation(project(":pde-launch-engine"))
+  implementation(project(":pde-coverage"))
+  implementation(project(":pde-testflow"))
   implementation(project(":pde-format"))
+  implementation(project(":pde-cli-support"))
   runtimeOnly("org.slf4j:slf4j-simple:2.0.17")
   testImplementation(kotlin("test"))
 }

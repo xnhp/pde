@@ -1,7 +1,7 @@
 package pde.format
 
-import cn.varsa.pde.remoterunner.ConsoleTags
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
+import cn.varsa.pde.resolver.cli.maturityTag
 import cn.varsa.pde.resolver.runtime.EclipseRuntimeBootstrap
 import java.nio.file.Files
 import java.nio.file.Path
@@ -339,15 +339,6 @@ private fun resolveBootstrapRuntimeHome(configPath: Path?): Path {
         }
     val repos = target?.p2Repositories ?: emptyList()
     return EclipseRuntimeBootstrap.resolve(cacheOverride, repos)
-}
-
-private fun maturityTag(label: String): String {
-    val useColor = System.console() != null
-    return when (label.lowercase()) {
-        "usable" -> ConsoleTags.success(label, useColor)
-        "wip" -> ConsoleTags.danger(label, useColor)
-        else -> "[$label]"
-    }
 }
 
 private fun readStdinLines(): List<String> {

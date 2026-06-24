@@ -8,6 +8,8 @@ import cn.varsa.cli.core.CliMcpRegistrationConfig
 import cn.varsa.cli.core.CliOption
 import cn.varsa.cli.core.CliPositionalArg
 import cn.varsa.cli.core.cliMcpToolsListText
+import cn.varsa.pde.coverage.coverageReportMain
+import cn.varsa.pde.testflow.testflowMain
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
 import pde.format.main as formatMain
@@ -63,6 +65,52 @@ private val testOptions = listOf(
   CliOption(listOf("--report"), "Reporting sink (teamcity, junit-xml:/path)", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--forward-log"), "Prefix and stream an existing log source (label=path)", takesValue = true, valueLabel = "String", arity = "1"),
   CliOption(listOf("--quiet"), "Suppress console test logs"),
+  CliOption(listOf("--coverage"), "Record JaCoCo coverage (.exec) into this directory", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--jacoco-agent"), "Path to jacocoagent.jar (default: from the target)", takesValue = true, valueLabel = "String"),
+)
+
+private val testflowPositionals = listOf(
+  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1")
+)
+
+private val testflowOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch config (target)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--root"), "Local testflow root directory (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--knwf"), "Local .knwf archive to unzip and run", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--include"), "Only run testflows whose path matches this regex", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--timeout"), "Per-workflow timeout in seconds", takesValue = true, valueLabel = "Int"),
+  CliOption(listOf("--load-save-load"), "Load/save/load before execution"),
+  CliOption(listOf("--streaming"), "Enable streaming execution test"),
+  CliOption(listOf("--views"), "Open/close views during the test"),
+  CliOption(listOf("--dialogs"), "Test node dialogs"),
+  CliOption(listOf("--check-log-messages"), "Assert on required/unexpected log messages"),
+  CliOption(listOf("--ignore-node-messages"), "Ignore node warning messages"),
+  CliOption(listOf("--deprecated"), "Report deprecated nodes as failures"),
+  CliOption(listOf("--workflow-var"), "Define a flow variable: name,value,type (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--xml-result-dir"), "Directory for JUnit XML results (default: temp dir)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--report"), "Reporting sink: teamcity or junit-xml:/path", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--coverage"), "Record JaCoCo coverage (.exec) into this directory", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--jacoco-agent"), "Path to jacocoagent.jar (default: from the target)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--dry-run"), "Resolve the launch but do not run it"),
+  CliOption(listOf("--log"), "Write runner stdout/stderr to a file", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),
+  CliOption(listOf("--debug"), "Enable JDWP for the runner JVM"),
+  CliOption(listOf("--osgiDebug"), "Enable OSGi debug output (-debug)")
+)
+
+private val coverageReportPositionals = listOf(
+  CliPositionalArg(0, "execDir", "Directory containing the .exec files (from --coverage)", "1")
+)
+
+private val coverageReportOptions = listOf(
+  CliOption(listOf("--config"), "YAML config (workspace bundles -> class/source files)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--classfiles"), "Extra class dir or jar to analyze (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--sourcefiles"), "Extra source dir (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--output"), "JUnit XML report path (default: <dir>/jacoco.xml)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--html"), "Also write an HTML report into this directory", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--verbose", "-v"), "Enable INFO logging")
 )
 
 private val targetInstallPositionals = listOf(
@@ -315,6 +363,28 @@ internal val pdeCommand = CliCommandGroup(
       mixinStandardHelpOptions = true,
       options = testOptions,
       positionalArgs = testPositionals
+    ),
+    CliCommandLeaf(
+      name = "testflow",
+      description = "Run KNIME testflows from a local dir (--root) or .knwf archive",
+      handler = { args -> testflowMain(args) },
+      mixinStandardHelpOptions = true,
+      options = testflowOptions,
+      positionalArgs = testflowPositionals
+    ),
+    CliCommandGroup(
+      name = "coverage",
+      description = "JaCoCo coverage reporting",
+      children = listOf(
+        CliCommandLeaf(
+          name = "report",
+          description = "Merge --coverage .exec files into one JaCoCo report",
+          handler = { args -> coverageReportMain(args) },
+          mixinStandardHelpOptions = true,
+          options = coverageReportOptions,
+          positionalArgs = coverageReportPositionals
+        )
+      )
     ),
     CliCommandLeaf(
       name = "api-analyze",
