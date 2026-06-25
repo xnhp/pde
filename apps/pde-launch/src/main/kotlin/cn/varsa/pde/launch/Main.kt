@@ -396,8 +396,6 @@ private fun pdeMcpHelpText(): String = """
       }
     }
   }
-
-  ${pdeMcpWorkflowCommand.cliMcpToolsListText()}
 """.trimIndent()
 
 internal fun runPde(args: Array<String>): Int = CliMain.run(createPdeCommandLine(), args)
