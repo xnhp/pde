@@ -140,6 +140,48 @@ class WorkspaceModuleBuilderTest {
     assertTrue(matching.single().message.contains("[bin/eclipse]"))
   }
 
+  @Test
+  fun `merges classpath and explicit module access flags order-preserving and deduplicated`() {
+    val moduleDir = createWorkspaceModule("module-module-access", "test.module.access")
+    File(moduleDir.toFile(), ".classpath").writeText(
+      """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <classpath>
+          <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/x/JavaSE-21">
+            <attributes>
+              <attribute name="add-exports" value="java.security.jgss/sun.security.krb5=ALL-UNNAMED"/>
+            </attributes>
+          </classpathentry>
+          <classpathentry kind="src" path="src"/>
+        </classpath>
+      """.trimIndent()
+    )
+
+    val inputs = WorkspaceModuleBuilder.build(
+      listOf(
+        WorkspaceModuleDefinition(
+          moduleDir,
+          addExports = listOf(
+            "java.security.jgss/sun.security.krb5=ALL-UNNAMED", // duplicate of .classpath token
+            "java.base/sun.net.util=ALL-UNNAMED"
+          ),
+          addOpens = listOf("java.base/java.lang=ALL-UNNAMED")
+        )
+      ),
+      allowMissingClasses = true
+    )
+
+    val desc = inputs.descriptors.single()
+    assertEquals(
+      listOf(
+        "java.security.jgss/sun.security.krb5=ALL-UNNAMED",
+        "java.base/sun.net.util=ALL-UNNAMED"
+      ),
+      desc.addExports
+    )
+    assertEquals(listOf("java.base/java.lang=ALL-UNNAMED"), desc.addOpens)
+  }
+
   private fun createWorkspaceModule(dirName: String, bsn: String) = temp.newFolder(dirName).toPath().also { moduleDir ->
     val metaInf = File(moduleDir.toFile(), "META-INF")
     metaInf.mkdirs()

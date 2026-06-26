@@ -26,7 +26,9 @@ data class WorkspaceBundleDescriptor(
   val compilerPrefs: Map<String, String> = emptyMap(),
   val executionEnvironment: String? = null,
   val outputDirectory: Path? = null,
-  val outputDirectoryFromBuildProperties: Boolean = false
+  val outputDirectoryFromBuildProperties: Boolean = false,
+  val addExports: List<String> = emptyList(),
+  val addOpens: List<String> = emptyList()
 ) {
   data class FragmentHost(val symbolicName: String, val versionRange: VersionRange?)
 }

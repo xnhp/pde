@@ -16,7 +16,9 @@ data class CompileSpec(
   val compilerPrefs: Map<String, String>,
   val executionEnvironment: String?,
   val outputDirectory: String?,
-  val isWorkspace: Boolean
+  val isWorkspace: Boolean,
+  val addExports: List<String> = emptyList(),
+  val addOpens: List<String> = emptyList()
 )
 
 object CompileSpecBuilder {
@@ -39,7 +41,9 @@ object CompileSpecBuilder {
       compilerPrefs = w?.compilerPrefs ?: emptyMap(),
       executionEnvironment = w?.executionEnvironment,
       outputDirectory = w?.outputDirectory?.toString(),
-      isWorkspace = rb.isWorkspace
+      isWorkspace = rb.isWorkspace,
+      addExports = w?.addExports ?: emptyList(),
+      addOpens = w?.addOpens ?: emptyList()
     )
   }
 }
