@@ -49,8 +49,7 @@ object WorkspaceBundleLoader {
       executionEnvironment = executionEnvironment,
       outputDirectory = outputInfo?.directory,
       outputDirectoryFromBuildProperties = outputInfo?.fromBuildProperties ?: false,
-      addExports = moduleAccess.addExports,
-      addOpens = moduleAccess.addOpens
+      compilerArgs = moduleAccess.compilerArgs
     )
   }
 
@@ -60,8 +59,7 @@ object WorkspaceBundleLoader {
   )
 
   private data class ModuleAccess(
-    val addExports: List<String> = emptyList(),
-    val addOpens: List<String> = emptyList()
+    val compilerArgs: List<String> = emptyList()
   )
 
   private fun loadDirectoryManifest(dir: File): BundleManifest {
@@ -148,8 +146,10 @@ object WorkspaceBundleLoader {
       if (!entry.getAttribute("path").contains("org.eclipse.jdt.launching.JRE_CONTAINER")) continue
       val attributes = attributeValues(entry)
       return ModuleAccess(
-        addExports = splitTokens(attributes["add-exports"]),
-        addOpens = splitTokens(attributes["add-opens"])
+        compilerArgs = moduleAccessCompilerArgs(
+          addExports = splitTokens(attributes["add-exports"]),
+          addOpens = splitTokens(attributes["add-opens"])
+        )
       )
     }
     return ModuleAccess()
@@ -168,6 +168,17 @@ object WorkspaceBundleLoader {
 
   private fun splitTokens(value: String?): List<String> =
     value?.split(':')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+
+  private fun moduleAccessCompilerArgs(addExports: List<String>, addOpens: List<String>): List<String> = buildList {
+    addExports.forEach {
+      add("--add-exports")
+      add(it)
+    }
+    addOpens.forEach {
+      add("--add-opens")
+      add(it)
+    }
+  }
 
   private fun computeOutputDir(base: Path, props: Properties?): OutputDirInfo {
     val output = props?.getProperty("output..")

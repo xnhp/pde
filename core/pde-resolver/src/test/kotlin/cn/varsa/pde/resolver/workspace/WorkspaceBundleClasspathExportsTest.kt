@@ -36,12 +36,15 @@ class WorkspaceBundleClasspathExportsTest {
 
     assertEquals(
       listOf(
+        "--add-exports",
         "java.security.jgss/sun.security.krb5=ALL-UNNAMED",
-        "java.security.jgss/sun.security.jgss=ALL-UNNAMED"
+        "--add-exports",
+        "java.security.jgss/sun.security.jgss=ALL-UNNAMED",
+        "--add-opens",
+        "java.base/java.lang=ALL-UNNAMED"
       ),
-      desc.addExports
+      desc.compilerArgs
     )
-    assertEquals(listOf("java.base/java.lang=ALL-UNNAMED"), desc.addOpens)
   }
 
   @Test
@@ -51,8 +54,7 @@ class WorkspaceBundleClasspathExportsTest {
 
     val desc = WorkspaceBundleLoader.load(dir)
 
-    assertTrue(desc.addExports.isEmpty())
-    assertTrue(desc.addOpens.isEmpty())
+    assertTrue(desc.compilerArgs.isEmpty())
   }
 
   private fun writeManifest(dir: Path) {

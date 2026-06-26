@@ -143,17 +143,7 @@ class EcjCompiler(
       return "-g:" + parts.joinToString(",")
     }
 
-    /** Append `--add-exports`/`--add-opens` flags, one flag+value pair per token. */
-    internal fun appendModuleAccessFlags(
-      args: MutableList<String>,
-      addExports: List<String>,
-      addOpens: List<String>
-    ) {
-      addExports.filter { it.isNotBlank() }.forEach { args += listOf("--add-exports", it) }
-      addOpens.filter { it.isNotBlank() }.forEach { args += listOf("--add-opens", it) }
-    }
-
-    /** Assemble the ECJ batch argument list. Module-access flags precede the source files. */
+    /** Assemble the ECJ batch argument list. Custom compiler args precede the source files. */
     internal fun assembleArgs(
       spec: CompileSpec,
       outDir: String,
@@ -174,7 +164,7 @@ class EcjCompiler(
       args += listOf("-proc:none") // processors are unsupported for now
       debugFlag(spec)?.let { args += it }
 
-      appendModuleAccessFlags(args, spec.addExports, spec.addOpens)
+      args += spec.compilerArgs.filter { it.isNotBlank() }
 
       args += sources
       return args

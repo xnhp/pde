@@ -17,8 +17,7 @@ data class CompileSpec(
   val executionEnvironment: String?,
   val outputDirectory: String?,
   val isWorkspace: Boolean,
-  val addExports: List<String> = emptyList(),
-  val addOpens: List<String> = emptyList()
+  val compilerArgs: List<String> = emptyList()
 )
 
 object CompileSpecBuilder {
@@ -42,8 +41,7 @@ object CompileSpecBuilder {
       executionEnvironment = w?.executionEnvironment,
       outputDirectory = w?.outputDirectory?.toString(),
       isWorkspace = rb.isWorkspace,
-      addExports = w?.addExports ?: emptyList(),
-      addOpens = w?.addOpens ?: emptyList()
+      compilerArgs = w?.compilerArgs ?: emptyList()
     )
   }
 }

@@ -141,7 +141,7 @@ class WorkspaceModuleBuilderTest {
   }
 
   @Test
-  fun `merges classpath and explicit module access flags order-preserving and deduplicated`() {
+  fun `appends classpath and explicit compiler args without deduplicating flags`() {
     val moduleDir = createWorkspaceModule("module-module-access", "test.module.access")
     File(moduleDir.toFile(), ".classpath").writeText(
       """
@@ -161,11 +161,14 @@ class WorkspaceModuleBuilderTest {
       listOf(
         WorkspaceModuleDefinition(
           moduleDir,
-          addExports = listOf(
+          compilerArgs = listOf(
+            "--add-exports",
             "java.security.jgss/sun.security.krb5=ALL-UNNAMED", // duplicate of .classpath token
-            "java.base/sun.net.util=ALL-UNNAMED"
-          ),
-          addOpens = listOf("java.base/java.lang=ALL-UNNAMED")
+            "--add-exports",
+            "java.base/sun.net.util=ALL-UNNAMED",
+            "--add-opens",
+            "java.base/java.lang=ALL-UNNAMED"
+          )
         )
       ),
       allowMissingClasses = true
@@ -174,12 +177,17 @@ class WorkspaceModuleBuilderTest {
     val desc = inputs.descriptors.single()
     assertEquals(
       listOf(
+        "--add-exports",
         "java.security.jgss/sun.security.krb5=ALL-UNNAMED",
-        "java.base/sun.net.util=ALL-UNNAMED"
+        "--add-exports",
+        "java.security.jgss/sun.security.krb5=ALL-UNNAMED",
+        "--add-exports",
+        "java.base/sun.net.util=ALL-UNNAMED",
+        "--add-opens",
+        "java.base/java.lang=ALL-UNNAMED"
       ),
-      desc.addExports
+      desc.compilerArgs
     )
-    assertEquals(listOf("java.base/java.lang=ALL-UNNAMED"), desc.addOpens)
   }
 
   private fun createWorkspaceModule(dirName: String, bsn: String) = temp.newFolder(dirName).toPath().also { moduleDir ->

@@ -90,8 +90,7 @@ object CompileService {
       executionEnvironment = w?.executionEnvironment,
       outputDirectory = w?.outputDirectory?.toString(),
       isWorkspace = rb.isWorkspace,
-      addExports = w?.addExports ?: emptyList(),
-      addOpens = w?.addOpens ?: emptyList()
+      compilerArgs = w?.compilerArgs ?: emptyList()
     )
   }
 }

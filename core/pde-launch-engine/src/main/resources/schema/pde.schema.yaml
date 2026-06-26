@@ -42,18 +42,12 @@ $defs:
           Relative class output roots inside the bundle directory.
           When omitted, roots are inferred from `build.properties` `output..`
           if present; otherwise defaults to `bin`.
-      addExports:
+      compilerArgs:
         $ref: "#/$defs/stringArray"
         default: []
         description: >-
-          Additional Java module exports passed to the workspace bundle compiler,
-          for example `java.security.jgss/sun.security.krb5=ALL-UNNAMED`.
-      addOpens:
-        $ref: "#/$defs/stringArray"
-        default: []
-        description: >-
-          Additional Java module opens passed to the workspace bundle compiler,
-          for example `java.base/java.lang=ALL-UNNAMED`.
+          Additional ECJ compiler arguments for this workspace bundle. Use this
+          for compiler-only options such as `--add-exports` plus its value.
     required: [path]
   launchEntry:
     type: object

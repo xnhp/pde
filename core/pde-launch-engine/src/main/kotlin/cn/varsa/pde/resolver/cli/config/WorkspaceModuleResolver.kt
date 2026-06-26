@@ -35,8 +35,7 @@ object WorkspaceModuleResolver {
       WorkspaceModuleDefinition(
         moduleDir = modulePath,
         classRoots = bundle.classRoots,
-        addExports = bundle.addExports,
-        addOpens = bundle.addOpens
+        compilerArgs = bundle.compilerArgs
       )
     }
   }

@@ -11,8 +11,7 @@ data class WorkspaceModuleDefinition(
   val moduleDir: Path,
   val classRoots: List<String>? = null,
   val manifestOverride: BundleManifest? = null,
-  val addExports: List<String> = emptyList(),
-  val addOpens: List<String> = emptyList()
+  val compilerArgs: List<String> = emptyList()
 )
 
 object WorkspaceModuleBuilder {
@@ -59,8 +58,7 @@ object WorkspaceModuleBuilder {
       descriptors += descriptor.copy(
         manifest = manifest,
         classPathEntries = effectiveClassPath,
-        addExports = mergeTokens(descriptor.addExports, definition.addExports),
-        addOpens = mergeTokens(descriptor.addOpens, definition.addOpens)
+        compilerArgs = mergeCompilerArgs(descriptor.compilerArgs, definition.compilerArgs)
       )
       if (devClassPaths.isNotEmpty()) {
         devProps[bsn] = classRoots
@@ -105,11 +103,10 @@ object WorkspaceModuleBuilder {
     return relative
   }
 
-  private fun mergeTokens(fromClasspath: List<String>, fromConfig: List<String>): List<String> =
+  private fun mergeCompilerArgs(fromClasspath: List<String>, fromConfig: List<String>): List<String> =
     (fromClasspath + fromConfig)
       .map { it.trim() }
       .filter { it.isNotEmpty() }
-      .distinct()
 
   private fun containsClasses(classPaths: List<Path>): Boolean =
     classPaths.any { path ->
