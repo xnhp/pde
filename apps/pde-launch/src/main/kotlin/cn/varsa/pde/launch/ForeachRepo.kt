@@ -1,5 +1,8 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.pde.resolver.cli.discoverConfigFile
+import cn.varsa.pde.resolver.cli.looksLikeYamlFile
+import cn.varsa.pde.resolver.cli.maturityTag
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
@@ -122,22 +125,6 @@ private fun resolveConfigPath(baseDir: Path, configOpt: String?): Path? {
 private fun resolvePath(baseDir: Path, raw: String): Path {
   val path = Paths.get(raw)
   return if (path.isAbsolute) path else baseDir.resolve(path).normalize()
-}
-
-private fun looksLikeYamlFile(value: String): Boolean =
-  value.endsWith(".yaml", ignoreCase = true) || value.endsWith(".yml", ignoreCase = true)
-
-private fun discoverConfigFile(baseDir: Path): Path? {
-  val candidates = listOf(
-    "pde.yaml",
-    "launch.yaml",
-    "launch.yml",
-    "pde-launch.yaml",
-    "pde-launch.yml"
-  )
-  return candidates
-    .map { baseDir.resolve(it) }
-    .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
 }
 
 private fun fail(message: String): Nothing = throw ForeachRepoException(message)
