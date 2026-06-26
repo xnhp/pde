@@ -137,14 +137,21 @@ Gradle-managed subproject. It remains a standalone Equinox/OSGi application at
 runtime because Eclipse p2 provisioning requires OSGi services.
 
 - Build the launcher jar: `./gradlew :target-installer:targetInstallerLauncherJar`
-  - Configure either:
-    - `runtimeZip=/path/to/eclipse-runtime.zip` (preferred; no local Eclipse SDK required), or
-    - `eclipseSdk=/path/to/eclipse-sdk` (fallback)
-  - Optional:
-    - `p2Repositories=https://download.eclipse.org/releases/2024-12`
+  - Root helper task: `./gradlew buildTargetInstallerLauncher`
+  - Optional Gradle properties:
+    - `-PruntimeZip=/path/to/eclipse-runtime.zip` uses a prebuilt runtime archive
+      (preferred; no local Eclipse SDK required)
+    - `-PeclipseSdk=/path/to/eclipse-sdk` provisions the runtime from a local
+      Eclipse SDK when `runtimeZip` is not set
+    - `-Pp2Repositories=https://download.eclipse.org/releases/2024-12` adds p2
+      repositories for SDK-based runtime provisioning
+  - `gradle.properties` provides local defaults for `eclipseSdk` and
+    `p2Repositories`; override them with `-P...` when needed.
   - Output: `tools/target-installer/build/libs/target-installer-launcher.jar`
 - The `pde` distribution includes this launcher jar under `lib/`, so
-  `target.installer` can be omitted when running from the packaged CLI.
+  `target.installer` can be omitted when running from the packaged CLI. Set
+  `target.installer` or `-Dpde.targetInstaller=/path/to/target-installer-launcher.jar`
+  only when using a custom launcher jar.
 
 ## Versioning
 
