@@ -1,6 +1,7 @@
 package cn.varsa.pde.resolver.cli
 
 import cn.varsa.cli.core.CliStyle
+import cn.varsa.cli.core.ColorMode
 import cn.varsa.pde.remoterunner.CompositeRemoteTestListener
 import cn.varsa.pde.remoterunner.JUnitXmlReporter
 import cn.varsa.pde.remoterunner.LoggingRemoteTestListener
@@ -172,7 +173,7 @@ private fun resolveLogLevel(logLevel: String?, verbose: Boolean, debug: Boolean)
   else -> Level.WARNING
 }
 private fun shouldUseColor(noColor: Boolean = false): Boolean = !noColor && System.console() != null
-fun maturityTag(label: String): String = CliStyle.maturityTag(label, shouldUseColor())
+fun maturityTag(label: String): String = CliStyle.maturityTag(label, CliStyle.useColor(ColorMode.AUTO))
 internal val launchOptionsRequiringValue = setOf(
   "--config",
   "--log",
