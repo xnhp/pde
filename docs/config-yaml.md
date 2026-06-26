@@ -89,5 +89,6 @@ tests:
 ## Related docs
 
 - CLI command usage: `pde --help` (or `pde <command> --help`)
+- JaCoCo coverage workflow: `docs/coverage.md`
 - JDT LS/Eglot workflow: `docs/jdtls-eglot.md`
 - JDT LS smoke tests: `docs/jdtls-smoke-tests.md`
