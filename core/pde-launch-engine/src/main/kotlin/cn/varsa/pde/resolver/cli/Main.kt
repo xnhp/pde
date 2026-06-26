@@ -1,5 +1,7 @@
 package cn.varsa.pde.resolver.cli
 
+import cn.varsa.cli.core.CliStyle
+import cn.varsa.cli.core.ColorMode
 import cn.varsa.pde.remoterunner.CompositeRemoteTestListener
 import cn.varsa.pde.remoterunner.JUnitXmlReporter
 import cn.varsa.pde.remoterunner.LoggingRemoteTestListener
@@ -171,14 +173,7 @@ private fun resolveLogLevel(logLevel: String?, verbose: Boolean, debug: Boolean)
   else -> Level.WARNING
 }
 private fun shouldUseColor(noColor: Boolean = false): Boolean = !noColor && System.console() != null
-private fun maturityTag(label: String): String {
-  val useColor = shouldUseColor()
-  return when (label.lowercase()) {
-    "usable" -> ConsoleTags.success(label, useColor)
-    "wip" -> ConsoleTags.danger(label, useColor)
-    else -> "[$label]"
-  }
-}
+fun maturityTag(label: String): String = CliStyle.maturityTag(label, CliStyle.useColor(ColorMode.AUTO))
 internal val launchOptionsRequiringValue = setOf(
   "--config",
   "--log",
@@ -235,7 +230,7 @@ internal val targetInspectOptionsRequiringValue = setOf(
   "--limit"
 )
 
-private fun looksLikeYamlFile(arg: String): Boolean {
+fun looksLikeYamlFile(arg: String): Boolean {
   val lower = arg.lowercase()
   return lower.endsWith(".yaml") || lower.endsWith(".yml")
 }
@@ -1855,7 +1850,7 @@ private fun parseDevProperties(entries: List<String>): Map<String, List<String>>
   }
   .toMap()
 
-internal fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()): Path? {
+fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()): Path? {
   val candidates = listOf(
     "pde.yaml",
     "launch.yaml",

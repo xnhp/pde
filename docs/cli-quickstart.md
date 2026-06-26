@@ -86,3 +86,6 @@ and observe nice output:
 ```
 
 (Dont forget to compile first e.g. with `pde compile`)
+
+JaCoCo coverage can be collected by adding a JaCoCo `-javaagent` entry to `vmArgs`.
+See [the coverage notes](coverage.md) for the report-generation command.
