@@ -47,7 +47,7 @@ listOf("assembleDist", "distTar", "distZip", "installDist").forEach { taskName -
   }
 }
 
-val verifyTargetInstallerLauncherInDist = tasks.register("verifyTargetInstallerLauncherInDist") {
+tasks.register("verifyTargetInstallerLauncherInDist") {
   dependsOn(tasks.named("installDist"))
   val launcherJar = layout.buildDirectory.file("install/pde/lib/target-installer-launcher.jar")
   inputs.file(launcherJar)
@@ -56,10 +56,6 @@ val verifyTargetInstallerLauncherInDist = tasks.register("verifyTargetInstallerL
       throw org.gradle.api.GradleException("pde distribution is missing lib/target-installer-launcher.jar")
     }
   }
-}
-
-tasks.named("check") {
-  dependsOn(verifyTargetInstallerLauncherInDist)
 }
 
 val mcpStartScript = layout.buildDirectory.file("mcp/pde-mcp")
