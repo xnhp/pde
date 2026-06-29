@@ -154,6 +154,31 @@ All published artifacts in this repo use semantic versioning via the `pluginVers
 
 - The `pde` CLI requires a Java 21 runtime (JRE or JDK) available on `PATH` (or via `JAVA_HOME`).
 
+## Shared cli-core dependency
+
+`pde` depends on `cn.varsa:cli-core:0.1.0-SNAPSHOT`. Local development uses
+Gradle composite build substitution when a `cli-core` checkout is available:
+
+1. `-PcliCorePath=/path/to/cli-core` wins.
+2. Otherwise `../cli-core` is used when it exists.
+3. Otherwise the optional `libs/cli-core` submodule is used when populated.
+4. If no local checkout exists, Gradle resolves `cn.varsa:cli-core` from GitHub Packages.
+
+Example with an explicit local checkout:
+
+```bash
+./gradlew check -PcliCorePath=/home/ben/repos/cli-core
+```
+
+The dependency should stay declared as the Maven coordinate. Do not replace it
+with a `project(...)` dependency; included builds substitute the coordinate while
+keeping CI package resolution honest.
+
+For private GitHub Packages, package-consuming workflows need
+`permissions: packages: read`, `GITHUB_TOKEN` exported to Gradle, and package
+access granted from `xnhp/cli-core` to the consuming repository. Local package
+resolution uses `gpr.user` and `gpr.key` in `~/.gradle/gradle.properties`.
+
 ## Release (GitHub Releases)
 
 This repo currently publishes releases to GitHub Releases only.

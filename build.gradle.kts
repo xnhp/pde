@@ -11,8 +11,19 @@ allprojects {
 
 subprojects {
   repositories {
-    mavenLocal()
     mavenCentral()
+    maven {
+      name = "GitHubPackages"
+      url = uri("https://maven.pkg.github.com/xnhp/cli-core")
+      credentials {
+        username = providers.gradleProperty("gpr.user")
+          .orElse(providers.environmentVariable("GITHUB_ACTOR"))
+          .orNull
+        password = providers.gradleProperty("gpr.key")
+          .orElse(providers.environmentVariable("GITHUB_TOKEN"))
+          .orNull
+      }
+    }
   }
 
   plugins.withId("org.jetbrains.kotlin.jvm") {

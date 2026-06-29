@@ -5,10 +5,6 @@ plugins {
 
 evaluationDependsOn(":target-installer")
 
-repositories {
-  mavenCentral()
-}
-
 dependencies {
   implementation(kotlin("stdlib"))
   implementation("info.picocli:picocli:4.7.6")

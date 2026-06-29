@@ -4,11 +4,18 @@ plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-// cli-core is included as a Git submodule in libs/cli-core.
-// Run `git submodule update --init` to populate it.
-// Gradle will substitute the cn.varsa:cli-core Maven coordinate with this local build.
-if (file("libs/cli-core").exists()) {
-  includeBuild("libs/cli-core")
+// Gradle substitutes cn.varsa:cli-core with a local source checkout when available.
+// Use -PcliCorePath=/path/to/cli-core to force a specific checkout. Otherwise a
+// sibling ../cli-core checkout wins over the optional libs/cli-core submodule.
+val cliCorePath = providers.gradleProperty("cliCorePath").orNull
+val cliCoreBuild = listOfNotNull(
+  cliCorePath?.let { file(it) },
+  file("../cli-core"),
+  file("libs/cli-core")
+).firstOrNull { it.exists() }
+
+if (cliCoreBuild != null) {
+  includeBuild(cliCoreBuild)
 }
 
 include(":intellij")

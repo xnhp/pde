@@ -2,10 +2,6 @@ plugins {
   alias(libs.plugins.kotlin)
 }
 
-repositories {
-  mavenCentral()
-}
-
 dependencies {
   implementation(kotlin("stdlib"))
   implementation("cn.varsa:cli-core:0.1.0-SNAPSHOT")
