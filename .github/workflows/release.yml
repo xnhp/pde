@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Semantic version for this release (e.g. 0.2.0)"
-        required: true
+        description: "Semantic version override (leave empty to auto-calculate)"
+        required: false
         type: string
       publish_cli:
         description: "Publish CLI distribution"
@@ -40,11 +40,29 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Generate release info
+        id: release_info
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "${RELEASE_VERSION}" ]; then
+            ./gradlew generateReleaseInfo -PreleaseVersion="${RELEASE_VERSION}"
+          else
+            ./gradlew generateReleaseInfo
+          fi
+          VERSION=$(cat build/release/version.txt)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          {
+            echo "notes<<'EOF'"
+            cat build/release/notes.md
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${VERSION}
+        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }}
 
       - name: List build outputs
         run: |
@@ -56,10 +74,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "cli/v${VERSION}" \
-            "apps/pde-launch/build/distributions/pde-${VERSION}.zip" \
-            --title "CLI v${VERSION}" \
-            --notes "Automated CLI release for version ${VERSION}." \
+          gh release create "cli/v${{ steps.release_info.outputs.version }}" \
+            "apps/pde-launch/build/distributions/pde-${{ steps.release_info.outputs.version }}.zip" \
+            --title "CLI v${{ steps.release_info.outputs.version }}" \
+            --notes-file build/release/notes.md \
             --target "${{ github.sha }}"
 
       - name: Publish IntelliJ release
@@ -67,8 +85,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "ij/v${VERSION}" \
-            "intellij/build/distributions/intellij-${VERSION}.zip" \
-            --title "IntelliJ Plugin v${VERSION}" \
-            --notes "Automated IntelliJ plugin release for version ${VERSION}." \
+          gh release create "ij/v${{ steps.release_info.outputs.version }}" \
+            "intellij/build/distributions/intellij-${{ steps.release_info.outputs.version }}.zip" \
+            --title "IntelliJ Plugin v${{ steps.release_info.outputs.version }}" \
+            --notes-file build/release/notes.md \
             --target "${{ github.sha }}"

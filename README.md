@@ -155,7 +155,9 @@ runtime because Eclipse p2 provisioning requires OSGi services.
 
 ## Versioning
 
-All published artifacts in this repo use semantic versioning via the `pluginVersion` Gradle property.
+All published artifacts in this repo use semantic versioning via the `pluginVersion` Gradle property. Commit
+messages follow the [Conventional Commits](https://www.conventionalcommits.org/) format; the `Conventional Commits`
+GitHub workflow enforces this on every pull request.
 
 ## Runtime requirements
 
@@ -165,22 +167,25 @@ All published artifacts in this repo use semantic versioning via the `pluginVers
 
 Releases are produced via the **Release** GitHub Actions workflow:
 
-1. Decide on the semantic version for this release (`X.Y.Z`). If you want the
-   repository to track that version by default, update `pluginVersion` in
-   `gradle.properties` in a separate commit (optional, the workflow can override
-   the value at build time).
-2. Open the **Actions → Release → Run workflow** dialog.
-   - Enter the version (e.g. `0.2.0`).
+1. Run `./gradlew generateReleaseInfo` locally (or `./gradlew updateChangelog` if you also want to
+   update `CHANGELOG.md`). The task compares `HEAD` with the previous release tag, recommends the
+   next semantic version (bumping `major` for breaking changes, `minor` for features, otherwise
+   `patch`), and renders release notes under `build/release/`.
+2. Review `build/release/notes.md` and the generated `CHANGELOG.md` entry. Commit the changelog update
+   alongside your release preparation changes.
+3. Open the **Actions → Release → Run workflow** dialog.
+   - Leave the version input empty to use the recommended version from `generateReleaseInfo`, or
+     override it with a specific `X.Y.Z`.
    - Select whether to publish the CLI bundle, the IntelliJ plugin, or both.
-3. The workflow checks out the tip of `knime`, runs
-   `./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=<version>`
+4. The workflow checks out the tip of `knime`, runs
+   `./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=<calculated version>`
    (authenticating against GitHub Packages with the workflow token), and produces
    the ZIP artifacts under `apps/pde-launch/build/distributions/` and
    `intellij/build/distributions/`.
-4. For each selected product the workflow creates a tag (`cli/vX.Y.Z` or
+5. For each selected product the workflow creates a tag (`cli/vX.Y.Z` or
    `ij/vX.Y.Z`) pointing at the triggering commit, creates a GitHub release, and
-   uploads the corresponding ZIP asset.
-5. After the workflow succeeds, confirm the release pages contain the correct
+   uploads the corresponding ZIP asset along with the generated release notes.
+6. After the workflow succeeds, confirm the release pages contain the correct
    artifacts. Use `gh release view <tag> --repo xnhp/pde --json assets --jq '.assets | length'`
    if you want to script the verification.
 

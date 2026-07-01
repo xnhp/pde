@@ -1,0 +1,17 @@
+name: Conventional Commits
+
+on:
+  pull_request:
+    branches: [ "knime" ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit messages
+        run: scripts/ensure-conventional-commits.sh origin/${{ github.event.pull_request.base.ref }}

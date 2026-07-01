@@ -11,6 +11,7 @@ gh-issues/
 pr-feedback/
 todos/
 build
+build/release/
 tools/target-installer/build/
 tools/target-installer/dist/
 # Allow resolver tests (override broad 'test/' ignore)
