@@ -9,9 +9,25 @@ allprojects {
   version = providers.gradleProperty("pluginVersion").orNull ?: "0.0.0"
 }
 
+val githubPackagesUsername = providers.gradleProperty("gpr.user")
+  .orElse(providers.environmentVariable("GITHUB_ACTOR"))
+val githubPackagesPassword = providers.gradleProperty("gpr.key")
+  .orElse(providers.environmentVariable("GITHUB_TOKEN"))
+
 subprojects {
   repositories {
     mavenLocal()
+    maven {
+      name = "GitHubPackages"
+      url = uri("https://maven.pkg.github.com/xnhp/cli-core")
+      credentials {
+        username = githubPackagesUsername.orNull
+        password = githubPackagesPassword.orNull
+      }
+      content {
+        includeGroup("cn.varsa")
+      }
+    }
     mavenCentral()
   }
 
