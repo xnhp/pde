@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version for this release (e.g. 0.2.0)"
+        required: true
+        type: string
+      publish_cli:
+        description: "Publish CLI distribution"
+        required: true
+        default: true
+        type: boolean
+      publish_intellij:
+        description: "Publish IntelliJ plugin distribution"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    env:
+      VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${VERSION}
+
+      - name: List build outputs
+        run: |
+          ls -R apps/pde-launch/build/distributions || true
+          ls -R intellij/build/distributions || true
+
+      - name: Publish CLI release
+        if: inputs.publish_cli == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "cli/v${VERSION}" \
+            "apps/pde-launch/build/distributions/pde-${VERSION}.zip" \
+            --title "CLI v${VERSION}" \
+            --notes "Automated CLI release for version ${VERSION}." \
+            --target "${{ github.sha }}"
+
+      - name: Publish IntelliJ release
+        if: inputs.publish_intellij == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ij/v${VERSION}" \
+            "intellij/build/distributions/intellij-${VERSION}.zip" \
+            --title "IntelliJ Plugin v${VERSION}" \
+            --notes "Automated IntelliJ plugin release for version ${VERSION}." \
+            --target "${{ github.sha }}"

@@ -163,25 +163,29 @@ All published artifacts in this repo use semantic versioning via the `pluginVers
 
 ## Release (GitHub Releases)
 
-This repo currently publishes releases to GitHub Releases only.
+Releases are produced via the **Release** GitHub Actions workflow:
 
-1. Pick a version and update `pluginVersion` in `gradle.properties`.
-2. Build and test artifacts:
-   - `./gradlew check :pde-cli:distZip :intellij:buildPlugin`
-3. Verify local build outputs exist before creating a release:
-   - CLI zip: `apps/pde-launch/build/distributions/pde-${pluginVersion}.zip`
-   - IntelliJ plugin zip: `intellij/build/distributions/intellij-${pluginVersion}.zip`
-4. Create a tag:
-   - CLI release: `cli/vX.Y.Z`
-   - IntelliJ plugin release: `ij/vX.Y.Z`
-5. Create a GitHub Release for that tag and upload assets:
-   - CLI zip from `apps/pde-launch/build/distributions/`
-   - IntelliJ plugin zip from `intellij/build/distributions/`
-6. After publishing, verify the release has at least one attached asset on GitHub:
-   - `gh release view <tag> --repo xnhp/pde --json assets --jq '.assets | length'`
-   - If this returns `0`, edit the release and upload the correct ZIP artifact.
+1. Decide on the semantic version for this release (`X.Y.Z`). If you want the
+   repository to track that version by default, update `pluginVersion` in
+   `gradle.properties` in a separate commit (optional, the workflow can override
+   the value at build time).
+2. Open the **Actions → Release → Run workflow** dialog.
+   - Enter the version (e.g. `0.2.0`).
+   - Select whether to publish the CLI bundle, the IntelliJ plugin, or both.
+3. The workflow checks out the tip of `knime`, runs
+   `./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=<version>`
+   (authenticating against GitHub Packages with the workflow token), and produces
+   the ZIP artifacts under `apps/pde-launch/build/distributions/` and
+   `intellij/build/distributions/`.
+4. For each selected product the workflow creates a tag (`cli/vX.Y.Z` or
+   `ij/vX.Y.Z`) pointing at the triggering commit, creates a GitHub release, and
+   uploads the corresponding ZIP asset.
+5. After the workflow succeeds, confirm the release pages contain the correct
+   artifacts. Use `gh release view <tag> --repo xnhp/pde --json assets --jq '.assets | length'`
+   if you want to script the verification.
 
 Notes:
-- For now, ZIP artifacts are sufficient (no TAR packaging required).
-- CLI and plugin tags are separate so they can be released independently.
-- Do not publish a release without uploaded artifacts; users install directly from the release assets.
+- CLI and IntelliJ plugin tags remain separate so they can be released independently.
+- The Release workflow only runs on demand (`workflow_dispatch`); normal CI jobs do not publish.
+- Do not publish a release without the expected assets; users install
+  directly from the GitHub release archives.
