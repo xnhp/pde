@@ -5,20 +5,20 @@ import org.junit.Test
 
 class ArgumentParsingTest {
   @Test
-  fun splitsWhitespaceSeparatedArgs() {
-    val tokens = tokenizeArgString("-testpluginname org.knime.gateway.impl")
-    assertEquals(listOf("-testpluginname", "org.knime.gateway.impl"), tokens)
+  fun preservesYamlListEntriesAsAtomicArgs() {
+    val tokens = expandArgs(listOf("-testpluginname org.knime.gateway.impl"))
+    assertEquals(listOf("-testpluginname org.knime.gateway.impl"), tokens)
   }
 
   @Test
-  fun preservesQuotedSegments() {
-    val tokens = tokenizeArgString("-Dfoo=\"a b\" 'single quoted'")
-    assertEquals(listOf("-Dfoo=a b", "single quoted"), tokens)
+  fun preservesSpacesWithoutQuoteProcessing() {
+    val tokens = expandArgs(listOf("--include=^(?!.*/File Handling v2/).*"))
+    assertEquals(listOf("--include=^(?!.*/File Handling v2/).*"), tokens)
   }
 
   @Test
   fun ignoresBlankEntries() {
-    val tokens = tokenizeArgString("   ")
+    val tokens = expandArgs(listOf("   "))
     assertEquals(emptyList<String>(), tokens)
   }
 }

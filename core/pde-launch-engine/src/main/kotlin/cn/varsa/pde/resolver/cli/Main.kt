@@ -1731,45 +1731,7 @@ internal fun buildDebugVmArgs(context: LaunchConfigContext, existingVmArgs: List
   return listOf("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:$DEFAULT_TEST_DEBUG_PORT")
 }
 
-private fun expandArgs(raw: List<String>): List<String> = raw.flatMap { tokenizeArgString(it) }
-
-internal fun tokenizeArgString(input: String): List<String> {
-  if (input.isBlank()) return emptyList()
-  val tokens = mutableListOf<String>()
-  val current = StringBuilder()
-  var quote: Char? = null
-  var index = 0
-  while (index < input.length) {
-    val ch = input[index]
-    when {
-      quote == null && ch.isWhitespace() -> {
-        if (current.isNotEmpty()) {
-          tokens += current.toString()
-          current.setLength(0)
-        }
-      }
-      ch == '\\' && index + 1 < input.length -> {
-        current.append(input[index + 1])
-        index++
-      }
-      ch == '"' || ch == '\'' -> {
-        if (quote == null) {
-          quote = ch
-        } else if (quote == ch) {
-          quote = null
-        } else {
-          current.append(ch)
-        }
-      }
-      else -> current.append(ch)
-    }
-    index++
-  }
-  if (current.isNotEmpty()) {
-    tokens += current.toString()
-  }
-  return tokens
-}
+internal fun expandArgs(raw: List<String>): List<String> = raw.filter { it.isNotBlank() }
 
 private fun resolveLauncherJar(targetIndex: cn.varsa.pde.resolver.index.TargetPlatformIndex): Path {
   return targetIndex.get("org.eclipse.equinox.launcher")?.location
