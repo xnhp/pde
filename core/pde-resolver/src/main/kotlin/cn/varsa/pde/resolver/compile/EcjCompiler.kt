@@ -61,14 +61,7 @@ class EcjCompiler(
       )
     }
 
-    val args = mutableListOf<String>()
-    args += listOf("-d", outDir.toString())
-
     val classpath = spec.classpath.filter { it.isNotBlank() }
-    if (classpath.isNotEmpty()) {
-      args += listOf("-classpath", classpath.joinToString(System.getProperty("path.separator")))
-    }
-
     val sourceLevel = compilerSourceLevel(spec) ?: "17"
     val targetLevel = compilerTargetLevel(spec, sourceLevel)
     var classfileWarning: String? = null
@@ -100,12 +93,8 @@ class EcjCompiler(
         }
       }
     }
-    args += listOf("-source", sourceLevel, "-target", targetLevel)
-    args += listOf("-encoding", "UTF-8")
-    args += listOf("-proc:none") // processors are unsupported for now
-    debugFlag(spec)?.let { args += it }
 
-    args += sources.map { it.toString() }
+    val args = assembleArgs(spec, outDir.toString(), sources.map { it.toString() }, sourceLevel, targetLevel)
 
     val baos = ByteArrayOutputStream()
     val writer = PrintWriter(baos, true)
@@ -129,28 +118,57 @@ class EcjCompiler(
     )
   }
 
-  private fun compilerSourceLevel(spec: CompileSpec): String? =
-    spec.compilerPrefs["org.eclipse.jdt.core.compiler.source"]
-      ?: spec.executionEnvironment?.let(CompilerLevels::levelFromExecutionEnvironment)
+  companion object {
+    internal fun compilerSourceLevel(spec: CompileSpec): String? =
+      spec.compilerPrefs["org.eclipse.jdt.core.compiler.source"]
+        ?: spec.executionEnvironment?.let(CompilerLevels::levelFromExecutionEnvironment)
 
-  private fun compilerTargetLevel(spec: CompileSpec, fallback: String): String =
-    spec.compilerPrefs["org.eclipse.jdt.core.compiler.codegen.targetPlatform"]
-      ?: spec.compilerPrefs["org.eclipse.jdt.core.compiler.compliance"]
-      ?: spec.executionEnvironment?.let(CompilerLevels::levelFromExecutionEnvironment)
-      ?: fallback
+    internal fun compilerTargetLevel(spec: CompileSpec, fallback: String): String =
+      spec.compilerPrefs["org.eclipse.jdt.core.compiler.codegen.targetPlatform"]
+        ?: spec.compilerPrefs["org.eclipse.jdt.core.compiler.compliance"]
+        ?: spec.executionEnvironment?.let(CompilerLevels::levelFromExecutionEnvironment)
+        ?: fallback
 
-  private fun debugFlag(spec: CompileSpec): String? {
-    val line = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.lineNumber"] == "generate"
-    val vars = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.localVariable"] == "generate"
-    val source = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.sourceFile"] == "generate"
-    if (!line && !vars && !source) return null
-    if (line && vars && source) return "-g"
-    val parts = buildList {
-      if (line) add("lines")
-      if (vars) add("vars")
-      if (source) add("source")
+    internal fun debugFlag(spec: CompileSpec): String? {
+      val line = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.lineNumber"] == "generate"
+      val vars = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.localVariable"] == "generate"
+      val source = spec.compilerPrefs["org.eclipse.jdt.core.compiler.debug.sourceFile"] == "generate"
+      if (!line && !vars && !source) return null
+      if (line && vars && source) return "-g"
+      val parts = buildList {
+        if (line) add("lines")
+        if (vars) add("vars")
+        if (source) add("source")
+      }
+      return "-g:" + parts.joinToString(",")
     }
-    return "-g:" + parts.joinToString(",")
+
+    /** Assemble the ECJ batch argument list. Custom compiler args precede the source files. */
+    internal fun assembleArgs(
+      spec: CompileSpec,
+      outDir: String,
+      sources: List<String>,
+      sourceLevel: String = compilerSourceLevel(spec) ?: "17",
+      targetLevel: String = compilerTargetLevel(spec, sourceLevel)
+    ): List<String> {
+      val args = mutableListOf<String>()
+      args += listOf("-d", outDir)
+
+      val classpath = spec.classpath.filter { it.isNotBlank() }
+      if (classpath.isNotEmpty()) {
+        args += listOf("-classpath", classpath.joinToString(System.getProperty("path.separator")))
+      }
+
+      args += listOf("-source", sourceLevel, "-target", targetLevel)
+      args += listOf("-encoding", "UTF-8")
+      args += listOf("-proc:none") // processors are unsupported for now
+      debugFlag(spec)?.let { args += it }
+
+      args += spec.compilerArgs.filter { it.isNotBlank() }
+
+      args += sources
+      return args
+    }
   }
 
   private fun detectAnnotationProcessors(bundleRoot: Path, classpath: List<String>): List<String> {

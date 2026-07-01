@@ -42,6 +42,12 @@ $defs:
           Relative class output roots inside the bundle directory.
           When omitted, roots are inferred from `build.properties` `output..`
           if present; otherwise defaults to `bin`.
+      compilerArgs:
+        $ref: "#/$defs/stringArray"
+        default: []
+        description: >-
+          Additional ECJ compiler arguments for this workspace bundle. Use this
+          for compiler-only options such as `--add-exports` plus its value.
     required: [path]
   launchEntry:
     type: object

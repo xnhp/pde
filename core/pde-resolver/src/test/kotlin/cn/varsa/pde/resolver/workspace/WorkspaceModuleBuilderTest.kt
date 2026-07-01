@@ -140,6 +140,56 @@ class WorkspaceModuleBuilderTest {
     assertTrue(matching.single().message.contains("[bin/eclipse]"))
   }
 
+  @Test
+  fun `appends classpath and explicit compiler args without deduplicating flags`() {
+    val moduleDir = createWorkspaceModule("module-module-access", "test.module.access")
+    File(moduleDir.toFile(), ".classpath").writeText(
+      """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <classpath>
+          <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/x/JavaSE-21">
+            <attributes>
+              <attribute name="add-exports" value="java.security.jgss/sun.security.krb5=ALL-UNNAMED"/>
+            </attributes>
+          </classpathentry>
+          <classpathentry kind="src" path="src"/>
+        </classpath>
+      """.trimIndent()
+    )
+
+    val inputs = WorkspaceModuleBuilder.build(
+      listOf(
+        WorkspaceModuleDefinition(
+          moduleDir,
+          compilerArgs = listOf(
+            "--add-exports",
+            "java.security.jgss/sun.security.krb5=ALL-UNNAMED", // duplicate of .classpath token
+            "--add-exports",
+            "java.base/sun.net.util=ALL-UNNAMED",
+            "--add-opens",
+            "java.base/java.lang=ALL-UNNAMED"
+          )
+        )
+      ),
+      allowMissingClasses = true
+    )
+
+    val desc = inputs.descriptors.single()
+    assertEquals(
+      listOf(
+        "--add-exports",
+        "java.security.jgss/sun.security.krb5=ALL-UNNAMED",
+        "--add-exports",
+        "java.security.jgss/sun.security.krb5=ALL-UNNAMED",
+        "--add-exports",
+        "java.base/sun.net.util=ALL-UNNAMED",
+        "--add-opens",
+        "java.base/java.lang=ALL-UNNAMED"
+      ),
+      desc.compilerArgs
+    )
+  }
+
   private fun createWorkspaceModule(dirName: String, bsn: String) = temp.newFolder(dirName).toPath().also { moduleDir ->
     val metaInf = File(moduleDir.toFile(), "META-INF")
     metaInf.mkdirs()

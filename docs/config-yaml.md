@@ -81,6 +81,10 @@ tests:
   requested package with an export version matching the import range.
 - If `bundles[].classRoots` is omitted, `pde run/test` first infers roots from
   bundle `build.properties` `output..`, then falls back to `bin`.
+- `bundles[].compilerArgs` passes additional ECJ arguments to `pde compile` for that
+  workspace bundle. Use this for compile-time options such as `--add-exports` and its
+  value. Matching JDT `.classpath` `add-exports`/`add-opens` attributes are translated
+  into compiler args and appended before config values.
 - `pde compile` is the explicit ECJ-based compile step.
 - `pde jdtls-init` generates metadata only; it does not compile sources.
 - `pde api-analyze` reads workspace bundles from config and supports `--baseline-root` overrides.

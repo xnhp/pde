@@ -45,7 +45,8 @@ data class TargetMirrorConfig(
 
 data class WorkspaceBundleConfig(
   val path: String,
-  val classRoots: List<String>? = null
+  val classRoots: List<String>? = null,
+  val compilerArgs: List<String> = emptyList()
 )
 
 data class LaunchEntry(
