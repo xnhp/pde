@@ -15,7 +15,7 @@ dependencies {
   implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.6")
   implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.17.1")
   implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.1")
-  runtimeOnly("org.slf4j:slf4j-simple:2.0.16")
+  runtimeOnly("org.slf4j:slf4j-simple:2.0.18")
   testImplementation(kotlin("test"))
 }
 

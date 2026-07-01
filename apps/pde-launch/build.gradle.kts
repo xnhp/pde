@@ -21,7 +21,7 @@ dependencies {
   implementation(project(":pde-resolver"))
   implementation(project(":pde-launch-engine"))
   implementation(project(":pde-format"))
-  runtimeOnly("org.slf4j:slf4j-simple:2.0.17")
+  runtimeOnly("org.slf4j:slf4j-simple:2.0.18")
   testImplementation(kotlin("test"))
 }
 
