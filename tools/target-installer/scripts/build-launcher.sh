@@ -2,6 +2,11 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Windows/Git-Bash: convert the MSYS path (/c/...) to mixed form (C:/...) so the
+# Windows JDK tools (javac/java/jar) and Equinox understand the derived paths.
+if command -v cygpath >/dev/null 2>&1; then
+  REPO_ROOT="$(cygpath -m "$REPO_ROOT")"
+fi
 BUILD_DIR="$REPO_ROOT/build"
 PLUGIN_BUILD_DIR="$BUILD_DIR/plugin"
 PLUGIN_DIR="$PLUGIN_BUILD_DIR/plugins"
@@ -18,6 +23,19 @@ P2_REPOSITORIES="${P2_REPOSITORIES:-}"
 RUNTIME_ZIP="${RUNTIME_ZIP:-}"
 JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 JAVAC_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
+
+# Platform portability: classpath separator and file-URL form differ on Windows.
+CPSEP=":"
+FILEURL="file:"
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    CPSEP=";"            # ':' collides with C: drive letters on Windows
+    FILEURL="file:/"     # Equinox needs file:/C:/... (with leading slash)
+    ;;
+esac
+if [[ -n "${ECLIPSE_SDK:-}" ]] && command -v cygpath >/dev/null 2>&1; then
+  ECLIPSE_SDK="$(cygpath -m "$ECLIPSE_SDK")"
+fi
 
 TINYLOG_VERSION="2.7.0"
 PLUGIN_VERSION=$(grep "^Bundle-Version:" "$REPO_ROOT/META-INF/MANIFEST.MF" | awk '{print $2}' | tr -d '\r' | sed 's/\.qualifier$//')
@@ -37,6 +55,15 @@ if [[ -z "$ECLIPSE_PLUGINS_DIR" ]]; then
   ECLIPSE_PLUGINS_DIR="$BOOTSTRAP_RUNTIME_DIR/plugins"
 fi
 
+# Fail fast on a bad SDK/runtime path. The "$ECLIPSE_PLUGINS_DIR"/*.jar glob below has no nullglob,
+# so an unmatched pattern falls through as a literal and javac then emits 100+ misleading
+# "package org.eclipse.* does not exist" errors instead of a clear cause.
+if [[ ! -d "$ECLIPSE_PLUGINS_DIR" ]] || ! compgen -G "$ECLIPSE_PLUGINS_DIR/*.jar" >/dev/null; then
+  echo "ERROR: no Eclipse plugin jars found in '$ECLIPSE_PLUGINS_DIR'." >&2
+  echo "       Point ECLIPSE_SDK (or the 'eclipseSdk' Gradle property) at a real Eclipse SDK install." >&2
+  exit 1
+fi
+
 function download_dep() {
   local url="$1"
   local out="$2"
@@ -51,13 +78,23 @@ download_dep "https://repo1.maven.org/maven2/org/tinylog/tinylog-api/${TINYLOG_V
 download_dep "https://repo1.maven.org/maven2/org/tinylog/tinylog-impl/${TINYLOG_VERSION}/tinylog-impl-${TINYLOG_VERSION}.jar" \
   "$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
 
-CLASSPATH=$(printf "%s:" "$ECLIPSE_PLUGINS_DIR"/*.jar)
-CLASSPATH+="$LIB_DIR/tinylog-api-${TINYLOG_VERSION}.jar:$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
+CLASSPATH=$(printf "%s${CPSEP}" "$ECLIPSE_PLUGINS_DIR"/*.jar)
+CLASSPATH+="$LIB_DIR/tinylog-api-${TINYLOG_VERSION}.jar${CPSEP}$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
 
 echo "Compiling bundle"
-"$JAVAC_BIN" --release 17 -cp "$CLASSPATH" \
-  -d "$PLUGIN_BUILD_DIR/classes" \
-  $(find "$REPO_ROOT/src" -name '*.java')
+# Pass options/sources via an @argfile: the full classpath (~700 SDK jars) plus the
+# source list exceeds the OS command-line length limit ("Argument list too long").
+JAVAC_ARGS="$BUILD_DIR/javac-bundle-args.txt"
+{
+  echo "--release"
+  echo "21"
+  echo "-cp"
+  printf '"%s"\n' "$CLASSPATH"
+  echo "-d"
+  printf '"%s"\n' "$PLUGIN_BUILD_DIR/classes"
+  find "$REPO_ROOT/src" -name '*.java' | while IFS= read -r f; do printf '"%s"\n' "$f"; done
+} > "$JAVAC_ARGS"
+"$JAVAC_BIN" "@$JAVAC_ARGS"
 
 echo "Packaging bundle"
 jar cfm "$PLUGIN_DIR/$PLUGIN_JAR" \
@@ -85,27 +122,53 @@ else
     exit 1
   fi
 
-  echo "Publishing p2 repository"
+  echo "Publishing p2 repository (target-installer plugin)"
   "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
     -application org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher \
-    -metadataRepository "file:$REPO_DIR" \
-    -artifactRepository "file:$REPO_DIR" \
+    -metadataRepository "${FILEURL}$REPO_DIR" \
+    -artifactRepository "${FILEURL}$REPO_DIR" \
     -source "$PLUGIN_BUILD_DIR" \
     -compress -publishArtifacts
 
-  REPOS="file:$REPO_DIR"
+  # Publish the Eclipse SDK into a local p2 repo so the runtime IUs (felix.scr,
+  # equinox p2 touchpoints, ...) resolve deterministically offline, independent of
+  # remote release-repo availability / p2 transport-proxy quirks.
+  SDK_REPO_DIR="$BUILD_DIR/sdk-p2repo"
+  echo "Publishing p2 repository (Eclipse SDK)"
+  "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
+    -application org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher \
+    -metadataRepository "${FILEURL}$SDK_REPO_DIR" \
+    -artifactRepository "${FILEURL}$SDK_REPO_DIR" \
+    -source "$ECLIPSE_SDK" \
+    -compress -publishArtifacts
+
+  REPOS="${FILEURL}$REPO_DIR,${FILEURL}$SDK_REPO_DIR"
   if [[ -n "$P2_REPOSITORIES" ]]; then
     REPOS+="${REPOS:+,}$P2_REPOSITORIES"
+  fi
+
+  # org.eclipse.osgi.services was removed in newer Eclipse (its packages are folded
+  # into org.eclipse.osgi); include the IU only when the SDK still ships it.
+  INSTALL_IUS="org.knime.targetinstaller,org.apache.felix.scr,org.eclipse.equinox.p2.transport.ecf,org.eclipse.equinox.p2.touchpoint.natives,org.eclipse.equinox.p2.touchpoint.eclipse,org.eclipse.equinox.frameworkadmin,org.eclipse.equinox.frameworkadmin.equinox,org.eclipse.equinox.simpleconfigurator.manipulator,org.eclipse.osgi.compatibility.state"
+  if ls "$ECLIPSE_PLUGINS_DIR"/org.eclipse.osgi.services_*.jar >/dev/null 2>&1; then
+    INSTALL_IUS+=",org.eclipse.osgi.services"
   fi
 
   echo "Materializing runtime"
   "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
     -application org.eclipse.equinox.p2.director \
     -repository "$REPOS" \
-    -installIU org.knime.targetinstaller,org.apache.felix.scr,org.eclipse.equinox.p2.transport.ecf,org.eclipse.equinox.p2.touchpoint.natives,org.eclipse.equinox.p2.touchpoint.eclipse,org.eclipse.equinox.frameworkadmin,org.eclipse.equinox.frameworkadmin.equinox,org.eclipse.equinox.simpleconfigurator.manipulator,org.eclipse.osgi.compatibility.state,org.eclipse.osgi.services \
+    -installIU "$INSTALL_IUS" \
     -destination "$RUNTIME_DIR" \
     -profile DefaultProfile \
     -bundlepool "$RUNTIME_DIR"
+
+  # The Equinox launcher exits 0 even when the director reports "Installation failed",
+  # so verify the target-installer plugin actually landed in the runtime.
+  if ! ls "$RUNTIME_DIR"/plugins/org.knime.targetinstaller_*.jar >/dev/null 2>&1; then
+    echo "Runtime materialization failed: org.knime.targetinstaller missing from $RUNTIME_DIR/plugins" >&2
+    exit 1
+  fi
 
   echo "Adding Equinox launcher"
   mkdir -p "$RUNTIME_DIR/plugins"
@@ -122,7 +185,7 @@ echo "Creating runtime archive"
 jar cf "$LAUNCHER_BUILD_DIR/runtime.zip" -C "$RUNTIME_DIR" .
 
 echo "Building launcher"
-"$JAVAC_BIN" --release 17 \
+"$JAVAC_BIN" --release 21 \
   -d "$LAUNCHER_BUILD_DIR/classes" \
   "$REPO_ROOT/launcher/src/org/knime/targetinstaller/launcher/Bootstrap.java"
 

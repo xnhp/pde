@@ -1,7 +1,7 @@
 Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Target Platform Installer
-Bundle-RequiredExecutionEnvironment: JavaSE-17
+Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-SymbolicName: org.knime.targetinstaller;singleton:=true
 Bundle-Version: 1.0.0.qualifier
 Bundle-ClassPath: ., lib/tinylog-impl-2.7.0.jar, lib/tinylog-api-2.7.0.jar
