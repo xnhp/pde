@@ -94,7 +94,8 @@ class ResolverTest {
     val result = Resolver.resolve(target, emptyList(), entry)
     val picked = result.bundles.firstOrNull { it.bsn == "b" }
     assertNotNull(picked)
-    assertEquals(listOf(Paths.get("/tmp/b.source-1.0.0")), picked!!.sourceEntries)
+    // sourceEntries are absolutized+normalized by the resolver; mirror that so the assertion is OS-agnostic.
+    assertEquals(listOf(Paths.get("/tmp/b.source-1.0.0").toAbsolutePath().normalize()), picked!!.sourceEntries)
   }
 
   @Test
