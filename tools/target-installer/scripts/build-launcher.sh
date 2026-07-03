@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+WINDOWS_SHELL=false
+CPSEP=":"
+FILEURL="file:"
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*)
+    WINDOWS_SHELL=true
+    CPSEP=";"
+    FILEURL="file:/"
+    ;;
+esac
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "$WINDOWS_SHELL" == true ]] && command -v cygpath >/dev/null 2>&1; then
+  REPO_ROOT="$(cygpath -m "$REPO_ROOT")"
+fi
 BUILD_DIR="$REPO_ROOT/build"
 PLUGIN_BUILD_DIR="$BUILD_DIR/plugin"
 PLUGIN_DIR="$PLUGIN_BUILD_DIR/plugins"
@@ -18,6 +32,10 @@ P2_REPOSITORIES="${P2_REPOSITORIES:-}"
 RUNTIME_ZIP="${RUNTIME_ZIP:-}"
 JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 JAVAC_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
+
+if [[ -n "$ECLIPSE_SDK" && "$WINDOWS_SHELL" == true ]] && command -v cygpath >/dev/null 2>&1; then
+  ECLIPSE_SDK="$(cygpath -m "$ECLIPSE_SDK")"
+fi
 
 TINYLOG_VERSION="2.7.0"
 PLUGIN_VERSION=$(grep "^Bundle-Version:" "$REPO_ROOT/META-INF/MANIFEST.MF" | awk '{print $2}' | tr -d '\r' | sed 's/\.qualifier$//')
@@ -51,8 +69,8 @@ download_dep "https://repo1.maven.org/maven2/org/tinylog/tinylog-api/${TINYLOG_V
 download_dep "https://repo1.maven.org/maven2/org/tinylog/tinylog-impl/${TINYLOG_VERSION}/tinylog-impl-${TINYLOG_VERSION}.jar" \
   "$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
 
-CLASSPATH=$(printf "%s:" "$ECLIPSE_PLUGINS_DIR"/*.jar)
-CLASSPATH+="$LIB_DIR/tinylog-api-${TINYLOG_VERSION}.jar:$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
+CLASSPATH=$(printf "%s${CPSEP}" "$ECLIPSE_PLUGINS_DIR"/*.jar)
+CLASSPATH+="$LIB_DIR/tinylog-api-${TINYLOG_VERSION}.jar${CPSEP}$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
 
 echo "Compiling bundle"
 "$JAVAC_BIN" --release 17 -cp "$CLASSPATH" \
@@ -88,12 +106,12 @@ else
   echo "Publishing p2 repository"
   "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
     -application org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher \
-    -metadataRepository "file:$REPO_DIR" \
-    -artifactRepository "file:$REPO_DIR" \
+    -metadataRepository "${FILEURL}$REPO_DIR" \
+    -artifactRepository "${FILEURL}$REPO_DIR" \
     -source "$PLUGIN_BUILD_DIR" \
     -compress -publishArtifacts
 
-  REPOS="file:$REPO_DIR"
+  REPOS="${FILEURL}$REPO_DIR"
   if [[ -n "$P2_REPOSITORIES" ]]; then
     REPOS+="${REPOS:+,}$P2_REPOSITORIES"
   fi
