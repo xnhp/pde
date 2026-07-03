@@ -98,11 +98,17 @@ else
     REPOS+="${REPOS:+,}$P2_REPOSITORIES"
   fi
 
+  INSTALL_IUS="org.knime.targetinstaller,org.apache.felix.scr,org.eclipse.equinox.p2.transport.ecf,org.eclipse.equinox.p2.touchpoint.natives,org.eclipse.equinox.p2.touchpoint.eclipse,org.eclipse.equinox.frameworkadmin,org.eclipse.equinox.frameworkadmin.equinox,org.eclipse.equinox.simpleconfigurator.manipulator,org.eclipse.osgi.compatibility.state"
+  osgi_services_jars=("$ECLIPSE_PLUGINS_DIR"/org.eclipse.osgi.services_*.jar)
+  if [[ -e "${osgi_services_jars[0]}" ]]; then
+    INSTALL_IUS+=",org.eclipse.osgi.services"
+  fi
+
   echo "Materializing runtime"
   "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
     -application org.eclipse.equinox.p2.director \
     -repository "$REPOS" \
-    -installIU org.knime.targetinstaller,org.apache.felix.scr,org.eclipse.equinox.p2.transport.ecf,org.eclipse.equinox.p2.touchpoint.natives,org.eclipse.equinox.p2.touchpoint.eclipse,org.eclipse.equinox.frameworkadmin,org.eclipse.equinox.frameworkadmin.equinox,org.eclipse.equinox.simpleconfigurator.manipulator,org.eclipse.osgi.compatibility.state,org.eclipse.osgi.services \
+    -installIU "$INSTALL_IUS" \
     -destination "$RUNTIME_DIR" \
     -profile DefaultProfile \
     -bundlepool "$RUNTIME_DIR"
