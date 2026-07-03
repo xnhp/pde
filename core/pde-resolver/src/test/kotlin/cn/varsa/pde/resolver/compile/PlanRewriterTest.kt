@@ -6,7 +6,6 @@ import org.junit.Test
 import org.osgi.framework.Version
 import java.nio.file.Path
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class PlanRewriterTest {
 
@@ -40,7 +39,9 @@ class PlanRewriterTest {
     val ws = rewritten.bundles.first { it.bsn == "ws.bundle" }
     val tp = rewritten.bundles.first { it.bsn == "tp.bundle" }
 
-    assertTrue(ws.location.toString().endsWith("/ws/ws.bundle/bin"), "workspace bundle should point to compiled output")
-    assertEquals("/tp/tp.bundle", tp.location.toString())
+    // Compare Path objects (not OS-specific strings): the workspace location is the rewritten,
+    // absolutized+normalized output dir; the target bundle is untouched.
+    assertEquals(Path.of("/ws/ws.bundle/bin").toAbsolutePath().normalize(), ws.location)
+    assertEquals(Path.of("/tp/tp.bundle"), tp.location)
   }
 }
