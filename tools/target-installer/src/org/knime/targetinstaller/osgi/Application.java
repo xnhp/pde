@@ -17,6 +17,7 @@ import java.nio.file.Path;
 
 import static org.knime.targetinstaller.utils.Utils.createDirIfNotExist;
 import static org.knime.targetinstaller.utils.Utils.deleteProfileIfExists;
+import static org.knime.targetinstaller.utils.Utils.normalizeProfileRegistryPath;
 import static org.knime.targetinstaller.utils.Utils.patchTrustedAuthorities;
 import static org.knime.targetinstaller.utils.Utils.trustAllAuthoritiesIfOptedIn;
 import static org.knime.targetinstaller.utils.Utils.printProfileSummary;
@@ -87,6 +88,7 @@ public class Application implements IApplication{
         new Operation(profile.getProfileId(), operation, arguments.isDryRun(), resolvedConfig.includeConfigurePhase())
                 .resolve()
                 .ifPresent(Operation::execute);
+        normalizeProfileRegistryPath(profileId, p2Path);
 
 //        printProfileSummary(agent, profileId);
 

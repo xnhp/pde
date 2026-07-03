@@ -66,6 +66,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -216,19 +218,66 @@ public class Utils {
             Logger.debug("%s: No existing profile to remove%n", profileId);
         }
 
-        var profileFile = p2Path.toAbsolutePath()
-                .resolve("org.eclipse.equinox.p2.engine")
-                .resolve("profileRegistry")
-                .resolve(profileId + ".profile");
-        try {
-            if (Files.exists(profileFile)) {
-                Logger.warn("%s: Profile file %s still exists on disk, deleting%n", profileId, profileFile);
-                Files.delete(profileFile);
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to delete profile file " + profileFile, e);
+        deleteProfileDirectoryIfExists(profileId, profileDirectory(p2Path, profileId, ".profile"));
+        var uppercaseProfileDirectory = profileDirectory(p2Path, profileId, ".Profile");
+        if (!sameFileIfBothExist(profileDirectory(p2Path, profileId, ".profile"), uppercaseProfileDirectory)) {
+            deleteProfileDirectoryIfExists(profileId, uppercaseProfileDirectory);
         }
 
+    }
+
+    public static void normalizeProfileRegistryPath(String profileId, Path p2Path) {
+        var lowercaseProfileDirectory = profileDirectory(p2Path, profileId, ".profile");
+        if (!Files.exists(lowercaseProfileDirectory)) {
+            return;
+        }
+        var uppercaseProfileDirectory = profileDirectory(p2Path, profileId, ".Profile");
+        try {
+            if (Files.exists(uppercaseProfileDirectory)) {
+                if (Files.isSameFile(lowercaseProfileDirectory, uppercaseProfileDirectory)) {
+                    return;
+                }
+                deleteRecursively(uppercaseProfileDirectory);
+            }
+            Files.move(lowercaseProfileDirectory, uppercaseProfileDirectory, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to move profile directory to " + uppercaseProfileDirectory, e);
+        }
+    }
+
+    private static Path profileDirectory(Path p2Path, String profileId, String suffix) {
+        return p2Path.toAbsolutePath()
+                .resolve("org.eclipse.equinox.p2.engine")
+                .resolve("profileRegistry")
+                .resolve(profileId + suffix);
+    }
+
+    private static void deleteProfileDirectoryIfExists(String profileId, Path profileDirectory) {
+        try {
+            if (Files.exists(profileDirectory)) {
+                Logger.warn("%s: Profile directory %s still exists on disk, deleting%n", profileId, profileDirectory);
+                deleteRecursively(profileDirectory);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to delete profile directory " + profileDirectory, e);
+        }
+    }
+
+    private static void deleteRecursively(Path path) throws IOException {
+        try (var stream = Files.walk(path)) {
+            var paths = stream.sorted(Comparator.reverseOrder()).toList();
+            for (var current : paths) {
+                Files.deleteIfExists(current);
+            }
+        }
+    }
+
+    private static boolean sameFileIfBothExist(Path first, Path second) {
+        try {
+            return Files.exists(first) && Files.exists(second) && Files.isSameFile(first, second);
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static void updatePropIfChanged(final IProfile profile, final String key, final String newValue) {

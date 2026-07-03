@@ -10,6 +10,7 @@ import java.util.logging.Level
 import java.util.logging.LogRecord
 import java.util.logging.Logger
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TargetInstallCopyPathTest {
@@ -34,7 +35,7 @@ class TargetInstallCopyPathTest {
     Files.writeString(targetFile, "<target></target>")
 
     val registryDir = baseDir
-      .resolve("target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile")
+      .resolve("target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.Profile")
     Files.createDirectories(registryDir)
 
     val logger = Logger.getLogger("pde-launch-engine")
@@ -73,6 +74,10 @@ class TargetInstallCopyPathTest {
     assertTrue(
       records.any { it.level == Level.INFO && it.message.contains(expected) },
       "Expected info message with copied path, got: ${records.joinToString { "${it.level}:${it.message}" }}"
+    )
+    assertFalse(
+      records.any { it.message.contains("Using lowercase profile registry path") },
+      "Expected target install to use the preferred uppercase profile path"
     )
   }
 
