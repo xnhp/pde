@@ -63,9 +63,19 @@ CLASSPATH=$(printf "%s:" "$ECLIPSE_PLUGINS_DIR"/*.jar)
 CLASSPATH+="$LIB_DIR/tinylog-api-${TINYLOG_VERSION}.jar:$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
 
 echo "Compiling bundle"
-"$JAVAC_BIN" --release 21 -cp "$CLASSPATH" \
-  -d "$PLUGIN_BUILD_DIR/classes" \
-  $(find "$REPO_ROOT/src" -name '*.java')
+# Pass options/sources via an @argfile: the full classpath plus source list can
+# exceed the OS command-line length limit.
+JAVAC_ARGS="$BUILD_DIR/javac-bundle-args.txt"
+{
+  echo "--release"
+  echo "21"
+  echo "-cp"
+  printf '"%s"\n' "$CLASSPATH"
+  echo "-d"
+  printf '"%s"\n' "$PLUGIN_BUILD_DIR/classes"
+  find "$REPO_ROOT/src" -name '*.java' | while IFS= read -r f; do printf '"%s"\n' "$f"; done
+} > "$JAVAC_ARGS"
+"$JAVAC_BIN" "@$JAVAC_ARGS"
 
 echo "Packaging bundle"
 jar cfm "$PLUGIN_DIR/$PLUGIN_JAR" \
