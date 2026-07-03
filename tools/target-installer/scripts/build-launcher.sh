@@ -8,6 +8,7 @@ PLUGIN_DIR="$PLUGIN_BUILD_DIR/plugins"
 LAUNCHER_BUILD_DIR="$BUILD_DIR/launcher"
 RUNTIME_DIR="$BUILD_DIR/runtime"
 REPO_DIR="$BUILD_DIR/p2repo"
+SDK_REPO_DIR="$BUILD_DIR/sdk-p2repo"
 DIST_DIR="$REPO_ROOT/dist"
 DEPS_DIR="$BUILD_DIR/deps"
 LIB_DIR="$BUILD_DIR/lib"
@@ -93,7 +94,15 @@ else
     -source "$PLUGIN_BUILD_DIR" \
     -compress -publishArtifacts
 
-  REPOS="file:$REPO_DIR"
+  echo "Publishing Eclipse SDK p2 repository"
+  "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
+    -application org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher \
+    -metadataRepository "file:$SDK_REPO_DIR" \
+    -artifactRepository "file:$SDK_REPO_DIR" \
+    -source "$ECLIPSE_SDK" \
+    -compress -publishArtifacts
+
+  REPOS="file:$REPO_DIR,file:$SDK_REPO_DIR"
   if [[ -n "$P2_REPOSITORIES" ]]; then
     REPOS+="${REPOS:+,}$P2_REPOSITORIES"
   fi
