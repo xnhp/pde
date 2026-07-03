@@ -63,7 +63,7 @@ CLASSPATH=$(printf "%s:" "$ECLIPSE_PLUGINS_DIR"/*.jar)
 CLASSPATH+="$LIB_DIR/tinylog-api-${TINYLOG_VERSION}.jar:$LIB_DIR/tinylog-impl-${TINYLOG_VERSION}.jar"
 
 echo "Compiling bundle"
-"$JAVAC_BIN" --release 17 -cp "$CLASSPATH" \
+"$JAVAC_BIN" --release 21 -cp "$CLASSPATH" \
   -d "$PLUGIN_BUILD_DIR/classes" \
   $(find "$REPO_ROOT/src" -name '*.java')
 
@@ -142,7 +142,7 @@ echo "Creating runtime archive"
 jar cf "$LAUNCHER_BUILD_DIR/runtime.zip" -C "$RUNTIME_DIR" .
 
 echo "Building launcher"
-"$JAVAC_BIN" --release 17 \
+"$JAVAC_BIN" --release 21 \
   -d "$LAUNCHER_BUILD_DIR/classes" \
   "$REPO_ROOT/launcher/src/org/knime/targetinstaller/launcher/Bootstrap.java"
 
