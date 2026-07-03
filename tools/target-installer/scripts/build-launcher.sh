@@ -113,6 +113,12 @@ else
     -profile DefaultProfile \
     -bundlepool "$RUNTIME_DIR"
 
+  # The Equinox launcher may exit 0 even when the director reports an installation failure.
+  if ! ls "$RUNTIME_DIR"/plugins/org.knime.targetinstaller_*.jar >/dev/null 2>&1; then
+    echo "Runtime materialization failed: org.knime.targetinstaller missing from $RUNTIME_DIR/plugins" >&2
+    exit 1
+  fi
+
   echo "Adding Equinox launcher"
   mkdir -p "$RUNTIME_DIR/plugins"
   cp "$LAUNCHER_JAR" "$RUNTIME_DIR/plugins/"
