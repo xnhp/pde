@@ -75,7 +75,7 @@ tests:
   appended after normal resolution, so multiple versions of the same symbolic name can coexist.
 - `target.pinnedVersions` maps bundle symbolic names to exact bundle versions when the target
   platform contains multiple versions. Pins apply when a bundle is selected by dependency,
-  `Import-Package` provider selection, whitelist, or `target.extraBundles`. Invalid version strings
+  `Import-Package` provider selection or `target.extraBundles`. Invalid version strings
   fail config validation. If a pin is outside a requested `Require-Bundle` or fragment-host range,
   pde warns and still uses the pin. For `Import-Package`, the pinned bundle must still export the
   requested package with an export version matching the import range.

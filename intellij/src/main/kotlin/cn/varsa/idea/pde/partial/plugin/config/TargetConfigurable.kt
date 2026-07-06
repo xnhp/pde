@@ -247,7 +247,10 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
 
     // Advanced tab
     val preferenceService = PreferenceService.getInstance(project)
-    preferenceService.libraryWhitelist.forEach { whitelistModel.addElement(it) }
+    val bundleWhitelistEnabled = PdeFeatureFlags.bundleWhitelist
+    if (bundleWhitelistEnabled) {
+      preferenceService.libraryWhitelist.forEach { whitelistModel.addElement(it) }
+    }
 
 
     // Create a label with placeholder text that wraps
@@ -258,7 +261,7 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     val advancedHeaderPanel = VerticalBox().apply {
       add(autoResolveTargetOnStartup)
       add(autoResolveTargetOnStartupDescriptionLabel)
-      add(whitelistDescriptionLabel)
+      if (bundleWhitelistEnabled) add(whitelistDescriptionLabel)
     }
 
     whitelistList.apply {
@@ -278,21 +281,30 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
       ListSpeedSearch.installOn(this).setClearSearchOnNavigateNoMatch(true)
     }
 
-    val whitelistPanel = BorderLayoutPanel().withBorder(
+    val advancedPanel = BorderLayoutPanel().withBorder(
       IdeBorderFactory.createTitledBorder(
-        message("config.advanced.whitelist.borderHint"), false, JBUI.insetsTop(8)
+        message("config.advanced.borderHint"), false, JBUI.insetsTop(8)
       ).setShowLine(true)
     ).addToTop(
       advancedHeaderPanel
-    ).addToCenter(
-      ToolbarDecorator.createDecorator(whitelistList)
-        .setAddAction { addWhitelistItem() }
-        .setRemoveAction { removeWhitelistItem() }
-        .setEditAction { editWhitelistItem() }
-        .createPanel()
     )
 
-    panel.addTab(message("config.advanced.tab"), whitelistPanel)
+    if (bundleWhitelistEnabled) {
+      val whitelistPanel = BorderLayoutPanel().withBorder(
+        IdeBorderFactory.createTitledBorder(
+          message("config.advanced.whitelist.borderHint"), false, JBUI.insetsTop(8)
+        ).setShowLine(true)
+      ).addToCenter(
+        ToolbarDecorator.createDecorator(whitelistList)
+          .setAddAction { addWhitelistItem() }
+          .setRemoveAction { removeWhitelistItem() }
+          .setEditAction { editWhitelistItem() }
+          .createPanel()
+      )
+      advancedPanel.addToCenter(whitelistPanel)
+    }
+
+    panel.addTab(message("config.advanced.tab"), advancedPanel)
 
 
     // Anchor
@@ -328,7 +340,7 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     // Check if whitelist is modified
     val preferenceService = PreferenceService.getInstance(project)
     val currentWhitelist = whitelistModel.elements().toList().toSet()
-    if (currentWhitelist != preferenceService.libraryWhitelist) {
+    if (PdeFeatureFlags.bundleWhitelist && currentWhitelist != preferenceService.libraryWhitelist) {
       return true
     }
     if (autoResolveTargetOnStartup.isSelected != preferenceService.autoResolveTargetOnStartup) {
@@ -356,7 +368,9 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
 
     // Save whitelist preferences
     val preferenceService = PreferenceService.getInstance(project)
-    preferenceService.libraryWhitelist = whitelistModel.elements().toList().toSet()
+    if (PdeFeatureFlags.bundleWhitelist) {
+      preferenceService.libraryWhitelist = whitelistModel.elements().toList().toSet()
+    }
     preferenceService.autoResolveTargetOnStartup = autoResolveTargetOnStartup.isSelected
 
     ShadowLocationRoot.locations.forEach(ShadowLocation::apply)
@@ -387,7 +401,9 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
     // Reset whitelist
     val preferenceService = PreferenceService.getInstance(project)
     whitelistModel.clear()
-    preferenceService.libraryWhitelist.forEach { whitelistModel.addElement(it) }
+    if (PdeFeatureFlags.bundleWhitelist) {
+      preferenceService.libraryWhitelist.forEach { whitelistModel.addElement(it) }
+    }
     autoResolveTargetOnStartup.isSelected = preferenceService.autoResolveTargetOnStartup
 
     updateComboBox()

@@ -1,6 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.launch
 
 import cn.varsa.idea.pde.partial.common.service.ConfigService
+import cn.varsa.idea.pde.partial.plugin.config.PdeFeatureFlags
 import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import cn.varsa.idea.pde.partial.plugin.config.PreferenceService
 import cn.varsa.idea.pde.partial.plugin.config.ResolveSessionService
@@ -38,7 +39,11 @@ object LauncherPlanBuilder {
     val workspaceDescriptors = workspaceInputs.descriptors
 
     val resolverOptions = ResolveOptions(
-      whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
+      whitelistPrefixes = if (PdeFeatureFlags.bundleWhitelist) {
+        PreferenceService.getInstance(project).libraryWhitelist
+      } else {
+        emptySet()
+      },
       preferWorkspace = true,
       includeHostsForFragments = true
     )

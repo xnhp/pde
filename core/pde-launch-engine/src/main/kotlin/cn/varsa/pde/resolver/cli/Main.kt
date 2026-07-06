@@ -1582,7 +1582,7 @@ private fun prepareLaunch(
   val combinedStartup = DEFAULT_STARTUP_LEVELS +
     targetDefinitionStartupLevels +
     requestedStartupLevels
-  val resolverWhitelist = DEFAULT_WHITELIST
+  val resolverWhitelist = defaultWhitelistPrefixes()
   val hasWorkspaceModules = workspaceInputs.descriptors.isNotEmpty()
   val workspaceEntries = if (hasWorkspaceModules) {
     workspaceInputs.descriptors
@@ -1794,6 +1794,12 @@ private val DEFAULT_WHITELIST = setOf(
   "org.eclipse.io",
   "org.eclipse.swt"
 )
+
+private fun defaultWhitelistPrefixes(): Set<String> = if (isBundleWhitelistEnabled()) DEFAULT_WHITELIST else emptySet()
+
+private fun isBundleWhitelistEnabled(): Boolean =
+  java.lang.Boolean.getBoolean("pde.bundleWhitelist") ||
+    System.getenv("PDE_BUNDLE_WHITELIST")?.toBooleanStrictOrNull() == true
 
 private fun loadExistingConfig(profilePath: Path): Properties {
   val props = Properties()

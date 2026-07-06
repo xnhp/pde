@@ -239,7 +239,7 @@ $defs:
         description: >-
           Bundle symbolic-name to exact bundle-version map for target platforms that contain
           multiple versions of the same bundle. When a pinned bundle is selected by dependency,
-          import-package provider, whitelist, or `extraBundles`, pde uses the pinned version
+          import-package provider, or `extraBundles`, pde uses the pinned version
           instead of the highest available matching version. If the pinned version is outside a
           requested `Require-Bundle` or fragment-host range, pde reports a warning and still uses
           the pin. For `Import-Package`, the pinned bundle version must still export the requested

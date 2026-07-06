@@ -32,6 +32,12 @@
 
     <configurationType implementation="cn.varsa.idea.pde.partial.plugin.run.PDETargetRunConfigurationType"/>
 
+    <registryKey
+        key="cn.varsa.idea.pde.tools.bundle.whitelist"
+        defaultValue="false"
+        restartRequired="false"
+        description="Enable experimental bundle whitelist settings and resolver behavior."/>
+
     <manifest.parser.provider
         implementation="cn.varsa.idea.pde.partial.plugin.manifest.lang.ManifestHeaderParserProvider"/>
     <completion.contributor

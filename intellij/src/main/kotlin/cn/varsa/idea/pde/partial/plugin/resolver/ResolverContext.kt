@@ -1,6 +1,7 @@
 package cn.varsa.idea.pde.partial.plugin.resolver
 
 import cn.varsa.idea.pde.partial.plugin.cache.BundleManifestCacheService
+import cn.varsa.idea.pde.partial.plugin.config.PdeFeatureFlags
 import cn.varsa.idea.pde.partial.plugin.config.PreferenceService
 import cn.varsa.idea.pde.partial.plugin.config.PluginTargetIndexService
 import cn.varsa.idea.pde.partial.plugin.support.allPDEModules
@@ -63,7 +64,11 @@ internal fun ResolverContext.workspaceEntry(module: Module): WorkspaceBundleDesc
 }
 
 internal fun ResolverContext.options(includeHosts: Boolean): ResolveOptions = ResolveOptions(
-  whitelistPrefixes = PreferenceService.getInstance(project).libraryWhitelist,
+  whitelistPrefixes = if (PdeFeatureFlags.bundleWhitelist) {
+    PreferenceService.getInstance(project).libraryWhitelist
+  } else {
+    emptySet()
+  },
   preferWorkspace = true,
   includeHostsForFragments = includeHosts
 )
