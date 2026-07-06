@@ -276,10 +276,12 @@ class PdeModuleRuntimeLibraryResolver : ManifestLibraryResolver {
 
         val currentRoots = lib.getUrls(OrderRootType.CLASSES).toSet()
         if (currentRoots != expectedRoots) {
-          val libModel = lib.modifiableModel
-          libModel.getUrls(OrderRootType.CLASSES).forEach { libModel.removeRoot(it, OrderRootType.CLASSES) }
-          expectedRoots.forEach { libModel.addRoot(it, OrderRootType.CLASSES) }
-          writeRun { libModel.commit() }
+          applicationInvokeAndWait {
+            val libModel = lib.modifiableModel
+            libModel.getUrls(OrderRootType.CLASSES).forEach { libModel.removeRoot(it, OrderRootType.CLASSES) }
+            expectedRoots.forEach { libModel.addRoot(it, OrderRootType.CLASSES) }
+            writeRun { libModel.commit() }
+          }
         }
 
         if (addedLibs.add(lib)) {
