@@ -113,7 +113,20 @@ private val targetInspectDiffOptions = listOf(
 private val targetInspectHealthOptions = listOf(
   CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--json"), "Emit JSON output"),
-  CliOption(listOf("--limit"), "Maximum number of missing artifacts to print", takesValue = true, valueLabel = "Int", defaultValue = "100")
+  CliOption(listOf("--limit"), "Maximum number of health issues to print", takesValue = true, valueLabel = "Int", defaultValue = "100")
+)
+
+private val targetHealthOptions = targetInspectHealthOptions
+
+private val targetRepairOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--dry-run"), "Print repair actions without changing files")
+)
+
+private val targetRepairRefetchOptions = targetInstallOptions
+
+private val targetRepairPositionals = listOf(
+  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1")
 )
 
 private val targetInspectSnapshotsOptions = listOf(
@@ -258,6 +271,44 @@ internal val pdeCommand = CliCommandGroup(
           mixinStandardHelpOptions = true,
           options = targetMirrorOptions,
           positionalArgs = targetMirrorPositionals
+        ),
+        CliCommandLeaf(
+          name = "health",
+          description = "Run consistency checks for the configured bundle pool",
+          handler = forwardToLaunch("pde target health", "target", "health"),
+          mixinStandardHelpOptions = true,
+          options = targetHealthOptions,
+          positionalArgs = targetInspectPositionals
+        ),
+        CliCommandGroup(
+          name = "repair",
+          description = "Repair reusable target bundle-pool state",
+          children = listOf(
+            CliCommandLeaf(
+              name = "re-fetch",
+              description = "Re-run target install to fetch currently required artifacts",
+              handler = forwardToLaunch("pde target repair re-fetch", "target", "repair", "re-fetch"),
+              mixinStandardHelpOptions = true,
+              options = targetRepairRefetchOptions,
+              positionalArgs = targetRepairPositionals
+            ),
+            CliCommandLeaf(
+              name = "quarantine",
+              description = "Move cached features that pin missing bundles out of the pool",
+              handler = forwardToLaunch("pde target repair quarantine", "target", "repair", "quarantine"),
+              mixinStandardHelpOptions = true,
+              options = targetRepairOptions,
+              positionalArgs = targetRepairPositionals
+            ),
+            CliCommandLeaf(
+              name = "rebuild-index",
+              description = "Rebuild bundle-pool artifacts.xml from physical files",
+              handler = forwardToLaunch("pde target repair rebuild-index", "target", "repair", "rebuild-index"),
+              mixinStandardHelpOptions = true,
+              options = targetRepairOptions,
+              positionalArgs = targetRepairPositionals
+            )
+          )
         ),
         CliCommandGroup(
           name = "inspect",

@@ -1,0 +1,92 @@
+package cn.varsa.pde.resolver.cli
+
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
+import java.nio.file.Files
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class TargetHealthTest {
+  @Rule @JvmField val tmp = TemporaryFolder()
+
+  @Test
+  fun `target-health reports cached feature pins with missing physical bundles`() {
+    val baseDir = tmp.newFolder("missing-pin").toPath()
+    val bundlePool = baseDir.resolve("bundle-pool")
+    Files.createDirectories(bundlePool.resolve("plugins"))
+    Files.createDirectories(bundlePool.resolve("features/example.feature_1.0.0"))
+    Files.writeString(
+      baseDir.resolve("pde.yaml"),
+      """
+        target:
+          bundlePool: bundle-pool
+        bundles: []
+      """.trimIndent()
+    )
+    Files.writeString(
+      bundlePool.resolve("artifacts.xml"),
+      """
+        <?xml version='1.0' encoding='UTF-8'?>
+        <repository>
+          <artifacts size='0'/>
+        </repository>
+      """.trimIndent()
+    )
+    Files.writeString(
+      bundlePool.resolve("features/example.feature_1.0.0/feature.xml"),
+      """
+        <feature id="example.feature" version="1.0.0">
+          <plugin id="org.missing" version="1.2.3"/>
+        </feature>
+      """.trimIndent()
+    )
+
+    val output = captureStdout {
+      assertEquals(1, targetHealthMain(arrayOf("--config", baseDir.resolve("pde.yaml").toString())))
+    }
+
+    assertTrue(output.contains("Missing cached feature plugin pins: 1"))
+    assertTrue(output.contains("org.missing@1.2.3"))
+    assertTrue(output.contains("Healthy: false"))
+  }
+
+  @Test
+  fun `target-repair rebuild-index writes physical artifact index`() {
+    val baseDir = tmp.newFolder("rebuild-index").toPath()
+    val bundlePool = baseDir.resolve("bundle-pool")
+    Files.createDirectories(bundlePool.resolve("plugins"))
+    Files.createDirectories(bundlePool.resolve("features/example.feature_1.0.0"))
+    Files.writeString(bundlePool.resolve("plugins/org.example_1.2.3.jar"), "stub")
+    Files.writeString(bundlePool.resolve("artifacts.xml"), "<repository><artifacts size='0'/></repository>")
+    Files.writeString(
+      baseDir.resolve("pde.yaml"),
+      """
+        target:
+          bundlePool: bundle-pool
+        bundles: []
+      """.trimIndent()
+    )
+
+    assertEquals(0, targetRepairRebuildIndexMain(arrayOf("--config", baseDir.resolve("pde.yaml").toString())))
+
+    val artifactsXml = Files.readString(bundlePool.resolve("artifacts.xml"))
+    assertTrue(artifactsXml.contains("id='org.example'"))
+    assertTrue(artifactsXml.contains("version='1.2.3'"))
+    assertTrue(artifactsXml.contains("artifact.folder"))
+  }
+
+  private fun captureStdout(block: () -> Unit): String {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      block()
+    } finally {
+      System.setOut(savedOut)
+    }
+    return out.toString()
+  }
+}

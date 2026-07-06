@@ -62,6 +62,7 @@ import java.time.Instant
 import java.util.Locale
 import java.util.Properties
 import java.util.jar.Manifest
+import java.util.zip.ZipFile
 import java.util.zip.GZIPInputStream
 import java.util.logging.Formatter
 import java.util.logging.Level
@@ -229,6 +230,13 @@ internal val targetInspectOptionsRequiringValue = setOf(
   "--config",
   "--limit"
 )
+internal val targetRepairOptionsRequiringValue = setOf(
+  "--config",
+  "--limit",
+  "--log",
+  "--log-level",
+  "--launch"
+)
 
 fun looksLikeYamlFile(arg: String): Boolean {
   val lower = arg.lowercase()
@@ -373,6 +381,23 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
       subcommand == "mirror" -> {
         val exit = targetMirrorMain(args.drop(2).toTypedArray())
         exitProcess(exit)
+      }
+      subcommand == "health" -> exitProcess(targetHealthMain(args.drop(2).toTypedArray()))
+      subcommand == "repair" -> {
+        val repairSubcommand = args.getOrNull(2)
+        when {
+          repairSubcommand == null || repairSubcommand == "-h" || repairSubcommand == "--help" || repairSubcommand == "help" -> {
+            printTargetRepairHelp()
+            return
+          }
+          repairSubcommand == "re-fetch" -> exitProcess(targetRepairRefetchMain(args.drop(3).toTypedArray()))
+          repairSubcommand == "quarantine" -> exitProcess(targetRepairQuarantineMain(args.drop(3).toTypedArray()))
+          repairSubcommand == "rebuild-index" -> exitProcess(targetRepairRebuildIndexMain(args.drop(3).toTypedArray()))
+          else -> {
+            logger.severe("Unknown target repair subcommand '$repairSubcommand'. Use 'pde target repair --help'.")
+            exitProcess(2)
+          }
+        }
       }
       subcommand == "inspect" -> {
         val inspectSubcommand = args.getOrNull(2)
@@ -554,11 +579,15 @@ private fun printTargetHelp() {
   println("Subcommands:")
   println("  install ${maturityTag("usable")} Resolve/prepare target platform state")
   println("  mirror  ${maturityTag("usable")} Mirror update sites from a .target definition")
+  println("  health  ${maturityTag("usable")} Run consistency checks for the configured bundle pool")
+  println("  repair  ${maturityTag("usable")} Repair reusable target bundle-pool state")
   println("  inspect ${maturityTag("usable")} Inspect target profile state and health")
   println()
   println("See also:")
   println("  pde target install --help")
   println("  pde target mirror --help")
+  println("  pde target health --help")
+  println("  pde target repair --help")
   println("  pde target inspect --help")
   println("  docs/cli-quickstart.md")
 }
@@ -582,11 +611,56 @@ private fun printTargetInspectHelp() {
   println("  pde target inspect health")
 }
 
+private fun printTargetRepairHelp() {
+  println("pde target repair ${maturityTag("usable")} - repair reusable target bundle-pool state")
+  println()
+  println("Usage:")
+  println("  pde target repair <subcommand> [options]")
+  println()
+  println("Subcommands:")
+  println("  re-fetch      ${maturityTag("usable")} Re-run target install to fetch currently required artifacts")
+  println("  quarantine    ${maturityTag("usable")} Move cached features that pin missing bundles out of the pool")
+  println("  rebuild-index ${maturityTag("usable")} Rebuild bundle-pool artifacts.xml from physical files")
+  println()
+  println("Examples:")
+  println("  pde target health")
+  println("  pde target repair re-fetch")
+  println("  pde target repair quarantine")
+  println("  pde target repair rebuild-index")
+}
+
 private data class ProfileArtifact(
   val classifier: String,
   val id: String,
-  val version: String
+  val version: String,
+  val folder: Boolean = false
 )
+
+private data class HealthIssue(
+  val kind: String,
+  val id: String,
+  val version: String,
+  val source: String,
+  val expected: String
+) {
+  fun label(): String = "$kind: $id@$version from $source (expected $expected)"
+}
+
+private data class BundlePoolHealth(
+  val configContext: LaunchConfigContext,
+  val bundlePool: Path,
+  val artifactsXmlExists: Boolean,
+  val advertisedArtifacts: List<ProfileArtifact>,
+  val missingAdvertisedArtifacts: List<HealthIssue>,
+  val missingFeaturePins: List<HealthIssue>,
+  val missingRequireBundles: List<HealthIssue>
+) {
+  val issues: List<HealthIssue>
+    get() = missingAdvertisedArtifacts + missingFeaturePins + missingRequireBundles
+
+  val healthy: Boolean
+    get() = artifactsXmlExists && issues.isEmpty()
+}
 
 private data class TargetInspectionContext(
   val configContext: LaunchConfigContext,
@@ -677,6 +751,249 @@ private fun parseProfileArtifacts(snapshot: Path): List<ProfileArtifact> {
   }
   return artifacts
 }
+
+private fun loadTargetConfigContext(configFileOpt: String?, configPos: String?): LaunchConfigContext? {
+  val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory")
+    return null
+  }
+  if (configFile == null) {
+    logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
+  }
+  val context = LaunchConfigLoader.load(discoveredConfig)
+  if (context.config.target == null) {
+    logger.severe(
+      "Missing target config in ${context.file}. " +
+        "Add a target section to pde.yaml and see docs/config-yaml.md#target."
+    )
+    return null
+  }
+  return context
+}
+
+private fun configuredBundlePool(context: LaunchConfigContext): Path {
+  val raw = context.config.target?.bundlePool?.takeIf { it.isNotBlank() } ?: "target/bundle-pool"
+  val path = Paths.get(raw)
+  return (if (path.isAbsolute) path else context.baseDir.resolve(path)).normalize()
+}
+
+private fun scanBundlePoolHealth(context: LaunchConfigContext): BundlePoolHealth {
+  val bundlePool = configuredBundlePool(context)
+  val artifactsXml = bundlePool.resolve("artifacts.xml")
+  val advertisedArtifacts = if (Files.isRegularFile(artifactsXml)) parseArtifactRepository(artifactsXml) else emptyList()
+  val missingAdvertisedArtifacts = advertisedArtifacts
+    .filter { it.classifier == "osgi.bundle" || it.classifier == "org.eclipse.update.feature" }
+    .filter { artifactPhysicalPath(bundlePool, it) == null }
+    .map { artifact ->
+      HealthIssue(
+        kind = "missing-advertised-artifact",
+        id = artifact.id,
+        version = artifact.version,
+        source = artifactsXml.toAbsolutePath().normalize().toString(),
+        expected = expectedArtifactPath(bundlePool, artifact)
+      )
+    }
+  val missingFeaturePins = cachedFeaturePins(bundlePool)
+    .filter { pin -> pluginArtifactPath(bundlePool, pin.id, pin.version) == null }
+    .map { pin ->
+      HealthIssue(
+        kind = "missing-feature-plugin-pin",
+        id = pin.id,
+        version = pin.version,
+        source = pin.source.toAbsolutePath().normalize().toString(),
+        expected = expectedPluginPath(bundlePool, pin.id, pin.version)
+      )
+    }
+  val missingRequireBundles = cachedBundleRequirements(bundlePool)
+    .filter { requirement -> pluginArtifactPath(bundlePool, requirement.id, requirement.version) == null }
+    .map { requirement ->
+      HealthIssue(
+        kind = "missing-require-bundle",
+        id = requirement.id,
+        version = requirement.version,
+        source = requirement.source.toAbsolutePath().normalize().toString(),
+        expected = expectedPluginPath(bundlePool, requirement.id, requirement.version)
+      )
+    }
+  return BundlePoolHealth(
+    configContext = context,
+    bundlePool = bundlePool,
+    artifactsXmlExists = Files.isRegularFile(artifactsXml),
+    advertisedArtifacts = advertisedArtifacts,
+    missingAdvertisedArtifacts = missingAdvertisedArtifacts,
+    missingFeaturePins = missingFeaturePins,
+    missingRequireBundles = missingRequireBundles
+  )
+}
+
+private fun parseArtifactRepository(path: Path): List<ProfileArtifact> {
+  val artifacts = mutableListOf<ProfileArtifact>()
+  val xmlFactory = XMLInputFactory.newInstance()
+  path.inputStream().use { stream ->
+    val reader = xmlFactory.createXMLStreamReader(stream)
+    try {
+      while (reader.hasNext()) {
+        if (reader.next() == XMLStreamConstants.START_ELEMENT && reader.localName == "artifact") {
+          val classifier = reader.getAttributeValue("", "classifier") ?: continue
+          val id = reader.getAttributeValue("", "id") ?: continue
+          val version = reader.getAttributeValue("", "version") ?: continue
+          artifacts += ProfileArtifact(classifier = classifier, id = id, version = version)
+        }
+      }
+    } finally {
+      reader.close()
+    }
+  }
+  return artifacts
+}
+
+private data class FeaturePin(val id: String, val version: String, val source: Path)
+private data class BundleRequirement(val id: String, val version: String, val source: Path)
+
+private fun cachedFeaturePins(bundlePool: Path): List<FeaturePin> {
+  val featuresDir = bundlePool.resolve("features")
+  if (!Files.isDirectory(featuresDir)) return emptyList()
+  val pins = mutableListOf<FeaturePin>()
+  Files.walk(featuresDir).use { paths ->
+    paths.iterator().asSequence().filter { Files.isRegularFile(it) }.forEach { path ->
+      when {
+        path.fileName.toString() == "feature.xml" -> pins += parseFeaturePins(path, Files.readString(path))
+        path.fileName.toString().endsWith(".jar") -> pins += readZipEntry(path, "feature.xml")?.let { parseFeaturePins(path, it) }.orEmpty()
+      }
+    }
+  }
+  return pins
+}
+
+private fun parseFeaturePins(source: Path, content: String): List<FeaturePin> {
+  val pins = mutableListOf<FeaturePin>()
+  val xmlFactory = XMLInputFactory.newInstance()
+  content.byteInputStream(StandardCharsets.UTF_8).use { stream ->
+    val reader = xmlFactory.createXMLStreamReader(stream)
+    try {
+      while (reader.hasNext()) {
+        if (reader.next() == XMLStreamConstants.START_ELEMENT && reader.localName == "plugin") {
+          val id = reader.getAttributeValue("", "id")?.takeIf { it.isNotBlank() } ?: continue
+          val version = reader.getAttributeValue("", "version")?.takeIf { it.isNotBlank() && it != "0.0.0" } ?: continue
+          if (!matchesCurrentTargetEnvironment(reader)) continue
+          pins += FeaturePin(id = id, version = version, source = source)
+        }
+      }
+    } finally {
+      reader.close()
+    }
+  }
+  return pins
+}
+
+private fun matchesCurrentTargetEnvironment(reader: javax.xml.stream.XMLStreamReader): Boolean {
+  fun matches(attr: String, current: String): Boolean {
+    val value = reader.getAttributeValue("", attr)?.trim()?.takeIf { it.isNotEmpty() } ?: return true
+    return value.split(',').map { it.trim() }.any { it == current }
+  }
+  return matches("os", currentOsgiOs()) && matches("ws", currentOsgiWs()) && matches("arch", currentOsgiArch())
+}
+
+private fun cachedBundleRequirements(bundlePool: Path): List<BundleRequirement> {
+  val pluginsDir = bundlePool.resolve("plugins")
+  if (!Files.isDirectory(pluginsDir)) return emptyList()
+  val requirements = mutableListOf<BundleRequirement>()
+  Files.walk(pluginsDir, 2).use { paths ->
+    paths.iterator().asSequence().forEach { path ->
+      val manifest = when {
+        Files.isRegularFile(path) && path.fileName.toString().endsWith(".jar") -> readZipEntry(path, "META-INF/MANIFEST.MF")
+        Files.isRegularFile(path) && path.fileName.toString() == "MANIFEST.MF" && path.parent?.fileName?.toString() == "META-INF" -> Files.readString(path)
+        else -> null
+      } ?: return@forEach
+      requirements += parseRequireBundlePins(path, manifest)
+    }
+  }
+  return requirements
+}
+
+private fun parseRequireBundlePins(source: Path, content: String): List<BundleRequirement> {
+  val manifest = Manifest(content.byteInputStream(StandardCharsets.UTF_8))
+  val parsed = BundleManifest.parse(manifest)
+  return parsed.requireBundle
+    ?.mapNotNull { (id, attrs) ->
+      val version = attrs.attribute["bundle-version"]?.let(::exactRequireBundleVersion) ?: return@mapNotNull null
+      BundleRequirement(id = id, version = version, source = source)
+    }
+    .orEmpty()
+}
+
+private fun exactRequireBundleVersion(value: String): String? {
+  val trimmed = value.trim('"')
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null
+  val bounds = trimmed.removePrefix("[").removeSuffix("]").split(',')
+  val lower = bounds.getOrNull(0)?.trim()?.takeIf { it.isNotBlank() } ?: return null
+  val upper = bounds.getOrNull(1)?.trim()?.takeIf { it == lower } ?: return null
+  return upper.takeIf { it != "0.0.0" }
+}
+
+private fun readZipEntry(path: Path, entryName: String): String? = runCatching {
+  ZipFile(path.toFile()).use { zip ->
+    val entry = zip.getEntry(entryName) ?: return null
+    zip.getInputStream(entry).use { stream -> stream.readBytes().toString(StandardCharsets.UTF_8) }
+  }
+}.getOrNull()
+
+private fun artifactPhysicalPath(bundlePool: Path, artifact: ProfileArtifact): Path? = when (artifact.classifier) {
+  "osgi.bundle" -> pluginArtifactPath(bundlePool, artifact.id, artifact.version)
+  "org.eclipse.update.feature" -> featureArtifactPath(bundlePool, artifact.id, artifact.version)
+  else -> null
+}
+
+private fun pluginArtifactPath(bundlePool: Path, id: String, version: String): Path? {
+  val base = bundlePool.resolve("plugins").resolve("${id}_${version}")
+  return listOf(base.resolveSibling("${base.fileName}.jar"), base).firstOrNull { Files.exists(it) }
+}
+
+private fun featureArtifactPath(bundlePool: Path, id: String, version: String): Path? {
+  val base = bundlePool.resolve("features").resolve("${id}_${version}")
+  return listOf(base.resolveSibling("${base.fileName}.jar"), base).firstOrNull { Files.exists(it) }
+}
+
+private fun expectedArtifactPath(bundlePool: Path, artifact: ProfileArtifact): String = when (artifact.classifier) {
+  "osgi.bundle" -> expectedPluginPath(bundlePool, artifact.id, artifact.version)
+  "org.eclipse.update.feature" -> expectedFeaturePath(bundlePool, artifact.id, artifact.version)
+  else -> bundlePool.toAbsolutePath().normalize().toString()
+}
+
+private fun expectedPluginPath(bundlePool: Path, id: String, version: String): String =
+  bundlePool.resolve("plugins").resolve("${id}_${version}.jar").toAbsolutePath().normalize().toString()
+
+private fun expectedFeaturePath(bundlePool: Path, id: String, version: String): String =
+  bundlePool.resolve("features").resolve("${id}_${version}.jar").toAbsolutePath().normalize().toString()
+
+private fun printHealth(health: BundlePoolHealth, limit: Int) {
+  val advertisedCount = health.advertisedArtifacts.count {
+    it.classifier == "osgi.bundle" || it.classifier == "org.eclipse.update.feature"
+  }
+  println("Config: ${health.configContext.file.toAbsolutePath().normalize()}")
+  println("Bundle pool: ${health.bundlePool.toAbsolutePath().normalize()}")
+  println("artifacts.xml exists: ${health.artifactsXmlExists}")
+  println("Advertised bundle/feature artifacts: $advertisedCount")
+  println("Missing advertised artifacts: ${health.missingAdvertisedArtifacts.size}")
+  println("Missing cached feature plugin pins: ${health.missingFeaturePins.size}")
+  println("Missing exact Require-Bundle dependencies: ${health.missingRequireBundles.size}")
+  health.issues.take(limit.coerceAtLeast(1)).forEach { println("- ${it.label()}") }
+  println("Healthy: ${health.healthy}")
+}
+
+private fun healthPayload(health: BundlePoolHealth, limit: Int): Map<String, Any> = mapOf(
+  "config" to health.configContext.file.toAbsolutePath().normalize().toString(),
+  "bundlePool" to health.bundlePool.toAbsolutePath().normalize().toString(),
+  "artifactsXmlExists" to health.artifactsXmlExists,
+  "advertisedArtifactsCount" to health.advertisedArtifacts.size,
+  "missingAdvertisedArtifactsCount" to health.missingAdvertisedArtifacts.size,
+  "missingFeaturePinsCount" to health.missingFeaturePins.size,
+  "missingRequireBundlesCount" to health.missingRequireBundles.size,
+  "issues" to health.issues.take(limit.coerceAtLeast(1)),
+  "healthy" to health.healthy
+)
 
 internal fun targetInspectProfileMain(args: Array<String>): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
@@ -819,54 +1136,197 @@ internal fun targetInspectDiffMain(args: Array<String>): Int {
 }
 
 internal fun targetInspectHealthMain(args: Array<String>): Int {
+  return targetHealthMain(args, commandName = "pde target inspect health")
+}
+
+internal fun targetHealthMain(args: Array<String>, commandName: String = "pde target health"): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetInspectOptionsRequiringValue)
-  val parser = ArgParser("pde target inspect health ${maturityTag("usable")}")
+  val parser = ArgParser("$commandName ${maturityTag("usable")}")
   val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit JSON output").default(false)
-  val limit by parser.option(ArgType.Int, fullName = "limit", description = "Maximum number of missing artifacts to print").default(100)
+  val limit by parser.option(ArgType.Int, fullName = "limit", description = "Maximum number of health issues to print").default(100)
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   parser.parse(normalizedArgs)
-  configureLogging(Level.WARNING, shouldUseColor())
+  configureLogging(Level.INFO, shouldUseColor())
 
-  val context = loadTargetInspectionContext(configFileOpt, configPos) ?: return 2
-  val bundlePool = getBundlePoolPath(context.latestSnapshot.toFile())
-  val bundlePoolPath = bundlePool?.removePrefix("file:")?.let { Paths.get(it) }
-  val pluginsDir = bundlePoolPath?.resolve("plugins")
-  val artifacts = parseProfileArtifacts(context.latestSnapshot)
-    .filter { it.classifier == "osgi.bundle" }
-  val missing = if (pluginsDir != null && Files.isDirectory(pluginsDir)) {
-    artifacts.filter { artifact ->
-      val jar = pluginsDir.resolve("${artifact.id}_${artifact.version}.jar")
-      val dir = pluginsDir.resolve("${artifact.id}_${artifact.version}")
-      !Files.exists(jar) && !Files.exists(dir)
-    }
-  } else {
-    artifacts
-  }
-  val payload = mapOf(
-    "snapshot" to context.latestSnapshot.fileName.toString(),
-    "bundleCount" to artifacts.size,
-    "bundlePool" to bundlePool,
-    "bundlePoolExists" to (bundlePoolPath?.let { Files.exists(it) } == true),
-    "pluginsDirExists" to (pluginsDir?.let { Files.isDirectory(it) } == true),
-    "missingArtifactsCount" to missing.size,
-    "missingArtifacts" to missing.take(limit.coerceAtLeast(1)).map { "${it.id}@${it.version}" },
-    "healthy" to (missing.isEmpty() && (pluginsDir?.let { Files.isDirectory(it) } == true))
-  )
+  val context = loadTargetConfigContext(configFileOpt, configPos) ?: return 2
+  val health = scanBundlePoolHealth(context)
   if (json) {
-    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload))
+    println(jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(healthPayload(health, limit)))
   } else {
-    println("Snapshot: ${payload["snapshot"]}")
-    println("Bundles declared: ${payload["bundleCount"]}")
-    println("Bundle pool: ${payload["bundlePool"] ?: "<missing in profile properties>"}")
-    println("Bundle pool exists: ${payload["bundlePoolExists"]}")
-    println("Plugins dir exists: ${payload["pluginsDirExists"]}")
-    println("Missing artifacts: ${payload["missingArtifactsCount"]}")
-    (payload["missingArtifacts"] as List<*>).forEach { println("- $it") }
-    println("Healthy: ${payload["healthy"]}")
+    printHealth(health, limit)
+  }
+  return if (health.healthy) 0 else 1
+}
+
+internal fun targetRepairRefetchMain(args: Array<String>): Int {
+  configureLogging(Level.INFO, shouldUseColor())
+  logger.info("Repair re-fetch: running target install so p2 can fetch currently required artifacts into the configured bundle pool.")
+  val exit = targetMain(args)
+  if (exit == 0) {
+    logger.info("Repair re-fetch: target install completed successfully.")
+  } else {
+    logger.warning("Repair re-fetch: target install exited with code $exit.")
+  }
+  return exit
+}
+
+internal fun targetRepairQuarantineMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetRepairOptionsRequiringValue)
+  val parser = ArgParser("pde target repair quarantine ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val dryRun by parser.option(ArgType.Boolean, fullName = "dry-run", description = "Print quarantine actions without moving files").default(false)
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(normalizedArgs)
+  configureLogging(Level.INFO, shouldUseColor())
+
+  val context = loadTargetConfigContext(configFileOpt, configPos) ?: return 2
+  val health = scanBundlePoolHealth(context)
+  logger.info("Repair quarantine: scanned ${health.bundlePool.toAbsolutePath().normalize()} and found ${health.issues.size} health issue(s).")
+  val sources = health.missingFeaturePins
+    .mapNotNull { featureArtifactRoot(health.bundlePool, Paths.get(it.source)) }
+    .distinct()
+    .sortedBy { it.toString() }
+  if (sources.isEmpty()) {
+    logger.info("Repair quarantine: no cached feature artifacts need quarantine.")
+    return if (health.healthy) 0 else 1
+  }
+
+  val quarantineRoot = health.bundlePool.resolve(".quarantine").resolve(Instant.now().toString().replace(':', '-'))
+  sources.forEach { source ->
+    val relative = health.bundlePool.relativize(source)
+    val destination = uniquePath(quarantineRoot.resolve(relative))
+    if (dryRun) {
+      logger.info("Repair quarantine: would move $source to $destination")
+    } else {
+      Files.createDirectories(destination.parent)
+      Files.move(source, destination)
+      logger.info("Repair quarantine: moved $source to $destination")
+    }
+  }
+  if (dryRun) {
+    logger.info("Repair quarantine: dry run completed; no files were moved.")
+  } else {
+    logger.info("Repair quarantine: moved ${sources.size} cached feature artifact(s) to $quarantineRoot.")
+    logger.info("Repair quarantine: run `pde target repair re-fetch` or `pde target install` to provision replacements if needed.")
   }
   return 0
 }
+
+internal fun targetRepairRebuildIndexMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, targetRepairOptionsRequiringValue)
+  val parser = ArgParser("pde target repair rebuild-index ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val dryRun by parser.option(ArgType.Boolean, fullName = "dry-run", description = "Print rebuild actions without writing files").default(false)
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  parser.parse(normalizedArgs)
+  configureLogging(Level.INFO, shouldUseColor())
+
+  val context = loadTargetConfigContext(configFileOpt, configPos) ?: return 2
+  val bundlePool = configuredBundlePool(context)
+  val artifacts = physicalBundlePoolArtifacts(bundlePool)
+  logger.info("Repair rebuild-index: found ${artifacts.size} physical bundle/feature artifact(s) in $bundlePool.")
+  val artifactsXml = bundlePool.resolve("artifacts.xml")
+  val artifactsJar = bundlePool.resolve("artifacts.jar")
+  if (dryRun) {
+    logger.info("Repair rebuild-index: would back up $artifactsXml and write a regenerated artifact index.")
+    if (Files.exists(artifactsJar)) logger.info("Repair rebuild-index: would quarantine $artifactsJar so artifacts.xml is authoritative.")
+    return 0
+  }
+
+  Files.createDirectories(bundlePool)
+  if (Files.exists(artifactsXml)) {
+    val backup = uniquePath(bundlePool.resolve("artifacts.xml.${Instant.now().toString().replace(':', '-')}.bak"))
+    Files.move(artifactsXml, backup)
+    logger.info("Repair rebuild-index: backed up existing artifacts.xml to $backup")
+  }
+  if (Files.exists(artifactsJar)) {
+    val backup = uniquePath(bundlePool.resolve("artifacts.jar.${Instant.now().toString().replace(':', '-')}.bak"))
+    Files.move(artifactsJar, backup)
+    logger.info("Repair rebuild-index: backed up existing artifacts.jar to $backup")
+  }
+  Files.writeString(artifactsXml, renderArtifactsXml(artifacts), StandardCharsets.UTF_8)
+  logger.info("Repair rebuild-index: wrote regenerated artifact index to $artifactsXml")
+  logger.info("Repair rebuild-index: stale advertised artifacts were dropped; run `pde target health` to verify.")
+  return 0
+}
+
+private fun featureArtifactRoot(bundlePool: Path, source: Path): Path? {
+  val featuresDir = bundlePool.resolve("features").toAbsolutePath().normalize()
+  val normalized = source.toAbsolutePath().normalize()
+  if (!normalized.startsWith(featuresDir)) return null
+  val relative = featuresDir.relativize(normalized)
+  if (relative.nameCount == 0) return null
+  return featuresDir.resolve(relative.getName(0)).normalize()
+}
+
+private fun uniquePath(path: Path): Path {
+  if (!Files.exists(path)) return path
+  val parent = path.parent ?: Paths.get("")
+  val fileName = path.fileName.toString()
+  var index = 1
+  while (true) {
+    val candidate = parent.resolve("$fileName.$index")
+    if (!Files.exists(candidate)) return candidate
+    index++
+  }
+}
+
+private fun physicalBundlePoolArtifacts(bundlePool: Path): List<ProfileArtifact> {
+  val bundles = physicalArtifactsIn(bundlePool.resolve("plugins"), "osgi.bundle")
+  val features = physicalArtifactsIn(bundlePool.resolve("features"), "org.eclipse.update.feature")
+  return (bundles + features).sortedWith(compareBy<ProfileArtifact> { it.classifier }.thenBy { it.id }.thenBy { it.version })
+}
+
+private fun physicalArtifactsIn(dir: Path, classifier: String): List<ProfileArtifact> {
+  if (!Files.isDirectory(dir)) return emptyList()
+  return Files.list(dir).use { paths ->
+    paths.iterator().asSequence().mapNotNull { path ->
+      val name = path.fileName.toString().removeSuffix(".jar")
+      val separator = name.lastIndexOf('_')
+      if (separator <= 0 || separator == name.lastIndex) return@mapNotNull null
+      ProfileArtifact(
+        classifier = classifier,
+        id = name.substring(0, separator),
+        version = name.substring(separator + 1),
+        folder = Files.isDirectory(path)
+      )
+    }.toList()
+  }
+}
+
+private fun renderArtifactsXml(artifacts: List<ProfileArtifact>): String = buildString {
+  appendLine("<?xml version='1.0' encoding='UTF-8'?>")
+  appendLine("<repository name='bundle pool' type='org.eclipse.equinox.p2.artifact.repository.simpleRepository' version='1.0.0'>")
+  appendLine("  <properties size='1'>")
+  appendLine("    <property name='p2.timestamp' value='${System.currentTimeMillis()}'/>")
+  appendLine("  </properties>")
+  appendLine("  <mappings size='2'>")
+  appendLine("    <rule filter='(&amp; (classifier=osgi.bundle))' output='\${repoUrl}/plugins/\${id}_\${version}.jar'/>")
+  appendLine("    <rule filter='(&amp; (classifier=org.eclipse.update.feature))' output='\${repoUrl}/features/\${id}_\${version}.jar'/>")
+  appendLine("  </mappings>")
+  appendLine("  <artifacts size='${artifacts.size}'>")
+  artifacts.forEach { artifact ->
+    if (artifact.folder) {
+      appendLine("    <artifact classifier='${xmlEscape(artifact.classifier)}' id='${xmlEscape(artifact.id)}' version='${xmlEscape(artifact.version)}'>")
+      appendLine("      <repositoryProperties size='1'>")
+      appendLine("        <property name='artifact.folder' value='true'/>")
+      appendLine("      </repositoryProperties>")
+      appendLine("    </artifact>")
+    } else {
+      appendLine("    <artifact classifier='${xmlEscape(artifact.classifier)}' id='${xmlEscape(artifact.id)}' version='${xmlEscape(artifact.version)}'/>")
+    }
+  }
+  appendLine("  </artifacts>")
+  appendLine("</repository>")
+}
+
+private fun xmlEscape(value: String): String = value
+  .replace("&", "&amp;")
+  .replace("'", "&apos;")
+  .replace("\"", "&quot;")
+  .replace("<", "&lt;")
+  .replace(">", "&gt;")
 
 private fun printApiAnalyzeHelp() {
   println("pde api-analyze ${maturityTag("WIP")} - API analysis commands")

@@ -93,6 +93,8 @@ class PdeCliTest {
     assertTrue(output.contains("Commands:"))
     assertTrue(output.contains("install"))
     assertTrue(output.contains("mirror"))
+    assertTrue(output.contains("health"))
+    assertTrue(output.contains("repair"))
     assertTrue(output.contains("inspect"))
   }
 
@@ -195,6 +197,43 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage: pde target inspect health"))
     assertTrue(output.contains("--limit=Int"))
+  }
+
+  @Test
+  fun `target health subcommand is routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("target", "health", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde target health"))
+    assertTrue(output.contains("--limit=Int"))
+  }
+
+  @Test
+  fun `target repair subcommands are routed through pde launcher`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("target", "repair", "--help"))
+      runPde(arrayOf("target", "repair", "re-fetch", "--help"))
+      runPde(arrayOf("target", "repair", "quarantine", "--help"))
+      runPde(arrayOf("target", "repair", "rebuild-index", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("Usage: pde target repair"))
+    assertTrue(output.contains("Usage: pde target install"))
+    assertTrue(output.contains("Usage: pde target repair quarantine"))
+    assertTrue(output.contains("Usage: pde target repair rebuild-index"))
   }
 
   @Test
