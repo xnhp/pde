@@ -1282,17 +1282,59 @@ private fun physicalArtifactsIn(dir: Path, classifier: String): List<ProfileArti
   if (!Files.isDirectory(dir)) return emptyList()
   return Files.list(dir).use { paths ->
     paths.iterator().asSequence().mapNotNull { path ->
-      val name = path.fileName.toString().removeSuffix(".jar")
-      val separator = name.lastIndexOf('_')
-      if (separator <= 0 || separator == name.lastIndex) return@mapNotNull null
-      ProfileArtifact(
-        classifier = classifier,
-        id = name.substring(0, separator),
-        version = name.substring(separator + 1),
-        folder = Files.isDirectory(path)
-      )
+      when (classifier) {
+        "osgi.bundle" -> physicalBundleArtifact(path)
+        "org.eclipse.update.feature" -> physicalFeatureArtifact(path)
+        else -> null
+      }
     }.toList()
   }
+}
+
+private fun physicalBundleArtifact(path: Path): ProfileArtifact? {
+  val content = when {
+    Files.isRegularFile(path) && path.fileName.toString().endsWith(".jar") -> readZipEntry(path, "META-INF/MANIFEST.MF")
+    Files.isDirectory(path) -> path.resolve("META-INF/MANIFEST.MF").takeIf { Files.isRegularFile(it) }?.let { Files.readString(it) }
+    else -> null
+  } ?: return null
+  val manifest = Manifest(content.byteInputStream(StandardCharsets.UTF_8))
+  val parsed = BundleManifest.parse(manifest)
+  val id = parsed.bundleSymbolicName?.key ?: return null
+  return ProfileArtifact(
+    classifier = "osgi.bundle",
+    id = id,
+    version = parsed.bundleVersion.toString(),
+    folder = Files.isDirectory(path)
+  )
+}
+
+private fun physicalFeatureArtifact(path: Path): ProfileArtifact? {
+  val content = when {
+    Files.isRegularFile(path) && path.fileName.toString().endsWith(".jar") -> readZipEntry(path, "feature.xml")
+    Files.isDirectory(path) -> path.resolve("feature.xml").takeIf { Files.isRegularFile(it) }?.let { Files.readString(it) }
+    else -> null
+  } ?: return null
+  return parseFeatureIdentity(path, content)?.copy(folder = Files.isDirectory(path))
+}
+
+private fun parseFeatureIdentity(source: Path, content: String): ProfileArtifact? {
+  val xmlFactory = XMLInputFactory.newInstance()
+  content.byteInputStream(StandardCharsets.UTF_8).use { stream ->
+    val reader = xmlFactory.createXMLStreamReader(stream)
+    try {
+      while (reader.hasNext()) {
+        if (reader.next() == XMLStreamConstants.START_ELEMENT && reader.localName == "feature") {
+          val id = reader.getAttributeValue("", "id")?.takeIf { it.isNotBlank() } ?: return null
+          val version = reader.getAttributeValue("", "version")?.takeIf { it.isNotBlank() } ?: return null
+          return ProfileArtifact(classifier = "org.eclipse.update.feature", id = id, version = version)
+        }
+      }
+    } finally {
+      reader.close()
+    }
+  }
+  logger.info("Repair rebuild-index: skipped feature without id/version in $source")
+  return null
 }
 
 private fun renderArtifactsXml(artifacts: List<ProfileArtifact>): String = buildString {
