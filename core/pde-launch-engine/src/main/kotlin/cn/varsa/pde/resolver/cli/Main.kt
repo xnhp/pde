@@ -68,6 +68,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.time.Instant
+import java.util.Comparator
 import java.util.Locale
 import java.util.Properties
 import java.util.jar.Manifest
@@ -96,6 +97,7 @@ internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.meta
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 private const val TARGET_INSTALLER_LAUNCHER_JAR = "target-installer-launcher.jar"
+private const val API_ANALYZER_RUNTIME_ARCHIVE = "api-analyzer-runtime.zip"
 private const val TARGET_INSTALLER_OVERRIDE_PROPERTY = "pde.targetInstaller"
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-launch-engine")
@@ -1829,6 +1831,11 @@ internal data class ApiAnalyzerInvocation(
   val logFile: Path?
 )
 
+internal data class ApiAnalyzerRuntime(
+  val launcherExecutable: Path,
+  val dataDir: Path
+)
+
 internal const val DIRECT_API_ANALYZER_APPLICATION_ID = "cn.varsa.pde.api_analyzer"
 
 internal data class DirectApiAnalyzerLaunchPlan(
@@ -1917,6 +1924,149 @@ private fun runApiAnalyzer(
   }
   return exitCode
 }
+
+private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRuntime? {
+  val archive = findPackagedApiAnalyzerRuntimeArchive()
+  if (archive == null) {
+    logger.severe("Missing $API_ANALYZER_RUNTIME_ARCHIVE next to the pde CLI libraries.")
+    return null
+  }
+  val runtimeRoot = outputRoot.resolve("runtime")
+  recreateDirectory(runtimeRoot)
+  extractZipArchive(archive, runtimeRoot)
+  val plugins = runtimeRoot.resolve("plugins")
+  if (!Files.isDirectory(plugins)) {
+    logger.severe("Analyzer runtime archive does not contain a plugins/ directory: ${archive.toAbsolutePath().normalize()}")
+    return null
+  }
+  ensureApiAnalyzerRuntimeConfiguration(runtimeRoot)
+  val launcher = findRuntimeBundle(plugins, "org.eclipse.equinox.launcher")
+  if (launcher == null) {
+    logger.severe("Analyzer runtime archive does not contain org.eclipse.equinox.launcher: ${archive.toAbsolutePath().normalize()}")
+    return null
+  }
+  val workspace = runtimeRoot.resolve("workspace")
+  Files.createDirectories(workspace)
+  return ApiAnalyzerRuntime(launcherExecutable = launcher, dataDir = workspace)
+}
+
+private fun findPackagedApiAnalyzerRuntimeArchive(): Path? {
+  val codeSource = ApiAnalyzerInvocation::class.java.protectionDomain.codeSource?.location?.toURI()?.let(Paths::get)
+  val roots = buildList {
+    if (codeSource != null) {
+      add(if (Files.isRegularFile(codeSource)) codeSource.parent else codeSource)
+      codeSource.parent?.let { add(it.resolve("lib")) }
+    }
+  }
+  return roots
+    .map { it.resolve(API_ANALYZER_RUNTIME_ARCHIVE) }
+    .firstOrNull(Files::isRegularFile)
+}
+
+private fun recreateDirectory(path: Path) {
+  if (Files.exists(path)) {
+    Files.walk(path).use { stream ->
+      stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
+    }
+  }
+  Files.createDirectories(path)
+}
+
+private fun extractZipArchive(zip: Path, destination: Path) {
+  ZipFile(zip.toFile()).use { archive ->
+    archive.entries().asSequence().forEach { entry ->
+      val output = destination.resolve(entry.name).normalize()
+      require(output.startsWith(destination)) { "Runtime archive entry escapes destination: ${entry.name}" }
+      if (entry.isDirectory) {
+        Files.createDirectories(output)
+      } else {
+        output.parent?.let(Files::createDirectories)
+        archive.getInputStream(entry).use { input ->
+          Files.newOutputStream(output).use { outputStream -> input.copyTo(outputStream) }
+        }
+      }
+    }
+  }
+}
+
+private fun ensureApiAnalyzerRuntimeConfiguration(runtimeRoot: Path) {
+  val configDir = runtimeRoot.resolve("config")
+  Files.createDirectories(configDir)
+  val bundlesInfo = configDir.resolve("org.eclipse.equinox.simpleconfigurator").resolve("bundles.info")
+  Files.createDirectories(bundlesInfo.parent)
+  writeApiAnalyzerBundlesInfo(bundlesInfo, runtimeRoot.resolve("plugins"))
+  writeApiAnalyzerConfigIni(configDir.resolve("config.ini"), runtimeRoot, bundlesInfo)
+}
+
+private fun writeApiAnalyzerConfigIni(configIni: Path, runtimeRoot: Path, bundlesInfo: Path) {
+  val framework = findRuntimeBundle(runtimeRoot.resolve("plugins"), "org.eclipse.osgi")
+    ?: throw IllegalStateException("Unable to locate org.eclipse.osgi in ${runtimeRoot.resolve("plugins")}")
+  val osgiBundles = buildList {
+    add("org.eclipse.equinox.simpleconfigurator@1:start")
+    if (findRuntimeBundle(runtimeRoot.resolve("plugins"), "org.apache.felix.scr") != null) {
+      add("org.apache.felix.scr@2:start")
+    }
+  }.joinToString(",")
+  Files.writeString(
+    configIni,
+    listOf(
+      "#Configuration File",
+      "eclipse.application=$DIRECT_API_ANALYZER_APPLICATION_ID",
+      "eclipse.p2.data.area=@config.dir/.p2",
+      "org.eclipse.equinox.simpleconfigurator.configUrl=${bundlesInfo.toUri()}",
+      "org.eclipse.update.reconcile=false",
+      "osgi.bundles=$osgiBundles",
+      "osgi.bundles.defaultStartLevel=4",
+      "osgi.configuration.cascaded=false",
+      "osgi.framework=${framework.toUri()}",
+      "osgi.install.area=${runtimeRoot.toUri()}"
+    ).joinToString(System.lineSeparator()) + System.lineSeparator(),
+    StandardCharsets.UTF_8
+  )
+}
+
+private fun writeApiAnalyzerBundlesInfo(bundlesInfo: Path, plugins: Path) {
+  val entries = Files.list(plugins).use { stream ->
+    stream
+      .map { path -> readRuntimeBundleMetadata(path)?.let { metadata -> RuntimeBundleEntry(metadata.bsn, metadata.version, runtimeBundleLocation(path)) } }
+      .filter { it != null }
+      .map { it!! }
+      .filter { it.bsn != "org.eclipse.equinox.launcher" }
+      .sorted(Comparator.comparing(RuntimeBundleEntry::bsn))
+      .toList()
+  }
+  Files.writeString(
+    bundlesInfo,
+    (listOf("#version=1") + entries.map { "${it.bsn},${it.version},${it.location},4,true" })
+      .joinToString(System.lineSeparator()) + System.lineSeparator(),
+    StandardCharsets.UTF_8
+  )
+}
+
+private fun findRuntimeBundle(plugins: Path, bsn: String): Path? = Files.list(plugins).use { stream ->
+  stream.filter { readRuntimeBundleMetadata(it)?.bsn == bsn }.findFirst().orElse(null)
+}
+
+private fun readRuntimeBundleMetadata(path: Path): RuntimeBundleMetadata? {
+  val manifest = if (Files.isDirectory(path)) {
+    path.resolve("META-INF").resolve("MANIFEST.MF").takeIf(Files::isRegularFile)?.inputStream()?.use(::Manifest)
+  } else {
+    runCatching { java.util.jar.JarFile(path.toFile()).use { it.manifest } }.getOrNull()
+  } ?: return null
+  val attrs = manifest.mainAttributes
+  val bsn = attrs.getValue("Bundle-SymbolicName")?.substringBefore(';')?.trim().orEmpty()
+  val version = attrs.getValue("Bundle-Version")?.trim().orEmpty()
+  if (bsn.isBlank() || version.isBlank()) return null
+  return RuntimeBundleMetadata(bsn, version)
+}
+
+private fun runtimeBundleLocation(path: Path): String {
+  val uri = path.toUri().toString()
+  return if (Files.isDirectory(path) && !uri.endsWith("/")) "$uri/" else uri
+}
+
+private data class RuntimeBundleMetadata(val bsn: String, val version: String)
+private data class RuntimeBundleEntry(val bsn: String, val version: String, val location: String)
 
 private fun resolveP2DirectorLauncher(
   installPath: Path?,
@@ -3459,7 +3609,7 @@ private fun testMain(args: Array<String>): Int {
 
 internal fun apiAnalyzeMain(
   args: Array<String>,
-  launcherResolver: (installPath: Path?, installerPath: Path?, targetDefinition: Path?) -> Path? = ::resolveP2DirectorLauncher,
+  analyzerRuntimeResolver: (outputRoot: Path) -> ApiAnalyzerRuntime? = ::resolvePackagedApiAnalyzerRuntime,
   analyzerRunner: (ApiAnalyzerInvocation) -> Int = ::runApiAnalyzer
 ): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
@@ -3591,14 +3741,13 @@ internal fun apiAnalyzeMain(
   }
   val baselineIndex = TargetPlatformCache.buildWithCache(listOf(baselineRootForIndex))
 
-  val dataDirOverride = outputRoot.resolve("workspace").toString()
-  val installPath = apiContext.config.target?.install?.let { Paths.get(it) }
-  val installerPath = apiContext.config.target?.installer?.let { apiContext.baseDir.resolve(it).normalize() }
-  val launcherExecutable = launcherResolver(installPath, installerPath, targetDefinition)
-  if (launcherExecutable == null) {
-    logger.severe("Missing p2 director launcher under target.install or target.installer.")
+  val analyzerRuntime = analyzerRuntimeResolver(outputRoot)
+  if (analyzerRuntime == null) {
+    logger.severe("Missing packaged API analyzer runtime.")
     return 2
   }
+  val launcherExecutable = analyzerRuntime.launcherExecutable
+  val dataDirOverride = analyzerRuntime.dataDir.toString()
   val dependencyPlan = buildCompilePlanForWarning(apiContext, targetIndex, workspaceInputs)
 
   val syntheticRoot = outputRoot.resolve("synthetic-artifacts")

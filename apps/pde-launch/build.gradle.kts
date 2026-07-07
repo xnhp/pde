@@ -4,6 +4,7 @@ plugins {
 }
 
 evaluationDependsOn(":target-installer")
+evaluationDependsOn(":api-analyzer")
 
 repositories {
   mavenCentral()
@@ -37,6 +38,10 @@ distributions {
       from(targetInstallerProject.layout.buildDirectory.file("libs/target-installer-launcher.jar")) {
         into("lib")
       }
+      val apiAnalyzerProject = project(":api-analyzer")
+      from(apiAnalyzerProject.layout.buildDirectory.file("libs/api-analyzer-runtime.zip")) {
+        into("lib")
+      }
     }
   }
 }
@@ -44,6 +49,7 @@ distributions {
 listOf("assembleDist", "distTar", "distZip", "installDist").forEach { taskName ->
   tasks.named(taskName) {
     dependsOn(":target-installer:targetInstallerLauncherJar")
+    dependsOn(":api-analyzer:apiAnalyzerRuntimeZip")
   }
 }
 
@@ -54,6 +60,17 @@ tasks.register("verifyTargetInstallerLauncherInDist") {
   doLast {
     if (!launcherJar.get().asFile.isFile) {
       throw org.gradle.api.GradleException("pde distribution is missing lib/target-installer-launcher.jar")
+    }
+  }
+}
+
+tasks.register("verifyApiAnalyzerRuntimeInDist") {
+  dependsOn(tasks.named("installDist"))
+  val runtimeArchive = layout.buildDirectory.file("install/pde/lib/api-analyzer-runtime.zip")
+  inputs.file(runtimeArchive)
+  doLast {
+    if (!runtimeArchive.get().asFile.isFile) {
+      throw org.gradle.api.GradleException("pde distribution is missing lib/api-analyzer-runtime.zip")
     }
   }
 }

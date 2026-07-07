@@ -29,7 +29,7 @@ class ApiAnalyzeCliTest {
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
-      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
       analyzerRunner = { invocation ->
         invocations += invocation
         0
@@ -59,7 +59,7 @@ class ApiAnalyzeCliTest {
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
-      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
       analyzerRunner = { invocation ->
         invocations += invocation
         17
@@ -84,7 +84,7 @@ class ApiAnalyzeCliTest {
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
-      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
       analyzerRunner = { invocation ->
         invocations += invocation
         0
@@ -118,7 +118,7 @@ class ApiAnalyzeCliTest {
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
         "--report", reportPath.toString()
       ),
-      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
       analyzerRunner = { invocation ->
         invocations += invocation
         0
@@ -145,7 +145,7 @@ class ApiAnalyzeCliTest {
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
-      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
       analyzerRunner = { invocation ->
         invocations += invocation
         0
@@ -157,15 +157,23 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze fails before launch when config is missing`() {
+  fun `api analyze fails before launch when packaged analyzer runtime is missing`() {
+    val baseDir = tmp.newFolder("cfg-missing-runtime").toPath()
+    val workspace = tmp.newFolder("workspace-missing-runtime").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val launcherResolutions = mutableListOf<Path?>()
+    val runtimeResolutions = mutableListOf<Path>()
 
     val exit = apiAnalyzeMain(
-      args = arrayOf("--config", tmp.root.toPath().resolve("missing.yaml").toString()),
-      launcherResolver = { installPath, _, _ ->
-        launcherResolutions += installPath
-        Path.of("/fake/api-analyzer")
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot ->
+        runtimeResolutions.add(outputRoot)
+        null
       },
       analyzerRunner = { invocation ->
         invocations += invocation
@@ -174,7 +182,29 @@ class ApiAnalyzeCliTest {
     )
 
     assertEquals(2, exit)
-    assertEquals(0, launcherResolutions.size)
+    assertEquals(listOf(baseDir.resolve("api-analyzer")), runtimeResolutions)
+    assertEquals(0, invocations.size)
+  }
+
+  @Test
+  fun `api analyze fails before launch when config is missing`() {
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val runtimeResolutions = mutableListOf<Path>()
+
+    val exit = apiAnalyzeMain(
+      args = arrayOf("--config", tmp.root.toPath().resolve("missing.yaml").toString()),
+      analyzerRuntimeResolver = { outputRoot ->
+        runtimeResolutions.add(outputRoot)
+        fakeAnalyzerRuntime(outputRoot)
+      },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, runtimeResolutions.size)
     assertEquals(0, invocations.size)
   }
 
@@ -185,13 +215,13 @@ class ApiAnalyzeCliTest {
     createWorkspaceBundle(workspace, compiledOutput = true)
     val configFile = writeConfigFile(baseDir, workspace)
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val launcherResolutions = mutableListOf<Path?>()
+    val runtimeResolutions = mutableListOf<Path>()
 
     val exit = apiAnalyzeMain(
       args = arrayOf("--config", configFile.toString()),
-      launcherResolver = { installPath, _, _ ->
-        launcherResolutions += installPath
-        Path.of("/fake/api-analyzer")
+      analyzerRuntimeResolver = { outputRoot ->
+        runtimeResolutions.add(outputRoot)
+        fakeAnalyzerRuntime(outputRoot)
       },
       analyzerRunner = { invocation ->
         invocations += invocation
@@ -200,7 +230,7 @@ class ApiAnalyzeCliTest {
     )
 
     assertEquals(2, exit)
-    assertEquals(0, launcherResolutions.size)
+    assertEquals(0, runtimeResolutions.size)
     assertEquals(0, invocations.size)
   }
 
@@ -212,16 +242,16 @@ class ApiAnalyzeCliTest {
     createWorkspaceBundle(workspace, compiledOutput = true)
     val configFile = writeConfigFile(baseDir, workspace)
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val launcherResolutions = mutableListOf<Path?>()
+    val runtimeResolutions = mutableListOf<Path>()
 
     val exit = apiAnalyzeMain(
       args = arrayOf(
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("missing-baseline").toString()
       ),
-      launcherResolver = { installPath, _, _ ->
-        launcherResolutions += installPath
-        Path.of("/fake/api-analyzer")
+      analyzerRuntimeResolver = { outputRoot ->
+        runtimeResolutions.add(outputRoot)
+        fakeAnalyzerRuntime(outputRoot)
       },
       analyzerRunner = { invocation ->
         invocations += invocation
@@ -230,7 +260,7 @@ class ApiAnalyzeCliTest {
     )
 
     assertEquals(2, exit)
-    assertEquals(0, launcherResolutions.size)
+    assertEquals(0, runtimeResolutions.size)
     assertEquals(0, invocations.size)
   }
 
@@ -244,16 +274,16 @@ class ApiAnalyzeCliTest {
     baselineTarget.writeText("<target name=\"API Baseline\"/>")
     val configFile = writeConfigFile(baseDir, workspace)
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val launcherResolutions = mutableListOf<Path?>()
+    val runtimeResolutions = mutableListOf<Path>()
 
     val exit = apiAnalyzeMain(
       args = arrayOf(
         "--config", configFile.toString(),
         "--baseline-root", baselineTarget.toString()
       ),
-      launcherResolver = { installPath, _, _ ->
-        launcherResolutions += installPath
-        Path.of("/fake/api-analyzer")
+      analyzerRuntimeResolver = { outputRoot ->
+        runtimeResolutions.add(outputRoot)
+        fakeAnalyzerRuntime(outputRoot)
       },
       analyzerRunner = { invocation ->
         invocations += invocation
@@ -262,7 +292,7 @@ class ApiAnalyzeCliTest {
     )
 
     assertEquals(2, exit)
-    assertEquals(0, launcherResolutions.size)
+    assertEquals(0, runtimeResolutions.size)
     assertEquals(0, invocations.size)
   }
 
@@ -346,6 +376,11 @@ class ApiAnalyzeCliTest {
     assertTrue(index + 1 < args.size, "Missing value for $option in $args")
     return args[index + 1]
   }
+
+  private fun fakeAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRuntime = ApiAnalyzerRuntime(
+    launcherExecutable = Path.of("/fake/api-analyzer"),
+    dataDir = outputRoot.resolve("workspace")
+  )
 
   private fun createWorkspaceBundle(dir: Path, compiledOutput: Boolean = false) {
     val meta = dir.resolve("META-INF").createDirectories()
