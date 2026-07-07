@@ -3515,6 +3515,10 @@ internal fun apiAnalyzeMain(
     logger.severe("Missing --config and no launch config discovered in current directory.")
     return 2
   }
+  if (!Files.exists(resolvedConfigFile)) {
+    logger.severe("Launch config does not exist: ${resolvedConfigFile.toAbsolutePath().normalize()}")
+    return 2
+  }
   if (configFile == null) {
     logger.info("Discovered launch config in ${resolvedConfigFile.toAbsolutePath().normalize()} and will use it.")
   }

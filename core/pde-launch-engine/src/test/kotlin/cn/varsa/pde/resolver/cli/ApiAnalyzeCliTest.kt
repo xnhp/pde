@@ -157,6 +157,116 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
+  fun `api analyze fails before launch when config is missing`() {
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val launcherResolutions = mutableListOf<Path?>()
+
+    val exit = apiAnalyzeMain(
+      args = arrayOf("--config", tmp.root.toPath().resolve("missing.yaml").toString()),
+      launcherResolver = { installPath, _, _ ->
+        launcherResolutions += installPath
+        Path.of("/fake/api-analyzer")
+      },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, launcherResolutions.size)
+    assertEquals(0, invocations.size)
+  }
+
+  @Test
+  fun `api analyze fails before launch when target profile is missing`() {
+    val baseDir = tmp.newFolder("cfg-missing-profile").toPath()
+    val workspace = tmp.newFolder("workspace-missing-profile").toPath()
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val launcherResolutions = mutableListOf<Path?>()
+
+    val exit = apiAnalyzeMain(
+      args = arrayOf("--config", configFile.toString()),
+      launcherResolver = { installPath, _, _ ->
+        launcherResolutions += installPath
+        Path.of("/fake/api-analyzer")
+      },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, launcherResolutions.size)
+    assertEquals(0, invocations.size)
+  }
+
+  @Test
+  fun `api analyze fails before launch when baseline root is missing`() {
+    val baseDir = tmp.newFolder("cfg-missing-baseline").toPath()
+    val workspace = tmp.newFolder("workspace-missing-baseline").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val launcherResolutions = mutableListOf<Path?>()
+
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("missing-baseline").toString()
+      ),
+      launcherResolver = { installPath, _, _ ->
+        launcherResolutions += installPath
+        Path.of("/fake/api-analyzer")
+      },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, launcherResolutions.size)
+    assertEquals(0, invocations.size)
+  }
+
+  @Test
+  fun `api analyze fails before launch when target baseline is not provisioned`() {
+    val baseDir = tmp.newFolder("cfg-target-baseline").toPath()
+    val workspace = tmp.newFolder("workspace-target-baseline").toPath()
+    val baselineTarget = baseDir.resolve("API-Baseline.target")
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    baselineTarget.writeText("<target name=\"API Baseline\"/>")
+    val configFile = writeConfigFile(baseDir, workspace)
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val launcherResolutions = mutableListOf<Path?>()
+
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baselineTarget.toString()
+      ),
+      launcherResolver = { installPath, _, _ ->
+        launcherResolutions += installPath
+        Path.of("/fake/api-analyzer")
+      },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, launcherResolutions.size)
+    assertEquals(0, invocations.size)
+  }
+
+  @Test
   fun `direct analyzer launch plan writes input manifest and invocation args`() {
     val baseDir = tmp.newFolder("direct-plan").toPath()
     val current = baseDir.resolve("current.jar")
