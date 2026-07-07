@@ -19,6 +19,7 @@ import cn.varsa.pde.remoterunner.parseReportTarget
 import cn.varsa.pde.remoterunner.startForwarders
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
+import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
 import cn.varsa.pde.resolver.api.DirectApiAnalyzerInput
 import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
 import cn.varsa.pde.resolver.index.TargetPlatformCache
@@ -1869,6 +1870,34 @@ internal data class DirectApiAnalyzerLaunchPlan(
   val outputReportPath: Path,
   val invocation: ApiAnalyzerInvocation
 )
+
+internal fun buildDirectApiAnalyzerInput(
+  currentBundleSymbolicName: String,
+  currentArtifacts: List<AnalyzerBundleArtifact>,
+  dependencyArtifacts: List<AnalyzerBundleArtifact>,
+  baselineArtifacts: List<AnalyzerBundleArtifact>,
+  outputReportPath: Path,
+  apiFilterFile: Path? = null,
+  preferences: Map<String, String> = emptyMap()
+): DirectApiAnalyzerInput {
+  val currentMatches = currentArtifacts.filter { it.bundleSymbolicName == currentBundleSymbolicName }
+  val currentBundle = when (currentMatches.size) {
+    1 -> currentMatches.single()
+    0 -> error("No current analyzer artifact for $currentBundleSymbolicName")
+    else -> error("Multiple current analyzer artifacts for $currentBundleSymbolicName")
+  }
+  val currentPath = currentBundle.path.toAbsolutePath().normalize()
+  return DirectApiAnalyzerInput(
+    currentBundle = currentBundle,
+    dependencyArtifacts = dependencyArtifacts
+      .filterNot { it.path.toAbsolutePath().normalize() == currentPath }
+      .distinctBy { it.path.toAbsolutePath().normalize().toString() },
+    baselineArtifacts = baselineArtifacts.distinctBy { it.path.toAbsolutePath().normalize().toString() },
+    apiFilterFile = apiFilterFile,
+    preferences = preferences,
+    outputReportPath = outputReportPath
+  )
+}
 
 internal fun writeDirectApiAnalyzerLaunchPlan(
   launcherExecutable: Path,

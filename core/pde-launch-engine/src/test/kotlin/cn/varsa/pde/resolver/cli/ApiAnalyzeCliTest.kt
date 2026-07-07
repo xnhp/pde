@@ -111,6 +111,44 @@ class ApiAnalyzeCliTest {
     assertEquals(listOf("org.example.api"), roundTrip.baselineArtifacts.map { it.bundleSymbolicName })
   }
 
+  @Test
+  fun `direct analyzer input selects current artifact and de-duplicates paths`() {
+    val baseDir = tmp.newFolder("direct-input").toPath()
+    val current = baseDir.resolve("current.jar")
+    val dependency = baseDir.resolve("dependency.jar")
+    val duplicateDependency = baseDir.resolve(".").resolve("dependency.jar")
+    val baseline = baseDir.resolve("baseline.jar")
+    current.writeText("current")
+    dependency.writeText("dependency")
+    baseline.writeText("baseline")
+    val reportPath = baseDir.resolve("reports").resolve("org.example.api.json")
+    val filters = baseDir.resolve(".settings").resolve(".api_filters")
+
+    val input = buildDirectApiAnalyzerInput(
+      currentBundleSymbolicName = "org.example.api",
+      currentArtifacts = listOf(AnalyzerBundleArtifact("org.example.api", "1.1.0", current)),
+      dependencyArtifacts = listOf(
+        AnalyzerBundleArtifact("org.example.api", "1.1.0", current),
+        AnalyzerBundleArtifact("org.example.dep", "1.0.0", dependency),
+        AnalyzerBundleArtifact("org.example.dep", "1.0.0", duplicateDependency)
+      ),
+      baselineArtifacts = listOf(
+        AnalyzerBundleArtifact("org.example.api", "1.0.0", baseline),
+        AnalyzerBundleArtifact("org.example.api", "1.0.0", baseline.toAbsolutePath().normalize())
+      ),
+      outputReportPath = reportPath,
+      apiFilterFile = filters,
+      preferences = mapOf("problem" to "warning")
+    )
+
+    assertEquals("org.example.api", input.currentBundle.bundleSymbolicName)
+    assertEquals(reportPath, input.outputReportPath)
+    assertEquals(filters, input.apiFilterFile)
+    assertEquals(mapOf("problem" to "warning"), input.preferences)
+    assertEquals(listOf("org.example.dep"), input.dependencyArtifacts.map { it.bundleSymbolicName })
+    assertEquals(listOf("org.example.api"), input.baselineArtifacts.map { it.bundleSymbolicName })
+  }
+
   private fun ApiAnalyzerInvocation.valueAfter(option: String): String {
     val index = args.indexOf(option)
     assertTrue(index >= 0, "Missing $option in $args")
