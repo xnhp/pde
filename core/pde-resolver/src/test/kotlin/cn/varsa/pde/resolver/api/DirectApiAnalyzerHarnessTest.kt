@@ -1,6 +1,7 @@
 package cn.varsa.pde.resolver.api
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -118,6 +119,55 @@ class DirectApiAnalyzerHarnessTest {
     val report = analyzeThroughEquinox(current = current, baseline = baseline, dependencies = listOf(dependency))
 
     assertTrue(report.problems.none { it.category == "component-resolution" })
+  }
+
+  @Test
+  fun `runtime archive contains analyzer app and provisioned PDE runtime bundles`() {
+    val runtimeArchive = analyzerRuntimeArchive()
+    assumeTrue(
+      "Set PDE_API_ANALYZER_RUNTIME_ARCHIVE or -Dpde.apiAnalyzer.runtime.archive to run the Equinox analyzer harness test",
+      runtimeArchive != null
+    )
+
+    val root = Files.createTempDirectory(temp.root.toPath(), "analyzer-runtime-layout-")
+    extractZip(runtimeArchive!!, root)
+    val plugins = root.resolve("plugins")
+
+    assertTrue("Analyzer runtime archive does not contain plugins/: $runtimeArchive", plugins.isDirectory())
+    assertTrue("Analyzer runtime archive does not contain analyzer app bundle", findBundle(plugins, "cn.varsa.pde") != null)
+    assertTrue("Analyzer runtime archive does not contain Equinox launcher", findBundle(plugins, "org.eclipse.equinox.launcher") != null)
+    assertTrue("Analyzer runtime archive does not contain PDE API Tools", findBundle(plugins, "org.eclipse.pde.api.tools") != null)
+    assertTrue("Analyzer runtime archive does not contain PDE Core", findBundle(plugins, "org.eclipse.pde.core") != null)
+    assertTrue("Analyzer runtime archive does not contain JDT Core", findBundle(plugins, "org.eclipse.jdt.core") != null)
+  }
+
+  @Test
+  fun `generated runtime bundle list excludes analysis input artifacts`() {
+    val current = bundleJar(
+      bsn = "org.example.current",
+      version = "1.0.0",
+      sources = mapOf("org/example/current/Current.java" to "package org.example.current; public class Current {}")
+    )
+    val baseline = bundleJar(
+      bsn = "org.example.baseline",
+      version = "1.0.0",
+      sources = mapOf("org/example/baseline/Baseline.java" to "package org.example.baseline; public class Baseline {}")
+    )
+    val dependency = bundleJar(
+      bsn = "org.example.dependency",
+      version = "1.0.0",
+      sources = mapOf("org/example/dependency/Dependency.java" to "package org.example.dependency; public class Dependency {}")
+    )
+
+    val runtime = assembleRuntime()
+    val bundlesInfo = runtime.config.resolve("org.eclipse.equinox.simpleconfigurator/bundles.info")
+    val text = Files.readString(bundlesInfo)
+
+    listOf(current, baseline, dependency).forEach { artifact ->
+      assertFalse("Analysis input bundle ${artifact.bundleSymbolicName} must not be in bundles.info", artifact.bundleSymbolicName in text)
+      assertFalse("Analysis input path ${artifact.path} must not be in bundles.info", artifact.path.fileName.toString() in text)
+    }
+    assertFalse("Launcher jar starts Equinox and must not be installed as a configured bundle", "org.eclipse.equinox.launcher," in text)
   }
 
   private fun analyzeThroughEquinox(
