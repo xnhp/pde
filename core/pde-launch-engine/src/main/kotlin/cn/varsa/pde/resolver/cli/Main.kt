@@ -3604,7 +3604,7 @@ internal fun apiAnalyzeMain(
     ArgType.String,
     fullName = "application",
     description = "API analyzer application id"
-  ).default(KNIME_API_ANALYZER_APPLICATION)
+  ).default(DIRECT_API_ANALYZER_APPLICATION_ID)
   val failOnErrorOpt by parser.option(
     ArgType.Boolean,
     fullName = "fail-on-error",

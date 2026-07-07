@@ -87,8 +87,7 @@ class ApiAnalyzeCliTest {
     val exit = apiAnalyzeMain(
       args = arrayOf(
         "--config", configFile.toString(),
-        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
-        "--application", DIRECT_API_ANALYZER_APPLICATION_ID
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
       analyzerRunner = { invocation ->
