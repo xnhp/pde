@@ -89,10 +89,8 @@ import cn.varsa.pde.resolver.launch.LaunchContext
 import org.osgi.framework.Version
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
-internal const val PDE_API_ANALYZER_APPLICATION = "org.eclipse.pde.api.tools.apiAnalyzer"
 private const val CRAC_CHECKPOINT_EXIT_CODE = 137
 private const val CRAC_CHECKPOINT_ARG_PREFIX = "-XX:CRaCCheckpointTo="
-internal const val KNIME_API_ANALYZER_APPLICATION = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"
 internal const val API_ANALYZER_BASELINE_PROFILE_ID = "api-analyzer-baseline"
 internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
@@ -223,9 +221,6 @@ internal val apiAnalyzeOptionsRequiringValue = setOf(
   "--config",
   "--log",
   "--baseline-root",
-  "--dependency-list",
-  "--baseline-list",
-  "--application",
   "--report"
 )
 internal val targetMirrorOptionsRequiringValue = setOf(
@@ -1826,43 +1821,6 @@ private fun cleanBaselineWorkspace(workspaceDir: Path) {
   }
 }
 
-private fun copyDirectory(source: Path, target: Path) {
-  if (Files.exists(target)) {
-    target.toFile().deleteRecursively()
-  }
-  Files.walk(source).use { stream ->
-    stream.forEach { path ->
-      val relative = source.relativize(path)
-      val destination = target.resolve(relative)
-      if (Files.isDirectory(path)) {
-        Files.createDirectories(destination)
-      } else {
-        destination.parent?.let { Files.createDirectories(it) }
-        Files.copy(path, destination)
-      }
-    }
-  }
-}
-
-private fun updateJdtPrefs(projectDir: Path, compliance: String) {
-  val prefs = projectDir.resolve(".settings").resolve("org.eclipse.jdt.core.prefs")
-  if (!Files.exists(prefs)) return
-  val updated = Files.readString(prefs, StandardCharsets.UTF_8)
-    .replace("org.eclipse.jdt.core.compiler.compliance=21", "org.eclipse.jdt.core.compiler.compliance=$compliance")
-    .replace("org.eclipse.jdt.core.compiler.source=21", "org.eclipse.jdt.core.compiler.source=$compliance")
-    .replace("org.eclipse.jdt.core.compiler.codegen.targetPlatform=21", "org.eclipse.jdt.core.compiler.codegen.targetPlatform=$compliance")
-  Files.writeString(prefs, updated, StandardCharsets.UTF_8)
-}
-
-private fun updateClasspathJre(projectDir: Path, compliance: String) {
-  val classpath = projectDir.resolve(".classpath")
-  if (!Files.exists(classpath)) return
-  val updated = Files.readString(classpath, StandardCharsets.UTF_8)
-    .replace("/JavaSE-21", "/JavaSE-$compliance")
-  Files.writeString(classpath, updated, StandardCharsets.UTF_8)
-}
-
-
 internal data class ApiAnalyzerInvocation(
   val launcherExecutable: Path,
   val dataDir: String,
@@ -1872,9 +1830,6 @@ internal data class ApiAnalyzerInvocation(
 )
 
 internal const val DIRECT_API_ANALYZER_APPLICATION_ID = "cn.varsa.pde.api_analyzer"
-
-internal fun usesDirectApiAnalyzerApplication(applicationId: String): Boolean =
-  applicationId == DIRECT_API_ANALYZER_APPLICATION_ID
 
 internal data class DirectApiAnalyzerLaunchPlan(
   val inputPath: Path,
@@ -2095,11 +2050,6 @@ private fun collectTargetBundles(targetIndex: TargetPlatformIndex, excludedBsns:
     .sortedBy { it.location.toString() }
 }
 
-private fun collectBundlePaths(targetIndex: TargetPlatformIndex, excludedBsns: Set<String> = emptySet()): List<Path> {
-  return collectTargetBundles(targetIndex, excludedBsns)
-    .map { it.location.toAbsolutePath().normalize() }
-}
-
 private fun selectedTargetBundlesForAnalyzer(
   dependencyPlan: LaunchPlanner.PlanResult,
   targetIndex: TargetPlatformIndex
@@ -2145,46 +2095,6 @@ private fun logAnalyzerArtifactDiagnostics(scope: String, diagnostics: List<Anal
     }
   }
   return !hasErrors
-}
-
-private fun writePathList(output: Path, entries: List<Path>) {
-  output.toAbsolutePath().normalize().parent?.let { Files.createDirectories(it) }
-  Files.newBufferedWriter(output, StandardCharsets.UTF_8).use { writer ->
-    entries.forEach { entry ->
-      writer.write(entry.toString())
-      writer.newLine()
-    }
-  }
-}
-
-internal fun expandBundleClassPathEntries(entries: List<Path>): List<Path> {
-  val expanded = linkedSetOf<Path>()
-  entries.forEach { entry ->
-    val normalizedEntry = entry.toAbsolutePath().normalize()
-    expanded.add(normalizedEntry)
-    if (!Files.isDirectory(normalizedEntry)) {
-      return@forEach
-    }
-    val manifestPath = normalizedEntry.resolve("META-INF").resolve("MANIFEST.MF")
-    if (!Files.isRegularFile(manifestPath)) {
-      return@forEach
-    }
-    val bundleClassPath = runCatching {
-      Files.newInputStream(manifestPath).use { input ->
-        Manifest(input).mainAttributes.getValue("Bundle-ClassPath")
-      }
-    }.getOrNull() ?: return@forEach
-    bundleClassPath.split(',')
-      .map { it.trim() }
-      .filter { it.isNotEmpty() && it != "." }
-      .forEach { classPathEntry ->
-        val classPathPath = normalizedEntry.resolve(classPathEntry).normalize()
-        if (Files.exists(classPathPath)) {
-          expanded.add(classPathPath)
-        }
-      }
-  }
-  return expanded.toList()
 }
 
 private fun prepareLaunch(
@@ -3585,31 +3495,6 @@ internal fun apiAnalyzeMain(
     fullName = "baseline-root",
     description = "Baseline target root, profile path, or .target file (defaults to target.apiBaselineRoot, target.install, target.p2Path, or target profile)"
   )
-  val dependencyListOpt by parser.option(
-    ArgType.String,
-    fullName = "dependency-list",
-    description = "Dependency list output path (defaults to <config-dir>/dependencies-list.txt)"
-  )
-  val baselineListOpt by parser.option(
-    ArgType.String,
-    fullName = "baseline-list",
-    description = "Baseline list output path (defaults to api-analyzer/baseline-list.txt)"
-  )
-  val jdtComplianceOpt by parser.option(
-    ArgType.String,
-    fullName = "jdt-compliance",
-    description = "Override JDT compliance (uses temp project copy)"
-  )
-  val applicationOpt by parser.option(
-    ArgType.String,
-    fullName = "application",
-    description = "API analyzer application id"
-  ).default(DIRECT_API_ANALYZER_APPLICATION_ID)
-  val failOnErrorOpt by parser.option(
-    ArgType.Boolean,
-    fullName = "fail-on-error",
-    description = "Fail when API errors are detected"
-  ).default(false)
   val reportOpt by parser.option(
     ArgType.String,
     fullName = "report",
@@ -3622,8 +3507,6 @@ internal fun apiAnalyzeMain(
 
   parser.parse(normalizedArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verboseOpt, debugOpt), shouldUseColor())
-  val jdtCompliance = jdtComplianceOpt
-
   val baselineRootValue = baselineRootOpt
 
   val configFile = configFileOpt ?: configPosOpt?.takeIf { looksLikeYamlFile(it) }
@@ -3638,10 +3521,9 @@ internal fun apiAnalyzeMain(
 
   val baseContext = LaunchConfigLoader.load(resolvedConfigFile)
   val outputRoot = baseContext.file.parent?.resolve("api-analyzer") ?: Paths.get("api-analyzer")
-  val applicationId = applicationOpt
   val apiContext = baseContext.copy(
     runtime = baseContext.runtime.copy(
-      application = applicationId,
+      application = DIRECT_API_ANALYZER_APPLICATION_ID,
       product = null,
       splash = null,
       programArgs = emptyList()
@@ -3667,14 +3549,6 @@ internal fun apiAnalyzeMain(
   }
 
   val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
-  val runtimeApplicationId = if (applicationId == PDE_API_ANALYZER_APPLICATION &&
-    targetIndex.get("com.knime.enterprise.devops.eclipse") != null
-  ) {
-    KNIME_API_ANALYZER_APPLICATION
-  } else {
-    applicationId
-  }
-  val useDirectAnalyzer = usesDirectApiAnalyzerApplication(runtimeApplicationId)
   val workspaceInputs = WorkspaceModuleResolver.resolve(apiContext, allowMissingClasses = true)
   if (workspaceInputs.descriptors.isEmpty()) {
     logger.severe("No workspace bundles resolved from config; add bundles.")
@@ -3721,74 +3595,15 @@ internal fun apiAnalyzeMain(
     logger.severe("Missing p2 director launcher under target.install or target.installer.")
     return 2
   }
-  val dependencyListPath = when {
-    dependencyListOpt != null -> Paths.get(dependencyListOpt)
-    else -> baseContext.file.parent?.resolve("dependencies-list.txt") ?: Paths.get("dependencies-list.txt")
-  }
-  val baselineListPath = baselineListOpt?.let { Paths.get(it) } ?: outputRoot.resolve("baseline-list.txt")
-  val dependencyPlan = if (useDirectAnalyzer || !dependencyListPath.toString().lowercase(Locale.ROOT).endsWith(".target")) {
-    buildCompilePlanForWarning(apiContext, targetIndex, workspaceInputs)
-  } else {
-    null
-  }
-  if (dependencyListPath.toString().lowercase(Locale.ROOT).endsWith(".target")) {
-    logger.info("Dependency list: using target definition ${dependencyListPath.toAbsolutePath().normalize()}")
-  } else {
-    val dependencyBundles = dependencyPlan!!.selectedBundles
-    val dependencyEntries = dependencyBundles
-      .map { it.path.toAbsolutePath().normalize() }
-      .let(::expandBundleClassPathEntries)
-      .distinct()
-      .sortedBy { it.toString() }
-    val workspaceBundleCount = dependencyBundles.count { it.isWorkspace }
-    val targetBundleCount = dependencyBundles.size - workspaceBundleCount
-    logger.info("Dependency list entries: ${dependencyEntries.size} (workspace $workspaceBundleCount, target $targetBundleCount)")
-    writePathList(dependencyListPath, dependencyEntries)
-  }
-  if (!useDirectAnalyzer) {
-    writePathList(baselineListPath, collectBundlePaths(baselineIndex))
-  }
-  if (!dependencyListPath.toString().lowercase(Locale.ROOT).endsWith(".target")) {
-    logger.info("Dependency list: ${dependencyListPath.toAbsolutePath().normalize()}")
-  }
-  if (!useDirectAnalyzer) {
-    logger.info("Baseline list: ${baselineListPath.toAbsolutePath().normalize()}")
-  }
+  val dependencyPlan = buildCompilePlanForWarning(apiContext, targetIndex, workspaceInputs)
 
-  val tempProjectsRoot = outputRoot.resolve("analysis-projects")
   val syntheticRoot = outputRoot.resolve("synthetic-artifacts")
-  val directDependencyTargetBundles = if (useDirectAnalyzer) {
-    selectedTargetBundlesForAnalyzer(dependencyPlan!!, targetIndex)
-  } else {
-    emptyList()
-  }
-  val directBaselineTargetBundles = if (useDirectAnalyzer) collectTargetBundles(baselineIndex) else emptyList()
-  val collectedProblems = mutableListOf<ApiAnalyzeProblem>()
+  val directDependencyTargetBundles = selectedTargetBundlesForAnalyzer(dependencyPlan, targetIndex)
+  val directBaselineTargetBundles = collectTargetBundles(baselineIndex)
   descriptorsToAnalyze.forEach { descriptor ->
-    val projectArg = if (jdtCompliance != null) {
-      val projectName = descriptor.manifest.bundleSymbolicName?.key ?: descriptor.path.fileName.toString()
-      val tempProject = tempProjectsRoot.resolve(projectName)
-      copyDirectory(descriptor.path, tempProject)
-      updateJdtPrefs(tempProject, jdtCompliance)
-      updateClasspathJre(tempProject, jdtCompliance)
-      tempProject.toString()
-    } else {
-      descriptor.path.toString()
-    }
-    val label = descriptor.manifest.bundleSymbolicName?.key ?: projectArg
+    val label = descriptor.manifest.bundleSymbolicName?.key ?: descriptor.path.toString()
     logger.info("Running API analysis for $label")
     val suffix = label.replace(Regex("[^A-Za-z0-9_.-]"), "_")
-    val extraProgramArgs = mutableListOf(
-      "-project",
-      projectArg,
-      "-baseline",
-      baselineListPath.toString()
-    )
-    extraProgramArgs += "-dependencyList"
-    extraProgramArgs += dependencyListPath.toString()
-    if (failOnErrorOpt) {
-      extraProgramArgs += "-failOnError"
-    }
     val logFile = logFileOpt?.let { base ->
       val basePath = Paths.get(base)
       val fileName = basePath.fileName.toString()
@@ -3802,78 +3617,57 @@ internal fun apiAnalyzeMain(
     } ?: reportOpt?.let {
       outputRoot.resolve("report-logs").resolve("$suffix.log")
     }
-    val invocation = if (useDirectAnalyzer) {
-      val currentBsn = descriptor.manifest.bundleSymbolicName?.key
-      if (currentBsn == null) {
-        logger.severe("Workspace bundle has no Bundle-SymbolicName: ${descriptor.path}")
-        return 2
-      }
-      val dependencyWorkspaceBundles = selectedWorkspaceBundlesForAnalyzer(dependencyPlan!!, workspaceInputs.descriptors, currentBsn)
-      val currentArtifacts = AnalyzerArtifactMaterializer.materialize(
-        AnalyzerArtifactMaterializerInput(workspaceBundles = listOf(descriptor)),
-        AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("current").resolve(suffix))
-      )
-      val dependencyArtifacts = AnalyzerArtifactMaterializer.materialize(
-        AnalyzerArtifactMaterializerInput(
-          targetBundles = directDependencyTargetBundles,
-          workspaceBundles = dependencyWorkspaceBundles
-        ),
-        AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("dependencies").resolve(suffix))
-      )
-      val baselineArtifacts = AnalyzerArtifactMaterializer.materialize(
-        AnalyzerArtifactMaterializerInput(targetBundles = directBaselineTargetBundles),
-        AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("baseline").resolve(suffix))
-      )
-      val diagnosticsOk = listOf(
-        "current" to currentArtifacts.diagnostics,
-        "dependencies" to dependencyArtifacts.diagnostics,
-        "baseline" to baselineArtifacts.diagnostics
-      ).all { (scope, diagnostics) -> logAnalyzerArtifactDiagnostics("$label $scope", diagnostics) }
-      if (!diagnosticsOk) return 2
-      val reportPath = if (reportOpt != null && descriptorsToAnalyze.size == 1) {
-        Paths.get(reportOpt)
-      } else {
-        outputRoot.resolve("reports").resolve("$suffix.json")
-      }
-      writeDirectApiAnalyzerLaunchPlan(
-        launcherExecutable = launcherExecutable,
-        dataDir = dataDirOverride,
-        applicationId = runtimeApplicationId,
-        inputPath = outputRoot.resolve("inputs").resolve("$suffix.json"),
-        input = buildDirectApiAnalyzerInput(
-          currentBundleSymbolicName = currentBsn,
-          currentArtifacts = currentArtifacts.artifacts,
-          dependencyArtifacts = dependencyArtifacts.artifacts,
-          baselineArtifacts = baselineArtifacts.artifacts,
-          outputReportPath = reportPath,
-          apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
-        ),
-        logFile = logFile
-      ).invocation
-    } else {
-      ApiAnalyzerInvocation(
-        launcherExecutable = launcherExecutable,
-        dataDir = dataDirOverride,
-        applicationId = runtimeApplicationId,
-        args = extraProgramArgs,
-        logFile = logFile
-      )
+    val currentBsn = descriptor.manifest.bundleSymbolicName?.key
+    if (currentBsn == null) {
+      logger.severe("Workspace bundle has no Bundle-SymbolicName: ${descriptor.path}")
+      return 2
     }
+    val dependencyWorkspaceBundles = selectedWorkspaceBundlesForAnalyzer(dependencyPlan, workspaceInputs.descriptors, currentBsn)
+    val currentArtifacts = AnalyzerArtifactMaterializer.materialize(
+      AnalyzerArtifactMaterializerInput(workspaceBundles = listOf(descriptor)),
+      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("current").resolve(suffix))
+    )
+    val dependencyArtifacts = AnalyzerArtifactMaterializer.materialize(
+      AnalyzerArtifactMaterializerInput(
+        targetBundles = directDependencyTargetBundles,
+        workspaceBundles = dependencyWorkspaceBundles
+      ),
+      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("dependencies").resolve(suffix))
+    )
+    val baselineArtifacts = AnalyzerArtifactMaterializer.materialize(
+      AnalyzerArtifactMaterializerInput(targetBundles = directBaselineTargetBundles),
+      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("baseline").resolve(suffix))
+    )
+    val diagnosticsOk = listOf(
+      "current" to currentArtifacts.diagnostics,
+      "dependencies" to dependencyArtifacts.diagnostics,
+      "baseline" to baselineArtifacts.diagnostics
+    ).all { (scope, diagnostics) -> logAnalyzerArtifactDiagnostics("$label $scope", diagnostics) }
+    if (!diagnosticsOk) return 2
+    val reportPath = if (reportOpt != null && descriptorsToAnalyze.size == 1) {
+      Paths.get(reportOpt)
+    } else {
+      outputRoot.resolve("reports").resolve("$suffix.json")
+    }
+    val invocation = writeDirectApiAnalyzerLaunchPlan(
+      launcherExecutable = launcherExecutable,
+      dataDir = dataDirOverride,
+      applicationId = DIRECT_API_ANALYZER_APPLICATION_ID,
+      inputPath = outputRoot.resolve("inputs").resolve("$suffix.json"),
+      input = buildDirectApiAnalyzerInput(
+        currentBundleSymbolicName = currentBsn,
+        currentArtifacts = currentArtifacts.artifacts,
+        dependencyArtifacts = dependencyArtifacts.artifacts,
+        baselineArtifacts = baselineArtifacts.artifacts,
+        outputReportPath = reportPath,
+        apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
+      ),
+      logFile = logFile
+    ).invocation
     val exitCode = analyzerRunner(invocation)
     if (exitCode != 0) {
       return exitCode
     }
-    if (!useDirectAnalyzer && reportOpt != null && logFile != null) {
-      val bsn = descriptor.manifest.bundleSymbolicName?.key ?: label
-      val extracted = extractApiAnalyzeProblemsFromLog(logFile, defaultBundleBsn = bsn, defaultBundleDir = descriptor.path)
-      collectedProblems += extracted
-      logger.info("Extracted ${extracted.size} report problem(s) for $bsn")
-    }
-  }
-  if (!useDirectAnalyzer && reportOpt != null) {
-    val reportPath = Paths.get(reportOpt)
-    writeApiAnalyzeProblemReport(reportPath, collectedProblems)
-    logger.info("Wrote API report to ${reportPath.toAbsolutePath().normalize()} (${collectedProblems.size} problems)")
   }
   return 0
 }

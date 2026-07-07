@@ -158,29 +158,6 @@ class ApiFiltersTest {
     }
   }
 
-  @Test
-  fun `extractor reads json problem lines from analyzer log`() {
-    val root = Files.createTempDirectory("api-filters-test")
-    try {
-      val log = root.resolve("analyzer.log")
-      Files.writeString(
-        log,
-        """
-        [INFO] normal line
-        API_PROBLEM_JSON: {"problemId":123,"messageArgs":["x"],"resourceType":"org.example.Type","resourcePath":"src/Type.java"}
-        """.trimIndent()
-      )
-
-      val extracted = extractApiAnalyzeProblemsFromLog(log, "org.example.bundle", root)
-      assertEquals(1, extracted.size)
-      assertEquals(123, extracted.first().problemId)
-      assertEquals("org.example.Type", extracted.first().resourceType)
-      assertEquals(listOf("x"), extracted.first().messageArgs)
-    } finally {
-      root.toFile().deleteRecursively()
-    }
-  }
-
   private fun createBundle(root: Path, bsn: String): Path {
     val bundleDir = root.resolve(bsn)
     val metaInf = bundleDir.resolve("META-INF")

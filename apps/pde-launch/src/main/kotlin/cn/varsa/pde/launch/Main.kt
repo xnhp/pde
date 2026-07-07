@@ -161,11 +161,6 @@ private val apiAnalyzeOptions = listOf(
   CliOption(listOf("--verbose", "-v"), "Enable verbose logging"),
   CliOption(listOf("--debug"), "Enable debug logging"),
   CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--dependency-list"), "Write resolved dependency list text file (default: <config-dir>/dependencies-list.txt)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--baseline-list"), "Write baseline list text file (default: api-analyzer/baseline-list.txt)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--jdt-compliance"), "Override JDT compliance (uses temp project copy)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--application"), "API analyzer application id", takesValue = true, valueLabel = "String", defaultValue = "com.knime.enterprise.devops.eclipse.ApiAnalyzer"),
-  CliOption(listOf("--fail-on-error"), "Fail when API errors are detected"),
   CliOption(listOf("--report"), "Write JSON problem report (schemaVersion/problemRef/problemId/messageArgs/...) for downstream tools", takesValue = true, valueLabel = "String")
 )
 

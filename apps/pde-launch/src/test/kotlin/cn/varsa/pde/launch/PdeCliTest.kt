@@ -361,8 +361,9 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("Usage: pde api-analyze"))
-    assertTrue(output.contains("--fail-on-error"))
+    assertTrue(output.contains("--baseline-root=String"))
     assertTrue(output.contains("--report=String"))
+    assertTrue(!output.contains("--application"))
   }
 
   @Test

@@ -16,19 +16,18 @@ class ApiAnalyzeCliTest {
   @Rule @JvmField val tmp = TemporaryFolder()
 
   @Test
-  fun `api analyze wires analyzer invocation through injectable runner`() {
+  fun `api analyze wires direct analyzer invocation through injectable runner`() {
     val baseDir = tmp.newFolder("cfg").toPath()
     val workspace = tmp.newFolder("workspace").toPath()
     createProfileWithFramework(baseDir)
-    createWorkspaceBundle(workspace)
+    createWorkspaceBundle(workspace, compiledOutput = true)
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val exit = apiAnalyzeMain(
       args = arrayOf(
         "--config", configFile.toString(),
-        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
-        "--application", "legacy.api_analyzer"
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
       analyzerRunner = { invocation ->
@@ -41,12 +40,9 @@ class ApiAnalyzeCliTest {
     assertEquals(1, invocations.size)
     val invocation = invocations.single()
     assertEquals(Path.of("/fake/api-analyzer"), invocation.launcherExecutable)
-    assertEquals("legacy.api_analyzer", invocation.applicationId)
+    assertEquals(DIRECT_API_ANALYZER_APPLICATION_ID, invocation.applicationId)
     assertEquals(baseDir.resolve("api-analyzer").resolve("workspace").toString(), invocation.dataDir)
-    assertTrue(invocation.args.contains("-project"), "Expected project arg: ${invocation.args}")
-    assertEquals(workspace.toString(), invocation.valueAfter("-project"))
-    assertEquals(baseDir.resolve("api-analyzer").resolve("baseline-list.txt").toString(), invocation.valueAfter("-baseline"))
-    assertEquals(baseDir.resolve("dependencies-list.txt").toString(), invocation.valueAfter("-dependencyList"))
+    assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/org.example.api.json").toString()), invocation.args)
   }
 
   @Test
@@ -54,15 +50,14 @@ class ApiAnalyzeCliTest {
     val baseDir = tmp.newFolder("cfg-failure").toPath()
     val workspace = tmp.newFolder("workspace-failure").toPath()
     createProfileWithFramework(baseDir)
-    createWorkspaceBundle(workspace)
+    createWorkspaceBundle(workspace, compiledOutput = true)
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val exit = apiAnalyzeMain(
       args = arrayOf(
         "--config", configFile.toString(),
-        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
-        "--application", "legacy.api_analyzer"
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
       analyzerRunner = { invocation ->
@@ -121,7 +116,6 @@ class ApiAnalyzeCliTest {
       args = arrayOf(
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
-        "--application", DIRECT_API_ANALYZER_APPLICATION_ID,
         "--report", reportPath.toString()
       ),
       launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
@@ -149,8 +143,7 @@ class ApiAnalyzeCliTest {
     val exit = apiAnalyzeMain(
       args = arrayOf(
         "--config", configFile.toString(),
-        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
-        "--application", DIRECT_API_ANALYZER_APPLICATION_ID
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
       analyzerRunner = { invocation ->

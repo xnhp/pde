@@ -4,7 +4,6 @@ import cn.varsa.pde.resolver.api.ApiAnalysisProblem
 import cn.varsa.pde.resolver.api.ApiAnalysisReport
 import cn.varsa.pde.resolver.api.ApiAnalysisReportJson
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import kotlinx.cli.ArgParser
@@ -194,98 +193,6 @@ private class ApiFiltersFile(
       return ApiFiltersFile(file = file, componentId = componentId, entries = entries)
     }
   }
-}
-
-internal fun extractApiAnalyzeProblemsFromLog(logFile: Path, defaultBundleBsn: String, defaultBundleDir: Path): List<ApiAnalyzeProblem> {
-  if (!Files.exists(logFile)) return emptyList()
-  val problems = mutableListOf<ApiAnalyzeProblem>()
-  Files.newBufferedReader(logFile).useLines { lines ->
-    lines.forEach { line ->
-      val node = parseProblemNode(line) ?: return@forEach
-      val problem = parseProblemNode(node, defaultBundleBsn, defaultBundleDir)
-      if (problem != null) {
-        problems += problem
-      }
-    }
-  }
-  return problems
-}
-
-internal fun writeApiAnalyzeProblemReport(reportPath: Path, problems: List<ApiAnalyzeProblem>, generatedAt: Instant = Instant.now()) {
-  val normalized = problems.mapIndexed { index, problem ->
-    val generatedRef = String.format("P%06d", index + 1)
-    val assignedRef = problem.problemRef?.trim().takeIf { !it.isNullOrEmpty() } ?: generatedRef
-    problem.copy(problemRef = assignedRef)
-  }
-  val report = ApiAnalysisReport(
-    generatedAt = generatedAt.toString(),
-    tool = "pde api-analyze",
-    problems = normalized.map { problem ->
-      ApiAnalysisProblem(
-        problemRef = problem.problemRef,
-        problemId = requireNotNull(problem.problemId) { "API problem report entry ${problem.problemRef} is missing problemId" },
-        messageArguments = requireNotNull(problem.messageArgs) { "API problem report entry ${problem.problemRef} is missing messageArgs" },
-        problemTypeName = problem.resourceType,
-        resourcePath = problem.resourcePath,
-        severity = problem.severity,
-        bundleSymbolicName = problem.bundleBsn,
-        message = problem.message,
-        category = problem.category,
-        apiFilterFile = problem.bundleDir?.let { Paths.get(it).resolve(".settings").resolve(".api_filters").toString() }
-      )
-    }
-  )
-  reportPath.parent?.let { Files.createDirectories(it) }
-  Files.writeString(reportPath, ApiAnalysisReportJson.write(report))
-}
-
-private fun parseProblemNode(line: String): JsonNode? {
-  val trimmed = line.trim()
-  val candidate = when {
-    trimmed.startsWith("API_PROBLEM_JSON:") -> trimmed.removePrefix("API_PROBLEM_JSON:").trim()
-    trimmed.startsWith("{") && trimmed.endsWith("}") -> trimmed
-    else -> trimmed.substringAfter('{', missingDelimiterValue = "").let { rest ->
-      if (rest.isEmpty()) "" else "{$rest"
-    }
-  }
-  if (candidate.isEmpty() || !candidate.contains("problemId") || !candidate.contains("messageArgs")) return null
-  return runCatching { apiFiltersMapper.readTree(candidate) }.getOrNull()
-}
-
-private fun parseProblemNode(node: JsonNode, defaultBundleBsn: String, defaultBundleDir: Path): ApiAnalyzeProblem? {
-  val idNode = node.get("problemId") ?: node.get("id") ?: return null
-  val problemId = idNode.asInt(Int.MIN_VALUE)
-  if (problemId == Int.MIN_VALUE) return null
-  val argsNode = node.get("messageArgs") ?: node.get("arguments") ?: node.get("args")
-  val messageArgs = argsNode
-    ?.takeIf { it.isArray }
-    ?.map { it.asText() }
-    ?: return null
-  val bundleBsn = node.get("bundleBsn")?.asText()?.trim().takeIf { !it.isNullOrEmpty() } ?: defaultBundleBsn
-  val bundleDir = node.get("bundleDir")?.asText()?.trim().takeIf { !it.isNullOrEmpty() } ?: defaultBundleDir.toString()
-  val resourceType = listOf("resourceType", "type", "typeName")
-    .asSequence()
-    .mapNotNull { key -> node.get(key)?.asText()?.trim()?.takeIf { it.isNotEmpty() } }
-    .firstOrNull()
-  val resourcePath = listOf("resourcePath", "path")
-    .asSequence()
-    .mapNotNull { key -> node.get(key)?.asText()?.trim()?.takeIf { it.isNotEmpty() } }
-    .firstOrNull()
-  val severity = node.get("severity")?.asText()?.trim()?.takeIf { it.isNotEmpty() }
-  val category = node.get("category")?.asText()?.trim()?.takeIf { it.isNotEmpty() }
-  val message = node.get("message")?.asText()?.trim()?.takeIf { it.isNotEmpty() }
-  return ApiAnalyzeProblem(
-    problemRef = null,
-    bundleBsn = bundleBsn,
-    bundleDir = bundleDir,
-    resourceType = resourceType,
-    resourcePath = resourcePath,
-    problemId = problemId,
-    messageArgs = messageArgs,
-    severity = severity,
-    category = category,
-    message = message
-  )
 }
 
 internal fun apiFiltersMain(args: Array<String>): Int {
