@@ -50,6 +50,32 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
+  fun `api analyze propagates injected analyzer runner failure`() {
+    val baseDir = tmp.newFolder("cfg-failure").toPath()
+    val workspace = tmp.newFolder("workspace-failure").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
+        "--application", "cn.varsa.pde.api_analyzer"
+      ),
+      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        17
+      }
+    )
+
+    assertEquals(17, exit)
+    assertEquals(1, invocations.size)
+  }
+
+  @Test
   fun `direct analyzer launch plan writes input manifest and invocation args`() {
     val baseDir = tmp.newFolder("direct-plan").toPath()
     val current = baseDir.resolve("current.jar")
