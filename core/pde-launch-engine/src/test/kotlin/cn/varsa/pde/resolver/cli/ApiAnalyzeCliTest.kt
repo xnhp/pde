@@ -1,5 +1,8 @@
 package cn.varsa.pde.resolver.cli
 
+import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
+import cn.varsa.pde.resolver.api.DirectApiAnalyzerInput
+import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -44,6 +47,42 @@ class ApiAnalyzeCliTest {
     assertEquals(workspace.toString(), invocation.valueAfter("-project"))
     assertEquals(baseDir.resolve("api-analyzer").resolve("baseline-list.txt").toString(), invocation.valueAfter("-baseline"))
     assertEquals(baseDir.resolve("dependencies-list.txt").toString(), invocation.valueAfter("-dependencyList"))
+  }
+
+  @Test
+  fun `direct analyzer launch plan writes input manifest and invocation args`() {
+    val baseDir = tmp.newFolder("direct-plan").toPath()
+    val current = baseDir.resolve("current.jar")
+    val dependency = baseDir.resolve("dependency.jar")
+    val baseline = baseDir.resolve("baseline.jar")
+    current.writeText("current")
+    dependency.writeText("dependency")
+    baseline.writeText("baseline")
+    val inputPath = baseDir.resolve("api-analyzer").resolve("input").resolve("org.example.api.json")
+    val reportPath = baseDir.resolve("api-analyzer").resolve("reports").resolve("org.example.api.json")
+
+    val plan = writeDirectApiAnalyzerLaunchPlan(
+      launcherExecutable = Path.of("/fake/api-analyzer"),
+      dataDir = baseDir.resolve("api-analyzer").resolve("workspace").toString(),
+      applicationId = "cn.varsa.pde.api_analyzer",
+      inputPath = inputPath,
+      input = DirectApiAnalyzerInput(
+        currentBundle = AnalyzerBundleArtifact("org.example.api", "1.1.0", current),
+        dependencyArtifacts = listOf(AnalyzerBundleArtifact("org.example.dep", "1.0.0", dependency)),
+        baselineArtifacts = listOf(AnalyzerBundleArtifact("org.example.api", "1.0.0", baseline)),
+        outputReportPath = reportPath
+      )
+    )
+
+    assertEquals(inputPath, plan.inputPath)
+    assertEquals(reportPath, plan.outputReportPath)
+    assertEquals(listOf("--input", inputPath.toString()), plan.invocation.args)
+    assertEquals("cn.varsa.pde.api_analyzer", plan.invocation.applicationId)
+    val roundTrip = DirectApiAnalyzerInputJson.read(inputPath)
+    assertEquals("org.example.api", roundTrip.currentBundle.bundleSymbolicName)
+    assertEquals(reportPath, roundTrip.outputReportPath)
+    assertEquals(listOf("org.example.dep"), roundTrip.dependencyArtifacts.map { it.bundleSymbolicName })
+    assertEquals(listOf("org.example.api"), roundTrip.baselineArtifacts.map { it.bundleSymbolicName })
   }
 
   private fun ApiAnalyzerInvocation.valueAfter(option: String): String {

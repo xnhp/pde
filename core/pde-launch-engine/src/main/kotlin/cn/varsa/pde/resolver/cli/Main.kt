@@ -19,6 +19,8 @@ import cn.varsa.pde.remoterunner.parseReportTarget
 import cn.varsa.pde.remoterunner.startForwarders
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
+import cn.varsa.pde.resolver.api.DirectApiAnalyzerInput
+import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.index.getBundlePoolPath
@@ -1861,6 +1863,36 @@ internal data class ApiAnalyzerInvocation(
   val args: List<String>,
   val logFile: Path?
 )
+
+internal data class DirectApiAnalyzerLaunchPlan(
+  val inputPath: Path,
+  val outputReportPath: Path,
+  val invocation: ApiAnalyzerInvocation
+)
+
+internal fun writeDirectApiAnalyzerLaunchPlan(
+  launcherExecutable: Path,
+  dataDir: String,
+  applicationId: String,
+  inputPath: Path,
+  input: DirectApiAnalyzerInput,
+  logFile: Path? = null
+): DirectApiAnalyzerLaunchPlan {
+  inputPath.parent?.let { Files.createDirectories(it) }
+  input.outputReportPath.parent?.let { Files.createDirectories(it) }
+  Files.writeString(inputPath, DirectApiAnalyzerInputJson.write(input), StandardCharsets.UTF_8)
+  return DirectApiAnalyzerLaunchPlan(
+    inputPath = inputPath,
+    outputReportPath = input.outputReportPath,
+    invocation = ApiAnalyzerInvocation(
+      launcherExecutable = launcherExecutable,
+      dataDir = dataDir,
+      applicationId = applicationId,
+      args = listOf("--input", inputPath.toString()),
+      logFile = logFile
+    )
+  )
+}
 
 private fun runApiAnalyzer(
   invocation: ApiAnalyzerInvocation
