@@ -153,6 +153,9 @@ class DirectApiAnalyzerHarnessTest {
     val output = process.inputStream.bufferedReader().readText()
     assertTrue("Analyzer process timed out. Output:\n$output", process.waitFor(60, TimeUnit.SECONDS))
     assertEquals("Analyzer process failed. Output:\n$output", 0, process.exitValue())
+    assertTrue("Analyzer process printed an Equinox framework error. Output:\n$output", "FrameworkEvent ERROR" !in output)
+    assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "LaunchManager.shutdown" !in output)
+    assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "DebugPlugin.stop" !in output)
     assertTrue("Analyzer did not write report. Output:\n$output", reportPath.exists())
     return ApiAnalysisReportJson.read(reportPath)
   }
@@ -347,6 +350,7 @@ class DirectApiAnalyzerHarnessTest {
         .map { path -> readBundleMetadata(path)?.let { metadata -> BundleEntry(metadata.bsn, metadata.version, bundleLocation(path)) } }
         .filter { it != null }
         .map { it!! }
+        .filter { it.bsn != "org.eclipse.equinox.launcher" }
         .sorted(Comparator.comparing(BundleEntry::bsn))
         .toList()
     }
