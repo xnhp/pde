@@ -109,6 +109,62 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
+  fun `api analyze direct app uses explicit report path for single bundle`() {
+    val baseDir = tmp.newFolder("cfg-direct-report").toPath()
+    val workspace = tmp.newFolder("workspace-direct-report").toPath()
+    val reportPath = baseDir.resolve("reports").resolve("api-report.json")
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
+        "--application", DIRECT_API_ANALYZER_APPLICATION_ID,
+        "--report", reportPath.toString()
+      ),
+      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(1, invocations.size)
+    val input = DirectApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertEquals(reportPath, input.outputReportPath)
+  }
+
+  @Test
+  fun `api analyze direct app stops before launch when current bundle cannot be materialized`() {
+    val baseDir = tmp.newFolder("cfg-direct-missing-output").toPath()
+    val workspace = tmp.newFolder("workspace-direct-missing-output").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
+        "--application", DIRECT_API_ANALYZER_APPLICATION_ID
+      ),
+      launcherResolver = { _, _, _ -> Path.of("/fake/api-analyzer") },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, invocations.size)
+  }
+
+  @Test
   fun `direct analyzer launch plan writes input manifest and invocation args`() {
     val baseDir = tmp.newFolder("direct-plan").toPath()
     val current = baseDir.resolve("current.jar")
