@@ -1854,28 +1854,32 @@ private fun updateClasspathJre(projectDir: Path, compliance: String) {
 }
 
 
+internal data class ApiAnalyzerInvocation(
+  val launcherExecutable: Path,
+  val dataDir: String,
+  val applicationId: String,
+  val args: List<String>,
+  val logFile: Path?
+)
+
 private fun runApiAnalyzer(
-  launcherExecutable: Path,
-  dataDir: String,
-  applicationId: String,
-  args: List<String>,
-  logFile: Path?
+  invocation: ApiAnalyzerInvocation
 ): Int {
   val command = mutableListOf(
-    launcherExecutable.toString(),
+    invocation.launcherExecutable.toString(),
     "-nosplash",
     "-consoleLog",
     "-data",
-    dataDir,
+    invocation.dataDir,
     "-application",
-    applicationId
+    invocation.applicationId
   )
-  command.addAll(args)
+  command.addAll(invocation.args)
   val process = ProcessBuilder(command).apply {
     redirectErrorStream(true)
-    if (logFile != null) {
-      logFile.parent?.let { Files.createDirectories(it) }
-      redirectOutput(logFile.toFile())
+    if (invocation.logFile != null) {
+      invocation.logFile.parent?.let { Files.createDirectories(it) }
+      redirectOutput(invocation.logFile.toFile())
     } else {
       inheritIO()
     }
@@ -3420,7 +3424,11 @@ private fun testMain(args: Array<String>): Int {
   return exitCode
 }
 
-private fun apiAnalyzeMain(args: Array<String>): Int {
+internal fun apiAnalyzeMain(
+  args: Array<String>,
+  launcherResolver: (installPath: Path?, installerPath: Path?, targetDefinition: Path?) -> Path? = ::resolveP2DirectorLauncher,
+  analyzerRunner: (ApiAnalyzerInvocation) -> Int = ::runApiAnalyzer
+): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
   val parser = ArgParser("pde api-analyze ${maturityTag("WIP")}")
   val configFileOpt by parser.option(
@@ -3584,7 +3592,7 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
   val dataDirOverride = outputRoot.resolve("workspace").toString()
   val installPath = apiContext.config.target?.install?.let { Paths.get(it) }
   val installerPath = apiContext.config.target?.installer?.let { apiContext.baseDir.resolve(it).normalize() }
-  val launcherExecutable = resolveP2DirectorLauncher(installPath, installerPath, targetDefinition)
+  val launcherExecutable = launcherResolver(installPath, installerPath, targetDefinition)
   if (launcherExecutable == null) {
     logger.severe("Missing p2 director launcher under target.install or target.installer.")
     return 2
@@ -3656,12 +3664,14 @@ private fun apiAnalyzeMain(args: Array<String>): Int {
       val suffix = label.replace(Regex("[^A-Za-z0-9_.-]"), "_")
       outputRoot.resolve("report-logs").resolve("$suffix.log")
     }
-    val exitCode = runApiAnalyzer(
-      launcherExecutable = launcherExecutable,
-      dataDir = dataDirOverride,
-      applicationId = runtimeApplicationId,
-      args = extraProgramArgs,
-      logFile = logFile
+    val exitCode = analyzerRunner(
+      ApiAnalyzerInvocation(
+        launcherExecutable = launcherExecutable,
+        dataDir = dataDirOverride,
+        applicationId = runtimeApplicationId,
+        args = extraProgramArgs,
+        logFile = logFile
+      )
     )
     if (exitCode != 0) {
       return exitCode
