@@ -1,5 +1,8 @@
 package cn.varsa.pde.resolver.cli
 
+import cn.varsa.pde.resolver.api.ApiAnalysisProblem
+import cn.varsa.pde.resolver.api.ApiAnalysisReport
+import cn.varsa.pde.resolver.api.ApiAnalysisReportJson
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -214,14 +217,26 @@ internal fun writeApiAnalyzeProblemReport(reportPath: Path, problems: List<ApiAn
     val assignedRef = problem.problemRef?.trim().takeIf { !it.isNullOrEmpty() } ?: generatedRef
     problem.copy(problemRef = assignedRef)
   }
-  val report = ApiAnalyzeProblemReport(
-    schemaVersion = 1,
+  val report = ApiAnalysisReport(
     generatedAt = generatedAt.toString(),
     tool = "pde api-analyze",
-    problems = normalized
+    problems = normalized.map { problem ->
+      ApiAnalysisProblem(
+        problemRef = problem.problemRef,
+        problemId = requireNotNull(problem.problemId) { "API problem report entry ${problem.problemRef} is missing problemId" },
+        messageArguments = requireNotNull(problem.messageArgs) { "API problem report entry ${problem.problemRef} is missing messageArgs" },
+        problemTypeName = problem.resourceType,
+        resourcePath = problem.resourcePath,
+        severity = problem.severity,
+        bundleSymbolicName = problem.bundleBsn,
+        message = problem.message,
+        category = problem.category,
+        apiFilterFile = problem.bundleDir?.let { Paths.get(it).resolve(".settings").resolve(".api_filters").toString() }
+      )
+    }
   )
   reportPath.parent?.let { Files.createDirectories(it) }
-  apiFiltersMapper.writerWithDefaultPrettyPrinter().writeValue(reportPath.toFile(), report)
+  Files.writeString(reportPath, ApiAnalysisReportJson.write(report))
 }
 
 private fun parseProblemNode(line: String): JsonNode? {
@@ -379,14 +394,11 @@ private fun apiFiltersAddFromReportMain(args: Array<String>): Int {
   }
   val dryRun = dryRunOpt || !applyOpt
 
+  val reportFile = Paths.get(reportPath)
   val report = runCatching {
-    apiFiltersMapper.readValue(Paths.get(reportPath).toFile(), ApiAnalyzeProblemReport::class.java)
+    readApiAnalyzeProblemReport(reportFile)
   }.getOrElse { error ->
     apiFiltersLogger.severe("Failed to parse report: ${error.message}")
-    return 4
-  }
-  if (report.schemaVersion != 1) {
-    apiFiltersLogger.severe("Unsupported report schemaVersion=${report.schemaVersion}; expected 1")
     return 4
   }
 
@@ -478,6 +490,43 @@ private fun resolveBundleDir(problem: ApiAnalyzeProblem): Path? {
     return declared
   }
   return null
+}
+
+private fun readApiAnalyzeProblemReport(reportPath: Path): ApiAnalyzeProblemReport {
+  val root = apiFiltersMapper.readTree(reportPath.toFile())
+  val schemaVersion = root.get("schemaVersion")?.asInt(1) ?: 1
+  return when (schemaVersion) {
+    1 -> apiFiltersMapper.readValue(reportPath.toFile(), ApiAnalyzeProblemReport::class.java)
+    2 -> ApiAnalysisReportJson.read(reportPath).toCliReport()
+    else -> throw IllegalArgumentException("Unsupported report schemaVersion=$schemaVersion; expected 1 or 2")
+  }
+}
+
+private fun ApiAnalysisReport.toCliReport(): ApiAnalyzeProblemReport = ApiAnalyzeProblemReport(
+  schemaVersion = 2,
+  generatedAt = generatedAt,
+  tool = tool,
+  problems = problems.map { problem ->
+    ApiAnalyzeProblem(
+      problemRef = problem.problemRef,
+      bundleBsn = problem.bundleSymbolicName,
+      bundleDir = problem.apiFilterFile?.let(::bundleDirFromApiFilterFile),
+      resourceType = problem.problemTypeName,
+      resourcePath = problem.resourcePath,
+      problemId = problem.problemId,
+      messageArgs = problem.messageArguments,
+      severity = problem.severity,
+      category = problem.category,
+      message = problem.message
+    )
+  }
+)
+
+private fun bundleDirFromApiFilterFile(apiFilterFile: String): String? {
+  val path = Paths.get(apiFilterFile)
+  val settingsDir = path.parent ?: return null
+  if (path.fileName?.toString() != ".api_filters" || settingsDir.fileName?.toString() != ".settings") return null
+  return settingsDir.parent?.toString()
 }
 
 internal fun detectBundleBsn(bundleDir: Path): String? {

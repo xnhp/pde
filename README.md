@@ -139,10 +139,8 @@ runtime because Eclipse p2 provisioning requires OSGi services.
 - Build the launcher jar: `./gradlew :target-installer:targetInstallerLauncherJar`
   - Root helper task: `./gradlew buildTargetInstallerLauncher`
   - Optional Gradle properties:
-    - `-PruntimeZip=/path/to/eclipse-runtime.zip` uses a prebuilt runtime archive
-      (preferred; no local Eclipse SDK required)
     - `-PeclipseSdk=/path/to/eclipse-sdk` provisions the runtime from a local
-      Eclipse SDK when `runtimeZip` is not set
+      Eclipse SDK
     - `-Pp2Repositories=https://download.eclipse.org/releases/2024-12` adds p2
       repositories for SDK-based runtime provisioning
   - `gradle.properties` provides local defaults for `eclipseSdk` and

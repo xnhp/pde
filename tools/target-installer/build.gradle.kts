@@ -11,7 +11,6 @@ val buildScriptLauncher by tasks.registering(Exec::class) {
   workingDir = layout.projectDirectory.asFile
   providers.gradleProperty("eclipseSdk").orNull?.let { environment("ECLIPSE_SDK", it) }
   providers.gradleProperty("p2Repositories").orNull?.let { environment("P2_REPOSITORIES", it) }
-  providers.gradleProperty("runtimeZip").orNull?.let { environment("RUNTIME_ZIP", it) }
   commandLine("bash", "scripts/build-launcher.sh")
   outputs.file(scriptOutput)
 }

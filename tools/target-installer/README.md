@@ -7,10 +7,6 @@ Equinox launcher/runtime boundary.
 ## Build launcher
 
 ```bash
-# preferred: prebuilt runtime archive (no local Eclipse SDK needed)
-./gradlew :target-installer:targetInstallerLauncherJar -PruntimeZip=/path/to/eclipse-runtime.zip
-
-# fallback: build runtime from an Eclipse SDK
 ./gradlew :target-installer:targetInstallerLauncherJar \
   -PeclipseSdk=/path/to/eclipse-sdk \
   -Pp2Repositories=https://download.eclipse.org/releases/2024-12

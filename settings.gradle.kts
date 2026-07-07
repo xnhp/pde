@@ -28,6 +28,7 @@ include(":pde-remote-test-runtime")
 include(":pde-cli")
 include(":pde-format")
 include(":target-installer")
+include(":api-analyzer")
 
 project(":intellij").projectDir = file("intellij")
 project(":pde-resolver").projectDir = file("core/pde-resolver")
@@ -37,3 +38,4 @@ project(":pde-remote-test-runtime").projectDir = file("core/pde-remote-test-runt
 project(":pde-cli").projectDir = file("apps/pde-launch")
 project(":pde-format").projectDir = file("apps/pde-format")
 project(":target-installer").projectDir = file("tools/target-installer")
+project(":api-analyzer").projectDir = file("tools/api-analyzer")

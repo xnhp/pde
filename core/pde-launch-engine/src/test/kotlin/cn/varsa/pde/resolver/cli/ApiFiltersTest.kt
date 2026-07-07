@@ -101,6 +101,64 @@ class ApiFiltersTest {
   }
 
   @Test
+  fun `add-from-report consumes structured schema v2 report`() {
+    val root = Files.createTempDirectory("api-filters-test")
+    try {
+      val bundleDir = createBundle(root, "org.example.bundle")
+      val report = root.resolve("problems-v2.json")
+      val filterFile = bundleDir.resolve(".settings").resolve(".api_filters")
+      Files.writeString(
+        report,
+        """
+        {
+          "schemaVersion": 2,
+          "generatedAt": "2026-07-07T00:00:00Z",
+          "tool": "pde api-analyze",
+          "problems": [
+            {
+              "problemRef": "P000001",
+              "problemId": 643842064,
+              "messageArguments": ["A", "B", "C"],
+              "problemTypeName": "org.example.Type",
+              "resourcePath": "src/org/example/Type.java",
+              "severity": "error",
+              "line": 12,
+              "charStart": 4,
+              "charEnd": 18,
+              "sourceFile": "Type.java",
+              "bundleSymbolicName": "org.example.bundle",
+              "baselineComponentId": "org.example.bundle:1.0.0",
+              "currentComponentId": "org.example.bundle:2.0.0",
+              "apiFilterFile": "${filterFile.toAbsolutePath().normalize()}"
+            }
+          ]
+        }
+        """.trimIndent()
+      )
+
+      val exit = apiFiltersMain(
+        arrayOf(
+          "add-from-report",
+          "--report",
+          report.toString(),
+          "--problem",
+          "P000001",
+          "--apply"
+        )
+      )
+
+      assertEquals(0, exit)
+      val content = Files.readString(filterFile)
+      assertTrue(content.contains("<component id=\"org.example.bundle\" version=\"2\""))
+      assertTrue(content.contains("path=\"src/org/example/Type.java\""))
+      assertTrue(content.contains("type=\"org.example.Type\""))
+      assertTrue(content.contains("<message_argument value=\"C\""))
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
   fun `extractor reads json problem lines from analyzer log`() {
     val root = Files.createTempDirectory("api-filters-test")
     try {

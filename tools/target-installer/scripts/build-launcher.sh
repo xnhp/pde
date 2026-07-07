@@ -11,11 +11,9 @@ REPO_DIR="$BUILD_DIR/p2repo"
 DIST_DIR="$REPO_ROOT/dist"
 DEPS_DIR="$BUILD_DIR/deps"
 LIB_DIR="$BUILD_DIR/lib"
-BOOTSTRAP_RUNTIME_DIR="$BUILD_DIR/bootstrap-runtime"
 
 ECLIPSE_SDK="${ECLIPSE_SDK:-}"
 P2_REPOSITORIES="${P2_REPOSITORIES:-}"
-RUNTIME_ZIP="${RUNTIME_ZIP:-}"
 JAVA_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 JAVAC_BIN="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
 
@@ -23,19 +21,15 @@ TINYLOG_VERSION="2.7.0"
 PLUGIN_VERSION=$(grep "^Bundle-Version:" "$REPO_ROOT/META-INF/MANIFEST.MF" | awk '{print $2}' | tr -d '\r' | sed 's/\.qualifier$//')
 PLUGIN_JAR="org.knime.targetinstaller_${PLUGIN_VERSION}.jar"
 
-if [[ -z "$RUNTIME_ZIP" && -z "$ECLIPSE_SDK" ]]; then
-  echo "Either RUNTIME_ZIP (prebuilt runtime archive) or ECLIPSE_SDK must be set" >&2
+if [[ -z "$ECLIPSE_SDK" ]]; then
+  echo "ECLIPSE_SDK must be set" >&2
   exit 1
 fi
 
 rm -rf "$BUILD_DIR" "$DIST_DIR"
 mkdir -p "$PLUGIN_DIR" "$LAUNCHER_BUILD_DIR" "$RUNTIME_DIR" "$REPO_DIR" "$DIST_DIR" "$DEPS_DIR" "$LIB_DIR"
 
-ECLIPSE_PLUGINS_DIR="${ECLIPSE_SDK:+$ECLIPSE_SDK/plugins}"
-if [[ -z "$ECLIPSE_PLUGINS_DIR" ]]; then
-  unzip -q "$RUNTIME_ZIP" -d "$BOOTSTRAP_RUNTIME_DIR"
-  ECLIPSE_PLUGINS_DIR="$BOOTSTRAP_RUNTIME_DIR/plugins"
-fi
+ECLIPSE_PLUGINS_DIR="$ECLIPSE_SDK/plugins"
 
 # Without this guard, an unmatched *.jar glob reaches javac literally and
 # hides the real problem behind a long list of missing org.eclipse packages.
@@ -84,63 +78,49 @@ jar cfm "$PLUGIN_DIR/$PLUGIN_JAR" \
   -C "$REPO_ROOT" plugin.xml \
   -C "$BUILD_DIR" lib
 
-if [[ -n "$RUNTIME_ZIP" ]]; then
-  echo "Using prebuilt runtime archive: $RUNTIME_ZIP"
-  cp -R "$BOOTSTRAP_RUNTIME_DIR"/. "$RUNTIME_DIR"/
-  LAUNCHER_JAR=$(ls "$RUNTIME_DIR"/plugins/org.eclipse.equinox.launcher_*.jar | head -n 1)
-  if [[ -z "$LAUNCHER_JAR" ]]; then
-    echo "Unable to locate org.eclipse.equinox.launcher in $RUNTIME_ZIP" >&2
-    exit 1
-  fi
-  # Install the target installer plugin into the runtime
-  cp "$PLUGIN_DIR/$PLUGIN_JAR" "$RUNTIME_DIR/plugins/"
-  echo "org.knime.targetinstaller,$PLUGIN_VERSION,plugins/$PLUGIN_JAR,4,true" \
-    >> "$RUNTIME_DIR/configuration/org.eclipse.equinox.simpleconfigurator/bundles.info"
-else
-  LAUNCHER_JAR=$(ls "$ECLIPSE_SDK"/plugins/org.eclipse.equinox.launcher_*.jar | head -n 1)
-  if [[ -z "$LAUNCHER_JAR" ]]; then
-    echo "Unable to locate org.eclipse.equinox.launcher in $ECLIPSE_SDK" >&2
-    exit 1
-  fi
-
-  echo "Publishing p2 repository"
-  "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
-    -application org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher \
-    -metadataRepository "file:$REPO_DIR" \
-    -artifactRepository "file:$REPO_DIR" \
-    -source "$PLUGIN_BUILD_DIR" \
-    -compress -publishArtifacts
-
-  REPOS="file:$REPO_DIR"
-  if [[ -n "$P2_REPOSITORIES" ]]; then
-    REPOS+="${REPOS:+,}$P2_REPOSITORIES"
-  fi
-
-  INSTALL_IUS="org.knime.targetinstaller,org.apache.felix.scr,org.eclipse.equinox.p2.transport.ecf,org.eclipse.equinox.p2.touchpoint.natives,org.eclipse.equinox.p2.touchpoint.eclipse,org.eclipse.equinox.frameworkadmin,org.eclipse.equinox.frameworkadmin.equinox,org.eclipse.equinox.simpleconfigurator.manipulator,org.eclipse.osgi.compatibility.state"
-  osgi_services_jars=("$ECLIPSE_PLUGINS_DIR"/org.eclipse.osgi.services_*.jar)
-  if [[ -e "${osgi_services_jars[0]}" ]]; then
-    INSTALL_IUS+=",org.eclipse.osgi.services"
-  fi
-
-  echo "Materializing runtime"
-  "$JAVA_BIN" -jar "$LAUNCHER_JAR" \
-    -application org.eclipse.equinox.p2.director \
-    -repository "$REPOS" \
-    -installIU "$INSTALL_IUS" \
-    -destination "$RUNTIME_DIR" \
-    -profile DefaultProfile \
-    -bundlepool "$RUNTIME_DIR"
-
-  # The Equinox launcher may exit 0 even when the director reports an installation failure.
-  if ! ls "$RUNTIME_DIR"/plugins/org.knime.targetinstaller_*.jar >/dev/null 2>&1; then
-    echo "Runtime materialization failed: org.knime.targetinstaller missing from $RUNTIME_DIR/plugins" >&2
-    exit 1
-  fi
-
-  echo "Adding Equinox launcher"
-  mkdir -p "$RUNTIME_DIR/plugins"
-  cp "$LAUNCHER_JAR" "$RUNTIME_DIR/plugins/"
+LAUNCHER_JAR=$(ls "$ECLIPSE_SDK"/plugins/org.eclipse.equinox.launcher_*.jar | head -n 1)
+if [[ -z "$LAUNCHER_JAR" ]]; then
+  echo "Unable to locate org.eclipse.equinox.launcher in $ECLIPSE_SDK" >&2
+  exit 1
 fi
+
+echo "Publishing p2 repository"
+"$JAVA_BIN" -jar "$LAUNCHER_JAR" \
+  -application org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher \
+  -metadataRepository "file:$REPO_DIR" \
+  -artifactRepository "file:$REPO_DIR" \
+  -source "$PLUGIN_BUILD_DIR" \
+  -compress -publishArtifacts
+
+REPOS="file:$REPO_DIR"
+if [[ -n "$P2_REPOSITORIES" ]]; then
+  REPOS+="${REPOS:+,}$P2_REPOSITORIES"
+fi
+
+INSTALL_IUS="org.knime.targetinstaller,org.apache.felix.scr,org.eclipse.equinox.p2.transport.ecf,org.eclipse.equinox.p2.touchpoint.natives,org.eclipse.equinox.p2.touchpoint.eclipse,org.eclipse.equinox.frameworkadmin,org.eclipse.equinox.frameworkadmin.equinox,org.eclipse.equinox.simpleconfigurator.manipulator,org.eclipse.osgi.compatibility.state"
+osgi_services_jars=("$ECLIPSE_PLUGINS_DIR"/org.eclipse.osgi.services_*.jar)
+if [[ -e "${osgi_services_jars[0]}" ]]; then
+  INSTALL_IUS+=",org.eclipse.osgi.services"
+fi
+
+echo "Materializing runtime"
+"$JAVA_BIN" -jar "$LAUNCHER_JAR" \
+  -application org.eclipse.equinox.p2.director \
+  -repository "$REPOS" \
+  -installIU "$INSTALL_IUS" \
+  -destination "$RUNTIME_DIR" \
+  -profile DefaultProfile \
+  -bundlepool "$RUNTIME_DIR"
+
+# The Equinox launcher may exit 0 even when the director reports an installation failure.
+if ! ls "$RUNTIME_DIR"/plugins/org.knime.targetinstaller_*.jar >/dev/null 2>&1; then
+  echo "Runtime materialization failed: org.knime.targetinstaller missing from $RUNTIME_DIR/plugins" >&2
+  exit 1
+fi
+
+echo "Adding Equinox launcher"
+mkdir -p "$RUNTIME_DIR/plugins"
+cp "$LAUNCHER_JAR" "$RUNTIME_DIR/plugins/"
 
 if [[ -d "$REPO_ROOT/out/partial-runtime/config" ]]; then
   echo "Seeding runtime configuration"
