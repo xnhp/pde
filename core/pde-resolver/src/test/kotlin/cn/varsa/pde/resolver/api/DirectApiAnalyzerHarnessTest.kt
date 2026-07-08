@@ -113,10 +113,88 @@ class DirectApiAnalyzerHarnessTest {
         }
       """.trimIndent()
     )
-    val baseline = bundleJar("org.example.requires", "1.0.0", sources, requireBundle = "org.example.dep", classpath = listOf(dependency))
-    val current = bundleJar("org.example.requires", "1.1.0", sources, requireBundle = "org.example.dep", classpath = listOf(dependency))
+    val requireBundle = "org.example.dep;bundle-version=\"[1.0.0,2.0.0)\""
+    val baseline = bundleJar("org.example.requires", "1.0.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+    val current = bundleJar("org.example.requires", "1.1.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
 
     val report = analyzeThroughEquinox(current = current, baseline = baseline, dependencies = listOf(dependency))
+
+    assertTrue(report.problems.none { it.category == "component-resolution" })
+  }
+
+  @Test
+  fun `uses dependency artifact with nested bundle classpath while resolving current bundle`() {
+    val dependency = bundleJar(
+      bsn = "org.example.dep",
+      version = "1.0.0.v202607011545",
+      sources = mapOf(
+        "org/example/dep/Dep.java" to """
+          package org.example.dep;
+          public class Dep {}
+        """.trimIndent()
+      ),
+      nestedClasspath = true
+    )
+    val sources = mapOf(
+      "org/example/api/UsesDep.java" to """
+        package org.example.api;
+        import org.example.dep.Dep;
+        public class UsesDep {
+          public Dep dep() { return null; }
+        }
+      """.trimIndent()
+    )
+    val requireBundle = "org.example.dep;bundle-version=\"[1.0.0,2.0.0)\""
+    val baseline = bundleJar("org.example.requires", "1.0.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+    val current = bundleJar("org.example.requires", "1.1.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+
+    val report = analyzeThroughEquinox(current = current, baseline = baseline, dependencies = listOf(dependency))
+
+    assertTrue(report.problems.none { it.category == "component-resolution" })
+  }
+
+  @Test
+  fun `uses current dependency when reference baseline also contains older dependency`() {
+    val oldDependency = bundleJar(
+      bsn = "org.example.dep",
+      version = "0.9.0",
+      sources = mapOf(
+        "org/example/dep/Dep.java" to """
+          package org.example.dep;
+          public class Dep {}
+        """.trimIndent()
+      )
+    )
+    val dependency = bundleJar(
+      bsn = "org.example.dep",
+      version = "1.0.0.v202607011545",
+      sources = mapOf(
+        "org/example/dep/Dep.java" to """
+          package org.example.dep;
+          public class Dep {}
+        """.trimIndent()
+      ),
+      nestedClasspath = true
+    )
+    val sources = mapOf(
+      "org/example/api/UsesDep.java" to """
+        package org.example.api;
+        import org.example.dep.Dep;
+        public class UsesDep {
+          public Dep dep() { return null; }
+        }
+      """.trimIndent()
+    )
+    val requireBundle = "org.example.dep;bundle-version=\"[1.0.0,2.0.0)\""
+    val baseline = bundleJar("org.example.requires", "1.0.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+    val current = bundleJar("org.example.requires", "1.1.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+
+    val report = analyzeThroughEquinox(
+      current = current,
+      baseline = baseline,
+      dependencies = listOf(dependency),
+      extraBaselineArtifacts = listOf(oldDependency)
+    )
 
     assertTrue(report.problems.none { it.category == "component-resolution" })
   }
@@ -173,7 +251,8 @@ class DirectApiAnalyzerHarnessTest {
   private fun analyzeThroughEquinox(
     current: AnalyzerBundleArtifact,
     baseline: AnalyzerBundleArtifact,
-    dependencies: List<AnalyzerBundleArtifact> = emptyList()
+    dependencies: List<AnalyzerBundleArtifact> = emptyList(),
+    extraBaselineArtifacts: List<AnalyzerBundleArtifact> = emptyList()
   ): ApiAnalysisReport {
     val runtime = assembleRuntime()
     val reportPath = temp.root.toPath().resolve("report.json")
@@ -183,7 +262,7 @@ class DirectApiAnalyzerHarnessTest {
         DirectApiAnalyzerInput(
           currentBundle = current,
           dependencyArtifacts = dependencies,
-          baselineArtifacts = listOf(baseline),
+          baselineArtifacts = listOf(baseline) + extraBaselineArtifacts,
           outputReportPath = reportPath
         )
       )
@@ -427,7 +506,8 @@ class DirectApiAnalyzerHarnessTest {
     version: String,
     sources: Map<String, String>,
     requireBundle: String? = null,
-    classpath: List<AnalyzerBundleArtifact> = emptyList()
+    classpath: List<AnalyzerBundleArtifact> = emptyList(),
+    nestedClasspath: Boolean = false
   ): AnalyzerBundleArtifact {
     val dir = Files.createTempDirectory(temp.root.toPath(), "${bsn.replace('.', '-')}-${version.replace('.', '-')}-")
     val classes = dir.resolve("classes")
@@ -437,9 +517,9 @@ class DirectApiAnalyzerHarnessTest {
       Files.createDirectories(file.parent)
       Files.writeString(file, content)
     }
-    compileJava(dir.resolve("src"), classes, classpath.map { it.path })
+    compileJava(dir.resolve("src"), classes, javacClasspath(classpath))
     val jar = dir.resolve("$bsn-$version.jar")
-    writeBundleJar(jar, classes, bsn, version, requireBundle)
+    writeBundleJar(jar, classes, bsn, version, requireBundle, nestedClasspath)
     return AnalyzerBundleArtifact(bsn, version, jar)
   }
 
@@ -457,25 +537,50 @@ class DirectApiAnalyzerHarnessTest {
     check(exit == 0) { "javac failed with exit code $exit" }
   }
 
-  private fun writeBundleJar(path: Path, classes: Path, bsn: String, version: String, requireBundle: String?) {
+  private fun javacClasspath(artifacts: List<AnalyzerBundleArtifact>): List<Path> = artifacts.flatMap { artifact ->
+    val nestedClassesJar = artifact.path.parent.resolve("${artifact.bundleSymbolicName}-classes.jar")
+    if (nestedClassesJar.isRegularFile()) listOf(artifact.path, nestedClassesJar) else listOf(artifact.path)
+  }
+
+  private fun writeBundleJar(path: Path, classes: Path, bsn: String, version: String, requireBundle: String?, nestedClasspath: Boolean) {
+    val nestedJar = path.parent.resolve("$bsn-classes.jar")
+    if (nestedClasspath) {
+      writeClassesJar(nestedJar, classes)
+    }
     val manifest = Manifest().apply {
       mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
       mainAttributes.putValue("Bundle-ManifestVersion", "2")
       mainAttributes.putValue("Bundle-SymbolicName", bsn)
       mainAttributes.putValue("Bundle-Version", version)
       mainAttributes.putValue("Bundle-Name", bsn)
-      mainAttributes.putValue("Bundle-ClassPath", ".")
+      mainAttributes.putValue("Bundle-ClassPath", if (nestedClasspath) nestedJar.name else ".")
       mainAttributes.putValue("Export-Package", "$bsn;version=\"$version\"")
       requireBundle?.let { mainAttributes.putValue("Require-Bundle", it) }
     }
     JarOutputStream(path.outputStream(), manifest).use { jar ->
-      Files.walk(classes).use { stream ->
-        stream.filter { it.isRegularFile() }.sorted().forEach { file ->
-          val entry = classes.relativize(file).toString().replace('\\', '/')
-          jar.putNextEntry(JarEntry(entry))
-          file.inputStream().use { it.copyTo(jar) }
-          jar.closeEntry()
-        }
+      if (nestedClasspath) {
+        jar.putNextEntry(JarEntry(nestedJar.name))
+        nestedJar.inputStream().use { it.copyTo(jar) }
+        jar.closeEntry()
+      } else {
+        addClassesToJar(jar, classes)
+      }
+    }
+  }
+
+  private fun writeClassesJar(path: Path, classes: Path) {
+    JarOutputStream(path.outputStream()).use { jar ->
+      addClassesToJar(jar, classes)
+    }
+  }
+
+  private fun addClassesToJar(jar: JarOutputStream, classes: Path) {
+    Files.walk(classes).use { stream ->
+      stream.filter { it.isRegularFile() }.sorted().forEach { file ->
+        val entry = classes.relativize(file).toString().replace('\\', '/')
+        jar.putNextEntry(JarEntry(entry))
+        file.inputStream().use { it.copyTo(jar) }
+        jar.closeEntry()
       }
     }
   }

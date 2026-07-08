@@ -28,6 +28,7 @@ class DirectApiAnalyzerHarness(
       val currentComponent = currentBaseline.getApiComponent(input.currentBundle.bundleSymbolicName)
         ?: error("Current bundle not found in analyzer baseline: ${input.currentBundle.bundleSymbolicName}")
 
+      analyzer.setContinueOnResolverError(true)
       analyzer.analyzeComponent(
         null,
         null,

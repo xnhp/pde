@@ -40,6 +40,7 @@ class ApiAnalyzeCliTest {
     assertEquals(1, invocations.size)
     val invocation = invocations.single()
     assertEquals(Path.of("/fake/api-analyzer"), invocation.launcherExecutable)
+    assertEquals(baseDir.resolve("api-analyzer").resolve("configuration").toString(), invocation.configurationDir)
     assertEquals(DIRECT_API_ANALYZER_APPLICATION_ID, invocation.applicationId)
     assertEquals(baseDir.resolve("api-analyzer").resolve("workspace").toString(), invocation.dataDir)
     assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/org.example.api.json").toString()), invocation.args)
@@ -310,6 +311,7 @@ class ApiAnalyzeCliTest {
 
     val plan = writeDirectApiAnalyzerLaunchPlan(
       launcherExecutable = Path.of("/fake/api-analyzer"),
+      configurationDir = baseDir.resolve("api-analyzer").resolve("configuration").toString(),
       dataDir = baseDir.resolve("api-analyzer").resolve("workspace").toString(),
       applicationId = "cn.varsa.pde.api_analyzer",
       inputPath = inputPath,
@@ -330,6 +332,40 @@ class ApiAnalyzeCliTest {
     assertEquals(reportPath, roundTrip.outputReportPath)
     assertEquals(listOf("org.example.dep"), roundTrip.dependencyArtifacts.map { it.bundleSymbolicName })
     assertEquals(listOf("org.example.api"), roundTrip.baselineArtifacts.map { it.bundleSymbolicName })
+  }
+
+  @Test
+  fun `direct analyzer command launches equinox launcher jar with java`() {
+    val command = buildApiAnalyzerCommand(
+      ApiAnalyzerInvocation(
+        launcherExecutable = Path.of("/runtime/plugins/org.eclipse.equinox.launcher.jar"),
+        configurationDir = "/runtime/configuration",
+        dataDir = "/runtime/workspace",
+        applicationId = "cn.varsa.pde.api_analyzer",
+        args = listOf("--input", "/inputs/org.example.api.json"),
+        logFile = null
+      ),
+      javaBin = "/java/bin/java"
+    )
+
+    assertEquals(
+      listOf(
+        "/java/bin/java",
+        "-jar",
+        "/runtime/plugins/org.eclipse.equinox.launcher.jar",
+        "-nosplash",
+        "-consoleLog",
+        "-configuration",
+        "/runtime/configuration",
+        "-data",
+        "/runtime/workspace",
+        "-application",
+        "cn.varsa.pde.api_analyzer",
+        "--input",
+        "/inputs/org.example.api.json"
+      ),
+      command
+    )
   }
 
   @Test
@@ -379,6 +415,7 @@ class ApiAnalyzeCliTest {
 
   private fun fakeAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRuntime = ApiAnalyzerRuntime(
     launcherExecutable = Path.of("/fake/api-analyzer"),
+    configurationDir = outputRoot.resolve("configuration"),
     dataDir = outputRoot.resolve("workspace")
   )
 

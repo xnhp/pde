@@ -1825,6 +1825,7 @@ private fun cleanBaselineWorkspace(workspaceDir: Path) {
 
 internal data class ApiAnalyzerInvocation(
   val launcherExecutable: Path,
+  val configurationDir: String,
   val dataDir: String,
   val applicationId: String,
   val args: List<String>,
@@ -1833,6 +1834,7 @@ internal data class ApiAnalyzerInvocation(
 
 internal data class ApiAnalyzerRuntime(
   val launcherExecutable: Path,
+  val configurationDir: Path,
   val dataDir: Path
 )
 
@@ -1874,6 +1876,7 @@ internal fun buildDirectApiAnalyzerInput(
 
 internal fun writeDirectApiAnalyzerLaunchPlan(
   launcherExecutable: Path,
+  configurationDir: String,
   dataDir: String,
   applicationId: String,
   inputPath: Path,
@@ -1888,6 +1891,7 @@ internal fun writeDirectApiAnalyzerLaunchPlan(
     outputReportPath = input.outputReportPath,
     invocation = ApiAnalyzerInvocation(
       launcherExecutable = launcherExecutable,
+      configurationDir = configurationDir,
       dataDir = dataDir,
       applicationId = applicationId,
       args = listOf("--input", inputPath.toString()),
@@ -1899,16 +1903,7 @@ internal fun writeDirectApiAnalyzerLaunchPlan(
 private fun runApiAnalyzer(
   invocation: ApiAnalyzerInvocation
 ): Int {
-  val command = mutableListOf(
-    invocation.launcherExecutable.toString(),
-    "-nosplash",
-    "-consoleLog",
-    "-data",
-    invocation.dataDir,
-    "-application",
-    invocation.applicationId
-  )
-  command.addAll(invocation.args)
+  val command = buildApiAnalyzerCommand(invocation)
   val process = ProcessBuilder(command).apply {
     redirectErrorStream(true)
     if (invocation.logFile != null) {
@@ -1925,6 +1920,27 @@ private fun runApiAnalyzer(
   return exitCode
 }
 
+internal fun buildApiAnalyzerCommand(
+  invocation: ApiAnalyzerInvocation,
+  javaBin: String = resolveJavaBin()
+): List<String> {
+  val command = mutableListOf(
+    javaBin,
+    "-jar",
+    invocation.launcherExecutable.toString(),
+    "-nosplash",
+    "-consoleLog",
+    "-configuration",
+    invocation.configurationDir,
+    "-data",
+    invocation.dataDir,
+    "-application",
+    invocation.applicationId
+  )
+  command.addAll(invocation.args)
+  return command
+}
+
 private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRuntime? {
   val archive = findPackagedApiAnalyzerRuntimeArchive()
   if (archive == null) {
@@ -1939,7 +1955,7 @@ private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRunt
     logger.severe("Analyzer runtime archive does not contain a plugins/ directory: ${archive.toAbsolutePath().normalize()}")
     return null
   }
-  ensureApiAnalyzerRuntimeConfiguration(runtimeRoot)
+  val configurationDir = ensureApiAnalyzerRuntimeConfiguration(runtimeRoot)
   val launcher = findRuntimeBundle(plugins, "org.eclipse.equinox.launcher")
   if (launcher == null) {
     logger.severe("Analyzer runtime archive does not contain org.eclipse.equinox.launcher: ${archive.toAbsolutePath().normalize()}")
@@ -1947,7 +1963,7 @@ private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRunt
   }
   val workspace = runtimeRoot.resolve("workspace")
   Files.createDirectories(workspace)
-  return ApiAnalyzerRuntime(launcherExecutable = launcher, dataDir = workspace)
+  return ApiAnalyzerRuntime(launcherExecutable = launcher, configurationDir = configurationDir, dataDir = workspace)
 }
 
 private fun findPackagedApiAnalyzerRuntimeArchive(): Path? {
@@ -1989,13 +2005,14 @@ private fun extractZipArchive(zip: Path, destination: Path) {
   }
 }
 
-private fun ensureApiAnalyzerRuntimeConfiguration(runtimeRoot: Path) {
-  val configDir = runtimeRoot.resolve("config")
+private fun ensureApiAnalyzerRuntimeConfiguration(runtimeRoot: Path): Path {
+  val configDir = runtimeRoot.resolve("configuration")
   Files.createDirectories(configDir)
   val bundlesInfo = configDir.resolve("org.eclipse.equinox.simpleconfigurator").resolve("bundles.info")
   Files.createDirectories(bundlesInfo.parent)
   writeApiAnalyzerBundlesInfo(bundlesInfo, runtimeRoot.resolve("plugins"))
   writeApiAnalyzerConfigIni(configDir.resolve("config.ini"), runtimeRoot, bundlesInfo)
+  return configDir
 }
 
 private fun writeApiAnalyzerConfigIni(configIni: Path, runtimeRoot: Path, bundlesInfo: Path) {
@@ -3747,6 +3764,7 @@ internal fun apiAnalyzeMain(
     return 2
   }
   val launcherExecutable = analyzerRuntime.launcherExecutable
+  val configurationDirOverride = analyzerRuntime.configurationDir.toString()
   val dataDirOverride = analyzerRuntime.dataDir.toString()
   val dependencyPlan = buildCompilePlanForWarning(apiContext, targetIndex, workspaceInputs)
 
@@ -3804,6 +3822,7 @@ internal fun apiAnalyzeMain(
     }
     val invocation = writeDirectApiAnalyzerLaunchPlan(
       launcherExecutable = launcherExecutable,
+      configurationDir = configurationDirOverride,
       dataDir = dataDirOverride,
       applicationId = DIRECT_API_ANALYZER_APPLICATION_ID,
       inputPath = outputRoot.resolve("inputs").resolve("$suffix.json"),
