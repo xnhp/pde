@@ -20,6 +20,9 @@ import cn.varsa.pde.remoterunner.startForwarders
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
+import cn.varsa.pde.resolver.api.BatchApiAnalyzerInput
+import cn.varsa.pde.resolver.api.BatchApiAnalyzerInputJson
+import cn.varsa.pde.resolver.api.CurrentBundleInfo
 import cn.varsa.pde.resolver.api.DirectApiAnalyzerInput
 import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
 import cn.varsa.pde.resolver.api.artifact.AnalyzerArtifactDiagnostic
@@ -1847,6 +1850,12 @@ internal data class DirectApiAnalyzerLaunchPlan(
   val invocation: ApiAnalyzerInvocation
 )
 
+internal data class BatchApiAnalyzerLaunchPlan(
+  val inputPath: Path,
+  val outputReportPaths: List<Path>,
+  val invocation: ApiAnalyzerInvocation
+)
+
 internal fun buildDirectApiAnalyzerInput(
   currentBundleSymbolicName: String,
   currentArtifacts: List<AnalyzerBundleArtifact>,
@@ -1890,6 +1899,32 @@ internal fun writeDirectApiAnalyzerLaunchPlan(
   return DirectApiAnalyzerLaunchPlan(
     inputPath = inputPath,
     outputReportPath = input.outputReportPath,
+    invocation = ApiAnalyzerInvocation(
+      launcherExecutable = launcherExecutable,
+      configurationDir = configurationDir,
+      dataDir = dataDir,
+      applicationId = applicationId,
+      args = listOf("--input", inputPath.toString()),
+      logFile = logFile
+    )
+  )
+}
+
+internal fun writeBatchApiAnalyzerLaunchPlan(
+  launcherExecutable: Path,
+  configurationDir: String,
+  dataDir: String,
+  applicationId: String,
+  inputPath: Path,
+  input: BatchApiAnalyzerInput,
+  logFile: Path? = null
+): BatchApiAnalyzerLaunchPlan {
+  inputPath.parent?.let { Files.createDirectories(it) }
+  input.currentBundles.forEach { bundleInfo -> bundleInfo.outputReportPath.parent?.let { Files.createDirectories(it) } }
+  Files.writeString(inputPath, BatchApiAnalyzerInputJson.write(input), StandardCharsets.UTF_8)
+  return BatchApiAnalyzerLaunchPlan(
+    inputPath = inputPath,
+    outputReportPaths = input.currentBundles.map { it.outputReportPath },
     invocation = ApiAnalyzerInvocation(
       launcherExecutable = launcherExecutable,
       configurationDir = configurationDir,
@@ -3805,23 +3840,18 @@ internal fun apiAnalyzeMain(
     AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("baseline"))
   )
   if (!logAnalyzerArtifactDiagnostics("baseline", baselineArtifacts.diagnostics)) return 2
+
+  // Materialize each selected bundle's own current/dependency artifacts individually (cheap file
+  // IO), but fold them into ONE BatchApiAnalyzerInput so only a single analyzer JVM gets launched
+  // for the whole run. Building the OSGi baselines inside that JVM is the expensive part
+  // (~seconds to a minute per JVM startup), so it must happen once per invocation, not once per
+  // bundle.
+  val currentBundleInfos = mutableListOf<CurrentBundleInfo>()
+  val dependencyArtifactsByPath = linkedMapOf<String, AnalyzerBundleArtifact>()
   descriptorsToAnalyze.forEach { descriptor ->
     val label = descriptor.manifest.bundleSymbolicName?.key ?: descriptor.path.toString()
     logger.info("Running API analysis for $label")
     val suffix = label.replace(Regex("[^A-Za-z0-9_.-]"), "_")
-    val logFile = logFileOpt?.let { base ->
-      val basePath = Paths.get(base)
-      val fileName = basePath.fileName.toString()
-      val dot = fileName.lastIndexOf('.')
-      val derived = if (dot > 0) {
-        fileName.substring(0, dot) + "-" + suffix + fileName.substring(dot)
-      } else {
-        fileName + "-" + suffix
-      }
-      basePath.parent?.resolve(derived) ?: Paths.get(derived)
-    } ?: reportOpt?.let {
-      outputRoot.resolve("report-logs").resolve("$suffix.log")
-    }
     val currentBsn = descriptor.manifest.bundleSymbolicName?.key
     if (currentBsn == null) {
       logger.severe("Workspace bundle has no Bundle-SymbolicName: ${descriptor.path}")
@@ -3849,28 +3879,53 @@ internal fun apiAnalyzeMain(
     } else {
       outputRoot.resolve("reports").resolve("$suffix.json")
     }
-    val invocation = writeDirectApiAnalyzerLaunchPlan(
-      launcherExecutable = launcherExecutable,
-      configurationDir = configurationDirOverride,
-      dataDir = dataDirOverride,
-      applicationId = DIRECT_API_ANALYZER_APPLICATION_ID,
-      inputPath = outputRoot.resolve("inputs").resolve("$suffix.json"),
-      input = buildDirectApiAnalyzerInput(
-        currentBundleSymbolicName = currentBsn,
-        currentArtifacts = currentArtifacts.artifacts,
-        dependencyArtifacts = dependencyArtifacts.artifacts,
-        baselineArtifacts = baselineArtifacts.artifacts,
-        outputReportPath = reportPath,
-        apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
-      ),
-      logFile = logFile
-    ).invocation
-    val exitCode = analyzerRunner(invocation)
-    if (exitCode != 0) {
-      return exitCode
+    val builtInput = buildDirectApiAnalyzerInput(
+      currentBundleSymbolicName = currentBsn,
+      currentArtifacts = currentArtifacts.artifacts,
+      dependencyArtifacts = dependencyArtifacts.artifacts,
+      baselineArtifacts = baselineArtifacts.artifacts,
+      outputReportPath = reportPath,
+      apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
+    )
+    currentBundleInfos += CurrentBundleInfo(
+      currentBundle = builtInput.currentBundle,
+      outputReportPath = builtInput.outputReportPath,
+      apiFilterPath = builtInput.apiFilterFile
+    )
+    builtInput.dependencyArtifacts.forEach { artifact ->
+      dependencyArtifactsByPath.putIfAbsent(artifact.path.toAbsolutePath().normalize().toString(), artifact)
     }
   }
-  return 0
+  if (currentBundleInfos.isEmpty()) {
+    return 0
+  }
+
+  val currentBsns = currentBundleInfos.map { it.currentBundle.bundleSymbolicName }.toSet()
+  val batchDependencyArtifacts = dependencyArtifactsByPath.values.filterNot { it.bundleSymbolicName in currentBsns }
+  val batchBaselineArtifacts = baselineArtifacts.artifacts.distinctBy { it.path.toAbsolutePath().normalize().toString() }
+
+  // --log convention for the batch invocation: there is now exactly one analyzer JVM for the
+  // whole run, so --log (when given) names that single shared log file directly -- no more
+  // per-bundle suffixing. Falling back to a fixed "batch.log" name (instead of the old
+  // per-bundle "<suffix>.log") when only --report is given keeps the same "auto-log-when-
+  // reporting" behavior for the common single-bundle case.
+  val batchLogFile = logFileOpt?.let { Paths.get(it) }
+    ?: reportOpt?.let { outputRoot.resolve("report-logs").resolve("batch.log") }
+
+  val invocation = writeBatchApiAnalyzerLaunchPlan(
+    launcherExecutable = launcherExecutable,
+    configurationDir = configurationDirOverride,
+    dataDir = dataDirOverride,
+    applicationId = DIRECT_API_ANALYZER_APPLICATION_ID,
+    inputPath = outputRoot.resolve("inputs").resolve("batch.json"),
+    input = BatchApiAnalyzerInput(
+      currentBundles = currentBundleInfos,
+      dependencyArtifacts = batchDependencyArtifacts,
+      baselineArtifacts = batchBaselineArtifacts
+    ),
+    logFile = batchLogFile
+  ).invocation
+  return analyzerRunner(invocation)
 }
 
 fun compileMain(args: Array<String>): Int {

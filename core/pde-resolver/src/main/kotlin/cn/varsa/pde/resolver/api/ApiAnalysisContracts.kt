@@ -18,7 +18,6 @@ data class BatchApiAnalyzerInput(
   val currentBundles: List<CurrentBundleInfo> = emptyList(),
   val dependencyArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
   val baselineArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
-  val apiFilterFile: Path? = null,
   val preferences: Map<String, String> = emptyMap()
 )
 
@@ -86,4 +85,16 @@ object DirectApiAnalyzerInputJson {
 
   fun read(path: Path): DirectApiAnalyzerInput =
     mapper.readValue(path.toFile(), DirectApiAnalyzerInput::class.java)
+}
+
+object BatchApiAnalyzerInputJson {
+  private val mapper = ObjectMapper()
+    .registerModule(KotlinModule.Builder().build())
+    .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+
+  fun write(input: BatchApiAnalyzerInput): String =
+    mapper.writerWithDefaultPrettyPrinter().writeValueAsString(input)
+
+  fun read(path: Path): BatchApiAnalyzerInput =
+    mapper.readValue(path.toFile(), BatchApiAnalyzerInput::class.java)
 }

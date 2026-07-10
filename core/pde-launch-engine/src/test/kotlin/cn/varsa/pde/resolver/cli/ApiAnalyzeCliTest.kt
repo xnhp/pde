@@ -1,6 +1,7 @@
 package cn.varsa.pde.resolver.cli
 
 import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
+import cn.varsa.pde.resolver.api.BatchApiAnalyzerInputJson
 import cn.varsa.pde.resolver.api.DirectApiAnalyzerInput
 import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
 import org.junit.Rule
@@ -44,7 +45,7 @@ class ApiAnalyzeCliTest {
     assertEquals(baseDir.resolve("api-analyzer").resolve("configuration").toString(), invocation.configurationDir)
     assertEquals(DIRECT_API_ANALYZER_APPLICATION_ID, invocation.applicationId)
     assertEquals(baseDir.resolve("api-analyzer").resolve("workspace").toString(), invocation.dataDir)
-    assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/org.example.api.json").toString()), invocation.args)
+    assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/batch.json").toString()), invocation.args)
   }
 
   @Test
@@ -97,11 +98,12 @@ class ApiAnalyzeCliTest {
     assertEquals(1, invocations.size)
     val invocation = invocations.single()
     assertEquals(DIRECT_API_ANALYZER_APPLICATION_ID, invocation.applicationId)
-    assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/org.example.api.json").toString()), invocation.args)
-    val input = DirectApiAnalyzerInputJson.read(Path.of(invocation.valueAfter("--input")))
-    assertEquals("org.example.api", input.currentBundle.bundleSymbolicName)
-    assertTrue(input.currentBundle.synthetic)
-    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.api.json"), input.outputReportPath)
+    assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/batch.json").toString()), invocation.args)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocation.valueAfter("--input")))
+    val bundle = input.currentBundles.single()
+    assertEquals("org.example.api", bundle.currentBundle.bundleSymbolicName)
+    assertTrue(bundle.currentBundle.synthetic)
+    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.api.json"), bundle.outputReportPath)
   }
 
   @Test
@@ -129,8 +131,8 @@ class ApiAnalyzeCliTest {
 
     assertEquals(0, exit)
     assertEquals(1, invocations.size)
-    val input = DirectApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
-    assertEquals(reportPath, input.outputReportPath)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertEquals(reportPath, input.currentBundles.single().outputReportPath)
   }
 
   @Test
@@ -159,8 +161,8 @@ class ApiAnalyzeCliTest {
 
     assertEquals(0, exit)
     assertEquals(1, invocations.size)
-    val input = DirectApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
-    assertEquals("org.example.other", input.currentBundle.bundleSymbolicName)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertEquals("org.example.other", input.currentBundles.single().currentBundle.bundleSymbolicName)
   }
 
   @Test
@@ -191,34 +193,30 @@ class ApiAnalyzeCliTest {
     )
 
     assertEquals(0, exit)
-    assertEquals(2, invocations.size)
-    val inputs = invocations
-      .map { DirectApiAnalyzerInputJson.read(Path.of(it.valueAfter("--input"))) }
-      .sortedBy { it.currentBundle.bundleSymbolicName }
+    // A 2-bundle selection must still launch exactly ONE analyzer JVM: both bundles are folded
+    // into a single BatchApiAnalyzerInput sharing one materialized baseline artifact set.
+    assertEquals(1, invocations.size)
+    val batchInput = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    val bundles = batchInput.currentBundles.sortedBy { it.currentBundle.bundleSymbolicName }
     assertEquals(
       listOf("org.example.api", "org.example.other"),
-      inputs.map { it.currentBundle.bundleSymbolicName }
+      bundles.map { it.currentBundle.bundleSymbolicName }
     )
-    val apiInput = inputs.first()
     assertTrue(
-      apiInput.baselineArtifacts.any { artifact ->
+      batchInput.baselineArtifacts.any { artifact ->
         artifact.bundleSymbolicName == "org.example.dep" &&
           artifact.path.toAbsolutePath().normalize() == targetDependency.toAbsolutePath().normalize() &&
           !artifact.synthetic
       },
-      "Expected target baseline directory in ${apiInput.baselineArtifacts}"
+      "Expected target baseline directory in ${batchInput.baselineArtifacts}"
     )
-    assertTrue(apiInput.baselineArtifacts.any { artifact ->
+    assertTrue(batchInput.baselineArtifacts.any { artifact ->
       artifact.bundleSymbolicName == "org.example.api" && artifact.path == apiBaseline && !artifact.synthetic
     })
     assertTrue(Files.isDirectory(targetDependency))
     assertTrue(Files.isDirectory(apiBaseline))
-    assertEquals(
-      inputs.first().baselineArtifacts.map { it.path }.toSet(),
-      inputs.last().baselineArtifacts.map { it.path }.toSet()
-    )
-    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.api.json"), inputs.first().outputReportPath)
-    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.other.json"), inputs.last().outputReportPath)
+    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.api.json"), bundles.first().outputReportPath)
+    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.other.json"), bundles.last().outputReportPath)
     assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.api")))
     assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.other")))
   }

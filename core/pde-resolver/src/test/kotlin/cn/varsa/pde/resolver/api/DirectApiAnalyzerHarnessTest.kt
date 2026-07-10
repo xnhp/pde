@@ -317,6 +317,95 @@ class DirectApiAnalyzerHarnessTest {
   }
 
   @Test
+  fun `analyzes two current bundles inside one analyzer JVM invocation with isolated problem state`() {
+    val baselineA = bundleJar(
+      bsn = "org.example.batcha",
+      version = "1.0.0",
+      sources = mapOf(
+        "org/example/batcha/Example.java" to """
+          package org.example.batcha;
+          public class Example {
+            public void kept() {}
+            public void removedFromA() {}
+          }
+        """.trimIndent()
+      )
+    )
+    val currentA = bundleJar(
+      bsn = "org.example.batcha",
+      version = "1.1.0",
+      sources = mapOf(
+        "org/example/batcha/Example.java" to """
+          package org.example.batcha;
+          public class Example {
+            public void kept() {}
+          }
+        """.trimIndent()
+      )
+    )
+    val baselineB = bundleJar(
+      bsn = "org.example.batchb",
+      version = "1.0.0",
+      sources = mapOf(
+        "org/example/batchb/Example.java" to """
+          package org.example.batchb;
+          public class Example {
+            public void kept() {}
+            public void removedFromB() {}
+          }
+        """.trimIndent()
+      )
+    )
+    val currentB = bundleJar(
+      bsn = "org.example.batchb",
+      version = "1.1.0",
+      sources = mapOf(
+        "org/example/batchb/Example.java" to """
+          package org.example.batchb;
+          public class Example {
+            public void kept() {}
+          }
+        """.trimIndent()
+      )
+    )
+
+    val reportPathA = temp.root.toPath().resolve("batch-report-a.json")
+    val reportPathB = temp.root.toPath().resolve("batch-report-b.json")
+    val reports = analyzeBatchThroughEquinox(
+      bundles = listOf(currentA, currentB),
+      baselines = listOf(baselineA, baselineB),
+      outputReportPaths = listOf(reportPathA, reportPathB)
+    )
+
+    assertEquals(2, reports.size)
+    val (reportA, reportB) = reports
+
+    assertRemovedPublicMethodProblem(reportA, "org.example.batcha")
+    assertRemovedPublicMethodProblem(reportB, "org.example.batchb")
+
+    // The whole point of batching is sharing baseline construction across bundles in one JVM;
+    // this must not leak BaseApiAnalyzer problem state between the components it analyzed. A
+    // problem introduced only in bundle A's delta must never show up in bundle B's report, and
+    // vice versa.
+    assertTrue(
+      "Bundle B's report must not contain problems for bundle A",
+      reportB.problems.none { it.bundleSymbolicName == "org.example.batcha" }
+    )
+    assertTrue(
+      "Bundle A's report must not contain problems for bundle B",
+      reportA.problems.none { it.bundleSymbolicName == "org.example.batchb" }
+    )
+    assertTrue(
+      "Bundle A's report must not mention bundle B's removed method",
+      reportA.problems.none { problem -> problem.messageArguments.any { it.contains("removedFromB") } }
+    )
+    assertTrue(
+      "Bundle B's report must not mention bundle A's removed method",
+      reportB.problems.none { problem -> problem.messageArguments.any { it.contains("removedFromA") } }
+    )
+  }
+
+  @Test
   fun `runtime archive contains analyzer app and provisioned PDE runtime bundles`() {
     val runtimeArchive = analyzerRuntimeArchive()
     assumeTrue(
@@ -385,52 +474,46 @@ class DirectApiAnalyzerHarnessTest {
       )
     )
 
-  private fun analyzeBatchThroughEquinox(
-    bundles: List<AnalyzerBundleArtifact>,
-    baseline: AnalyzerBundleArtifact,
-    dependencies: List<AnalyzerBundleArtifact> = emptyList()
-  ): List<ApiAnalysisReport> {
-    val runtime = assembleRuntime()
-    val reports = mutableListOf<ApiAnalysisReport>()
-
-    for (i in bundles.indices) {
-      val reportPath = temp.root.toPath().resolve("batch-report-$i.json")
-      val inputPath = temp.root.toPath().resolve("batch-analyzer-input-$i.json")
-      inputPath.writeText(
-        DirectApiAnalyzerInputJson.write(
-          DirectApiAnalyzerInput(
-            currentBundle = bundles[i],
-            dependencyArtifacts = dependencies,
-            baselineArtifacts = listOf(baseline),
-            outputReportPath = reportPath
-          )
-        )
-      )
-
-      val process = ProcessBuilder(
-        javaExecutable().toString(),
-        "-jar", runtime.launcher.toString(),
-        "-application", DirectApiAnalyzerApplication.APPLICATION_ID,
-        "-data", runtime.workspace.toString(),
-        "-configuration", runtime.config.toString(),
-        "-consoleLog",
-        "--input", inputPath.toString()
-      )
-        .redirectErrorStream(true)
-        .start()
-      val output = process.inputStream.bufferedReader().readText()
-      assertTrue("Analyzer process timed out. Output:\n$output", process.waitFor(60, TimeUnit.SECONDS))
-      assertEquals("Analyzer process failed. Output:\n$output", 0, process.exitValue())
-      assertTrue("Analyzer process printed an Equinox framework error. Output:\n$output", "FrameworkEvent ERROR" !in output)
-      assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "LaunchManager.shutdown" !in output)
-      assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "DebugPlugin.stop" !in output)
-      assertTrue("Analyzer did not write report. Output:\n$output", reportPath.exists())
-      reports += ApiAnalysisReportJson.read(reportPath)
-    }
-
-    return reports
+    val output = runAnalyzerProcess(runtime, inputPath)
+    assertTrue("Analyzer did not write report. Output:\n$output", reportPath.exists())
+    return ApiAnalysisReportJson.read(reportPath)
   }
 
+  /**
+   * Launches a SINGLE analyzer process for every bundle in [bundles] at once, by writing one
+   * [BatchApiAnalyzerInput] input file (as the CLI does) instead of one input/process per bundle.
+   * Each bundle gets its own report path in [outputReportPaths] (same index correspondence as
+   * [bundles]/[baselines]).
+   */
+  private fun analyzeBatchThroughEquinox(
+    bundles: List<AnalyzerBundleArtifact>,
+    baselines: List<AnalyzerBundleArtifact>,
+    outputReportPaths: List<Path>,
+    dependencies: List<AnalyzerBundleArtifact> = emptyList()
+  ): List<ApiAnalysisReport> {
+    require(bundles.size == outputReportPaths.size) { "Expected one report path per current bundle" }
+    val runtime = assembleRuntime()
+    val inputPath = temp.root.toPath().resolve("batch-analyzer-input.json")
+    inputPath.writeText(
+      BatchApiAnalyzerInputJson.write(
+        BatchApiAnalyzerInput(
+          currentBundles = bundles.zip(outputReportPaths) { bundle, reportPath ->
+            CurrentBundleInfo(currentBundle = bundle, outputReportPath = reportPath)
+          },
+          dependencyArtifacts = dependencies,
+          baselineArtifacts = baselines
+        )
+      )
+    )
+
+    val output = runAnalyzerProcess(runtime, inputPath)
+    return outputReportPaths.map { reportPath ->
+      assertTrue("Analyzer did not write report $reportPath. Output:\n$output", reportPath.exists())
+      ApiAnalysisReportJson.read(reportPath)
+    }
+  }
+
+  private fun runAnalyzerProcess(runtime: RuntimePaths, inputPath: Path): String {
     val process = ProcessBuilder(
       javaExecutable().toString(),
       "-jar", runtime.launcher.toString(),
@@ -448,8 +531,7 @@ class DirectApiAnalyzerHarnessTest {
     assertTrue("Analyzer process printed an Equinox framework error. Output:\n$output", "FrameworkEvent ERROR" !in output)
     assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "LaunchManager.shutdown" !in output)
     assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "DebugPlugin.stop" !in output)
-    assertTrue("Analyzer did not write report. Output:\n$output", reportPath.exists())
-    return ApiAnalysisReportJson.read(reportPath)
+    return output
   }
 
   private fun assertRemovedPublicMethodProblem(report: ApiAnalysisReport, bsn: String) {
@@ -459,7 +541,11 @@ class DirectApiAnalyzerHarnessTest {
     } ?: error("Expected one removed public method compatibility problem in ${report.problems}")
     assertTrue("Problem id must be populated", problem.problemId != 0)
     assertTrue("Problem type must be populated", !problem.problemTypeName.isNullOrBlank())
-    assertTrue("Resource path must identify Example", problem.resourcePath?.contains("Example") == true)
+    // A "removed member" compatibility problem is a binary-only comparison against the baseline:
+    // there is no source line in the CURRENT bundle to point at (the member doesn't exist there
+    // anymore), so IApiProblem#resourcePath legitimately comes back null for it. The problem type
+    // name (the removed member's declaring type) is what identifies the fixture class instead.
+    assertTrue("Problem type must identify Example", problem.problemTypeName?.contains("Example") == true)
     assertEquals(bsn, problem.bundleSymbolicName)
     assertEquals("$bsn:1.0.0", problem.baselineComponentId)
     assertEquals("$bsn:1.1.0", problem.currentComponentId)
