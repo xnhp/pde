@@ -23,8 +23,6 @@ import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
 import cn.varsa.pde.resolver.api.BatchApiAnalyzerInput
 import cn.varsa.pde.resolver.api.BatchApiAnalyzerInputJson
 import cn.varsa.pde.resolver.api.CurrentBundleInfo
-import cn.varsa.pde.resolver.api.DirectApiAnalyzerInput
-import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
 import cn.varsa.pde.resolver.api.artifact.AnalyzerArtifactDiagnostic
 import cn.varsa.pde.resolver.api.artifact.AnalyzerArtifactDiagnosticSeverity
 import cn.varsa.pde.resolver.api.artifact.AnalyzerArtifactMaterializer
@@ -1844,27 +1842,29 @@ internal data class ApiAnalyzerRuntime(
 
 internal const val DIRECT_API_ANALYZER_APPLICATION_ID = "cn.varsa.pde.api_analyzer"
 
-internal data class DirectApiAnalyzerLaunchPlan(
-  val inputPath: Path,
-  val outputReportPath: Path,
-  val invocation: ApiAnalyzerInvocation
-)
-
 internal data class BatchApiAnalyzerLaunchPlan(
   val inputPath: Path,
   val outputReportPaths: List<Path>,
   val invocation: ApiAnalyzerInvocation
 )
 
-internal fun buildDirectApiAnalyzerInput(
+/** One selected bundle's resolved artifact set, before folding it into the batch input. */
+internal data class ResolvedAnalyzerBundleInput(
+  val currentBundle: AnalyzerBundleArtifact,
+  val dependencyArtifacts: List<AnalyzerBundleArtifact>,
+  val baselineArtifacts: List<AnalyzerBundleArtifact>,
+  val outputReportPath: Path,
+  val apiFilterFile: Path? = null
+)
+
+internal fun resolveAnalyzerBundleInput(
   currentBundleSymbolicName: String,
   currentArtifacts: List<AnalyzerBundleArtifact>,
   dependencyArtifacts: List<AnalyzerBundleArtifact>,
   baselineArtifacts: List<AnalyzerBundleArtifact>,
   outputReportPath: Path,
-  apiFilterFile: Path? = null,
-  preferences: Map<String, String> = emptyMap()
-): DirectApiAnalyzerInput {
+  apiFilterFile: Path? = null
+): ResolvedAnalyzerBundleInput {
   val currentMatches = currentArtifacts.filter { it.bundleSymbolicName == currentBundleSymbolicName }
   val currentBundle = when (currentMatches.size) {
     1 -> currentMatches.single()
@@ -1872,41 +1872,14 @@ internal fun buildDirectApiAnalyzerInput(
     else -> error("Multiple current analyzer artifacts for $currentBundleSymbolicName")
   }
   val currentPath = currentBundle.path.toAbsolutePath().normalize()
-  return DirectApiAnalyzerInput(
+  return ResolvedAnalyzerBundleInput(
     currentBundle = currentBundle,
     dependencyArtifacts = dependencyArtifacts
       .filterNot { it.path.toAbsolutePath().normalize() == currentPath }
       .distinctBy { it.path.toAbsolutePath().normalize().toString() },
     baselineArtifacts = baselineArtifacts.distinctBy { it.path.toAbsolutePath().normalize().toString() },
-    apiFilterFile = apiFilterFile,
-    preferences = preferences,
-    outputReportPath = outputReportPath
-  )
-}
-
-internal fun writeDirectApiAnalyzerLaunchPlan(
-  launcherExecutable: Path,
-  configurationDir: String,
-  dataDir: String,
-  applicationId: String,
-  inputPath: Path,
-  input: DirectApiAnalyzerInput,
-  logFile: Path? = null
-): DirectApiAnalyzerLaunchPlan {
-  inputPath.parent?.let { Files.createDirectories(it) }
-  input.outputReportPath.parent?.let { Files.createDirectories(it) }
-  Files.writeString(inputPath, DirectApiAnalyzerInputJson.write(input), StandardCharsets.UTF_8)
-  return DirectApiAnalyzerLaunchPlan(
-    inputPath = inputPath,
-    outputReportPath = input.outputReportPath,
-    invocation = ApiAnalyzerInvocation(
-      launcherExecutable = launcherExecutable,
-      configurationDir = configurationDir,
-      dataDir = dataDir,
-      applicationId = applicationId,
-      args = listOf("--input", inputPath.toString()),
-      logFile = logFile
-    )
+    outputReportPath = outputReportPath,
+    apiFilterFile = apiFilterFile
   )
 }
 
@@ -3879,7 +3852,7 @@ internal fun apiAnalyzeMain(
     } else {
       outputRoot.resolve("reports").resolve("$suffix.json")
     }
-    val builtInput = buildDirectApiAnalyzerInput(
+    val builtInput = resolveAnalyzerBundleInput(
       currentBundleSymbolicName = currentBsn,
       currentArtifacts = currentArtifacts.artifacts,
       dependencyArtifacts = dependencyArtifacts.artifacts,

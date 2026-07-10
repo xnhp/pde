@@ -29,7 +29,7 @@ import java.util.logging.Logger
 class DirectApiAnalyzerHarness(
   private val clock: Clock = Clock.systemUTC()
 ) {
-  /** Outcome of analyzing a single current bundle within a batch (or the batch-of-one used by [analyze]). */
+  /** Outcome of analyzing a single current bundle within a batch. */
   data class BundleAnalysisOutcome(
     val bundleSymbolicName: String,
     val report: ApiAnalysisReport? = null,
@@ -45,27 +45,6 @@ class DirectApiAnalyzerHarness(
    */
   data class BatchAnalysisResult(val outcomes: List<BundleAnalysisOutcome>) {
     val allSucceeded: Boolean get() = outcomes.all { it.succeeded }
-  }
-
-  /** Single-bundle convenience wrapper over [analyzeBatch]. Throws if analysis of the bundle failed. */
-  fun analyze(input: DirectApiAnalyzerInput): ApiAnalysisReport {
-    val result = analyzeBatch(
-      BatchApiAnalyzerInput(
-        currentBundles = listOf(
-          CurrentBundleInfo(
-            currentBundle = input.currentBundle,
-            outputReportPath = input.outputReportPath,
-            apiFilterPath = input.apiFilterFile
-          )
-        ),
-        dependencyArtifacts = input.dependencyArtifacts,
-        baselineArtifacts = input.baselineArtifacts,
-        preferences = input.preferences
-      )
-    )
-    val outcome = result.outcomes.single()
-    outcome.failure?.let { throw it }
-    return outcome.report ?: error("Analyzer produced no report for ${outcome.bundleSymbolicName}")
   }
 
   /**

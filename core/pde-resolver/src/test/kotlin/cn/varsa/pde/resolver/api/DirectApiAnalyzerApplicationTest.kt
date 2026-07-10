@@ -28,14 +28,20 @@ class DirectApiAnalyzerApplicationTest {
   }
 
   @Test
-  fun `round trips direct analyzer input manifest`() {
+  fun `round trips batch analyzer input manifest`() {
     val root = temp.root.toPath()
-    val input = DirectApiAnalyzerInput(
-      currentBundle = AnalyzerBundleArtifact(
-        bundleSymbolicName = "org.example.current",
-        version = "1.1.0",
-        path = root.resolve("current.jar"),
-        synthetic = true
+    val input = BatchApiAnalyzerInput(
+      currentBundles = listOf(
+        CurrentBundleInfo(
+          currentBundle = AnalyzerBundleArtifact(
+            bundleSymbolicName = "org.example.current",
+            version = "1.1.0",
+            path = root.resolve("current.jar"),
+            synthetic = true
+          ),
+          outputReportPath = root.resolve("report.json"),
+          apiFilterPath = root.resolve(".settings/.api_filters")
+        )
       ),
       dependencyArtifacts = listOf(
         AnalyzerBundleArtifact(
@@ -51,14 +57,12 @@ class DirectApiAnalyzerApplicationTest {
           path = root.resolve("baseline.jar")
         )
       ),
-      apiFilterFile = root.resolve(".settings/.api_filters"),
-      preferences = mapOf("api.severity" to "error"),
-      outputReportPath = root.resolve("report.json")
+      preferences = mapOf("api.severity" to "error")
     )
     val file = root.resolve("input.json")
-    java.nio.file.Files.writeString(file, DirectApiAnalyzerInputJson.write(input))
+    java.nio.file.Files.writeString(file, BatchApiAnalyzerInputJson.write(input))
 
-    val parsed = DirectApiAnalyzerInputJson.read(file)
+    val parsed = BatchApiAnalyzerInputJson.read(file)
 
     assertEquals(input, parsed)
   }

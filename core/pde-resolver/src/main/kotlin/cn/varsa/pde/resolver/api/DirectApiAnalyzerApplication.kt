@@ -1,11 +1,9 @@
 package cn.varsa.pde.resolver.api
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import org.eclipse.equinox.app.IApplication
 import org.eclipse.equinox.app.IApplicationContext
 import org.osgi.framework.Bundle
 import org.osgi.framework.FrameworkUtil
-import java.nio.file.Files
 import java.nio.file.Path
 
 class DirectApiAnalyzerApplication : IApplication {
@@ -13,7 +11,7 @@ class DirectApiAnalyzerApplication : IApplication {
     val args = applicationArgs(context)
     val inputPath = parseInputPath(args)
     return try {
-      val input = readAnalyzerInput(inputPath)
+      val input = BatchApiAnalyzerInputJson.read(inputPath)
       val result = DirectApiAnalyzerHarness().analyzeBatch(input)
       // Eclipse's launcher uses an Integer return value from IApplication#start as the process
       // exit code (IApplication.EXIT_OK is Integer 0). Continue-and-aggregate: every bundle in
@@ -31,8 +29,6 @@ class DirectApiAnalyzerApplication : IApplication {
     const val APPLICATION_ID = "cn.varsa.pde.api_analyzer"
     internal val EXIT_ANALYSIS_FAILED: Any = 1
 
-    private val jsonProbeMapper = ObjectMapper()
-
     internal fun parseInputPath(args: Array<String>): Path {
       args.forEach { arg ->
         if (arg.startsWith("--input=")) {
@@ -44,33 +40,6 @@ class DirectApiAnalyzerApplication : IApplication {
         "Missing analyzer input. Pass --input <path>."
       }
       return Path.of(args[index + 1])
-    }
-
-    /**
-     * Reads the analyzer input file, accepting both the batch format ("currentBundles") the CLI
-     * writes today and the legacy single-bundle format ("currentBundle") kept for callers that
-     * still construct a [DirectApiAnalyzerInput] directly (e.g. lower-level harness tests). The
-     * legacy format is treated as a batch of one.
-     */
-    internal fun readAnalyzerInput(path: Path): BatchApiAnalyzerInput {
-      val tree = jsonProbeMapper.readTree(Files.newInputStream(path))
-      return if (tree.has("currentBundles")) {
-        BatchApiAnalyzerInputJson.read(path)
-      } else {
-        val single = DirectApiAnalyzerInputJson.read(path)
-        BatchApiAnalyzerInput(
-          currentBundles = listOf(
-            CurrentBundleInfo(
-              currentBundle = single.currentBundle,
-              outputReportPath = single.outputReportPath,
-              apiFilterPath = single.apiFilterFile
-            )
-          ),
-          dependencyArtifacts = single.dependencyArtifacts,
-          baselineArtifacts = single.baselineArtifacts,
-          preferences = single.preferences
-        )
-      }
     }
 
     @Suppress("UNCHECKED_CAST")

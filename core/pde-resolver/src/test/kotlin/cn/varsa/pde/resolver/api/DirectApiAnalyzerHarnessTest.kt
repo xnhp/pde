@@ -454,30 +454,19 @@ class DirectApiAnalyzerHarnessTest {
     assertFalse("Launcher jar starts Equinox and must not be installed as a configured bundle", "org.eclipse.equinox.launcher," in text)
   }
 
+  /** Batch-of-one convenience wrapper over [analyzeBatchThroughEquinox] for single-bundle tests. */
   private fun analyzeThroughEquinox(
     current: AnalyzerBundleArtifact,
     baseline: AnalyzerBundleArtifact,
     dependencies: List<AnalyzerBundleArtifact> = emptyList(),
     extraBaselineArtifacts: List<AnalyzerBundleArtifact> = emptyList()
-  ): ApiAnalysisReport {
-    val runtime = assembleRuntime()
-    val reportPath = temp.root.toPath().resolve("report.json")
-    val inputPath = temp.root.toPath().resolve("analyzer-input.json")
-    inputPath.writeText(
-      DirectApiAnalyzerInputJson.write(
-        DirectApiAnalyzerInput(
-          currentBundle = current,
-          dependencyArtifacts = dependencies,
-          baselineArtifacts = listOf(baseline) + extraBaselineArtifacts,
-          outputReportPath = reportPath
-        )
-      )
-    )
-
-    val output = runAnalyzerProcess(runtime, inputPath)
-    assertTrue("Analyzer did not write report. Output:\n$output", reportPath.exists())
-    return ApiAnalysisReportJson.read(reportPath)
-  }
+  ): ApiAnalysisReport =
+    analyzeBatchThroughEquinox(
+      bundles = listOf(current),
+      baselines = listOf(baseline) + extraBaselineArtifacts,
+      outputReportPaths = listOf(temp.root.toPath().resolve("report.json")),
+      dependencies = dependencies
+    ).single()
 
   /**
    * Launches a SINGLE analyzer process for every bundle in [bundles] at once, by writing one

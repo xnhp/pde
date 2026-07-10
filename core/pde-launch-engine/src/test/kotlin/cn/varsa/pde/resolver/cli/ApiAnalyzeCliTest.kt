@@ -1,9 +1,9 @@
 package cn.varsa.pde.resolver.cli
 
 import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
+import cn.varsa.pde.resolver.api.BatchApiAnalyzerInput
 import cn.varsa.pde.resolver.api.BatchApiAnalyzerInputJson
-import cn.varsa.pde.resolver.api.DirectApiAnalyzerInput
-import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
+import cn.varsa.pde.resolver.api.CurrentBundleInfo
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -418,38 +418,42 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `direct analyzer launch plan writes input manifest and invocation args`() {
-    val baseDir = tmp.newFolder("direct-plan").toPath()
+  fun `batch analyzer launch plan writes input manifest and invocation args`() {
+    val baseDir = tmp.newFolder("batch-plan").toPath()
     val current = baseDir.resolve("current.jar")
     val dependency = baseDir.resolve("dependency.jar")
     val baseline = baseDir.resolve("baseline.jar")
     current.writeText("current")
     dependency.writeText("dependency")
     baseline.writeText("baseline")
-    val inputPath = baseDir.resolve("api-analyzer").resolve("input").resolve("org.example.api.json")
+    val inputPath = baseDir.resolve("api-analyzer").resolve("input").resolve("batch.json")
     val reportPath = baseDir.resolve("api-analyzer").resolve("reports").resolve("org.example.api.json")
 
-    val plan = writeDirectApiAnalyzerLaunchPlan(
+    val plan = writeBatchApiAnalyzerLaunchPlan(
       launcherExecutable = Path.of("/fake/api-analyzer"),
       configurationDir = baseDir.resolve("api-analyzer").resolve("configuration").toString(),
       dataDir = baseDir.resolve("api-analyzer").resolve("workspace").toString(),
       applicationId = "cn.varsa.pde.api_analyzer",
       inputPath = inputPath,
-      input = DirectApiAnalyzerInput(
-        currentBundle = AnalyzerBundleArtifact("org.example.api", "1.1.0", current),
+      input = BatchApiAnalyzerInput(
+        currentBundles = listOf(
+          CurrentBundleInfo(
+            currentBundle = AnalyzerBundleArtifact("org.example.api", "1.1.0", current),
+            outputReportPath = reportPath
+          )
+        ),
         dependencyArtifacts = listOf(AnalyzerBundleArtifact("org.example.dep", "1.0.0", dependency)),
-        baselineArtifacts = listOf(AnalyzerBundleArtifact("org.example.api", "1.0.0", baseline)),
-        outputReportPath = reportPath
+        baselineArtifacts = listOf(AnalyzerBundleArtifact("org.example.api", "1.0.0", baseline))
       )
     )
 
     assertEquals(inputPath, plan.inputPath)
-    assertEquals(reportPath, plan.outputReportPath)
+    assertEquals(listOf(reportPath), plan.outputReportPaths)
     assertEquals(listOf("--input", inputPath.toString()), plan.invocation.args)
     assertEquals("cn.varsa.pde.api_analyzer", plan.invocation.applicationId)
-    val roundTrip = DirectApiAnalyzerInputJson.read(inputPath)
-    assertEquals("org.example.api", roundTrip.currentBundle.bundleSymbolicName)
-    assertEquals(reportPath, roundTrip.outputReportPath)
+    val roundTrip = BatchApiAnalyzerInputJson.read(inputPath)
+    assertEquals("org.example.api", roundTrip.currentBundles.single().currentBundle.bundleSymbolicName)
+    assertEquals(reportPath, roundTrip.currentBundles.single().outputReportPath)
     assertEquals(listOf("org.example.dep"), roundTrip.dependencyArtifacts.map { it.bundleSymbolicName })
     assertEquals(listOf("org.example.api"), roundTrip.baselineArtifacts.map { it.bundleSymbolicName })
   }
@@ -489,7 +493,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `direct analyzer input selects current artifact and de-duplicates paths`() {
+  fun `resolved analyzer bundle input selects current artifact and de-duplicates paths`() {
     val baseDir = tmp.newFolder("direct-input").toPath()
     val current = baseDir.resolve("current.jar")
     val dependency = baseDir.resolve("dependency.jar")
@@ -501,7 +505,7 @@ class ApiAnalyzeCliTest {
     val reportPath = baseDir.resolve("reports").resolve("org.example.api.json")
     val filters = baseDir.resolve(".settings").resolve(".api_filters")
 
-    val input = buildDirectApiAnalyzerInput(
+    val input = resolveAnalyzerBundleInput(
       currentBundleSymbolicName = "org.example.api",
       currentArtifacts = listOf(AnalyzerBundleArtifact("org.example.api", "1.1.0", current)),
       dependencyArtifacts = listOf(
@@ -514,14 +518,12 @@ class ApiAnalyzeCliTest {
         AnalyzerBundleArtifact("org.example.api", "1.0.0", baseline.toAbsolutePath().normalize())
       ),
       outputReportPath = reportPath,
-      apiFilterFile = filters,
-      preferences = mapOf("problem" to "warning")
+      apiFilterFile = filters
     )
 
     assertEquals("org.example.api", input.currentBundle.bundleSymbolicName)
     assertEquals(reportPath, input.outputReportPath)
     assertEquals(filters, input.apiFilterFile)
-    assertEquals(mapOf("problem" to "warning"), input.preferences)
     assertEquals(listOf("org.example.dep"), input.dependencyArtifacts.map { it.bundleSymbolicName })
     assertEquals(listOf("org.example.api"), input.baselineArtifacts.map { it.bundleSymbolicName })
   }

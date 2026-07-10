@@ -5,15 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.nio.file.Path
 
-data class DirectApiAnalyzerInput(
-  val currentBundle: AnalyzerBundleArtifact,
-  val dependencyArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
-  val baselineArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
-  val apiFilterFile: Path? = null,
-  val preferences: Map<String, String> = emptyMap(),
-  val outputReportPath: Path
-)
-
 data class BatchApiAnalyzerInput(
   val currentBundles: List<CurrentBundleInfo> = emptyList(),
   val dependencyArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
@@ -73,18 +64,6 @@ object ApiAnalysisReportJson {
 
   fun read(path: Path): ApiAnalysisReport =
     mapper.readValue(path.toFile(), ApiAnalysisReport::class.java)
-}
-
-object DirectApiAnalyzerInputJson {
-  private val mapper = ObjectMapper()
-    .registerModule(KotlinModule.Builder().build())
-    .setSerializationInclusion(JsonInclude.Include.NON_NULL)
-
-  fun write(input: DirectApiAnalyzerInput): String =
-    mapper.writerWithDefaultPrettyPrinter().writeValueAsString(input)
-
-  fun read(path: Path): DirectApiAnalyzerInput =
-    mapper.readValue(path.toFile(), DirectApiAnalyzerInput::class.java)
 }
 
 object BatchApiAnalyzerInputJson {
