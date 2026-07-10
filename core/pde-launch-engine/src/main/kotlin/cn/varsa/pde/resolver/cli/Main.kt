@@ -3898,6 +3898,7 @@ internal fun apiAnalyzeMain(
     ),
     logFile = batchLogFile
   ).invocation
+  logger.info("Launching one analyzer JVM for ${currentBundleInfos.size} bundle(s): ${currentBsns.sorted().joinToString(", ")}")
   return analyzerRunner(invocation)
 }
 

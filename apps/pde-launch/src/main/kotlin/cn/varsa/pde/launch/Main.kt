@@ -157,7 +157,7 @@ private val apiAnalyzePositionals = listOf(
 private val apiAnalyzeOptions = listOf(
   CliOption(listOf("--config"), "Path to launch config YAML (defaults to discovered pde.yaml)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log-level"), "Log level (trace, debug, info, warn, error)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--log"), "Write analyzer launcher output log (per-bundle suffixes when analyzing multiple bundles)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--log"), "Write the analyzer launcher output log (one shared log for the whole batch invocation)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable verbose logging"),
   CliOption(listOf("--debug"), "Enable debug logging"),
   CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
