@@ -362,6 +362,7 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage: pde api-analyze"))
     assertTrue(output.contains("--baseline-root=String"))
+    assertTrue(output.contains("--bundle=String"))
     assertTrue(output.contains("--report=String"))
     assertTrue(!output.contains("--application"))
   }

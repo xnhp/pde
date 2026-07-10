@@ -5,7 +5,7 @@ import org.junit.Test
 
 class ApiAnalysisReportJsonTest {
   @Test
-  fun `writes stable structured report json`() {
+  fun `writes stable schema v2 report contract for api filters`() {
     val report = ApiAnalysisReport(
       generatedAt = "2026-07-07T00:00:00Z",
       tool = "pde api-analyze",
@@ -13,7 +13,11 @@ class ApiAnalysisReportJsonTest {
         ApiAnalysisProblem(
           problemRef = "P000001",
           problemId = 643842064,
-          messageArguments = listOf("A", "B"),
+          messageArguments = listOf(
+            "org.example.Type",
+            "public <T extends java.lang.Comparable<T>> T convert(java.util.List<T> values)",
+            "java.util.Map<java.lang.String, java.util.List<T>>"
+          ),
           problemTypeName = "org.example.Type",
           resourcePath = "src/org/example/Type.java",
           severity = "error",
@@ -40,7 +44,7 @@ class ApiAnalysisReportJsonTest {
         "problems" : [ {
           "problemRef" : "P000001",
           "problemId" : 643842064,
-          "messageArguments" : [ "A", "B" ],
+          "messageArguments" : [ "org.example.Type", "public <T extends java.lang.Comparable<T>> T convert(java.util.List<T> values)", "java.util.Map<java.lang.String, java.util.List<T>>" ],
           "problemTypeName" : "org.example.Type",
           "resourcePath" : "src/org/example/Type.java",
           "severity" : "error",

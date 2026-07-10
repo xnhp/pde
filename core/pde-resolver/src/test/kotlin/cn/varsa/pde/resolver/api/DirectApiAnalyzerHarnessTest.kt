@@ -67,10 +67,7 @@ class DirectApiAnalyzerHarnessTest {
 
     val report = analyzeThroughEquinox(current = current, baseline = baseline)
 
-    assertTrue(report.problems.toString(), report.problems.any { problem ->
-      problem.category == "compatibility" &&
-        problem.messageArguments.any { it.contains("removed") || it.contains("Example") }
-    })
+    assertRemovedPublicMethodProblem(report, "org.example.api")
     assertEquals(report, ApiAnalysisReportJson.read(temp.root.toPath().resolve("report.json")))
   }
 
@@ -90,6 +87,60 @@ class DirectApiAnalyzerHarnessTest {
     val report = analyzeThroughEquinox(current = current, baseline = baseline)
 
     assertEquals(emptyList<ApiAnalysisProblem>(), report.problems)
+  }
+
+  @Test
+  fun `emits zero problems when baseline artifact is an exploded directory`() {
+    val sources = mapOf(
+      "org/example/api/Example.java" to """
+        package org.example.api;
+        public class Example {
+          public void kept() {}
+        }
+      """.trimIndent()
+    )
+    val baseline = bundleJar("org.example.explodedbaseline", "1.0.0", sources, layout = BundleLayout.EXPLODED)
+    val current = bundleJar("org.example.explodedbaseline", "1.0.0", sources)
+
+    val report = analyzeThroughEquinox(current = current, baseline = baseline)
+
+    assertTrue("Baseline fixture must be an exploded directory", baseline.path.isDirectory())
+    assertEquals(emptyList<ApiAnalysisProblem>(), report.problems)
+  }
+
+  @Test
+  fun `reports removed public method when baseline artifact is an exploded directory`() {
+    val baseline = bundleJar(
+      bsn = "org.example.explodedapi",
+      version = "1.0.0",
+      layout = BundleLayout.EXPLODED,
+      sources = mapOf(
+        "org/example/explodedapi/Example.java" to """
+          package org.example.explodedapi;
+          public class Example {
+            public void kept() {}
+            public void removed() {}
+          }
+        """.trimIndent()
+      )
+    )
+    val current = bundleJar(
+      bsn = "org.example.explodedapi",
+      version = "1.1.0",
+      sources = mapOf(
+        "org/example/explodedapi/Example.java" to """
+          package org.example.explodedapi;
+          public class Example {
+            public void kept() {}
+          }
+        """.trimIndent()
+      )
+    )
+
+    val report = analyzeThroughEquinox(current = current, baseline = baseline)
+
+    assertTrue("Baseline fixture must be an exploded directory", baseline.path.isDirectory())
+    assertRemovedPublicMethodProblem(report, "org.example.explodedapi")
   }
 
   @Test
@@ -123,6 +174,38 @@ class DirectApiAnalyzerHarnessTest {
   }
 
   @Test
+  fun `uses dependency artifact supplied as an exploded directory while resolving current bundle`() {
+    val dependency = bundleJar(
+      bsn = "org.example.dep",
+      version = "1.0.0",
+      layout = BundleLayout.EXPLODED,
+      sources = mapOf(
+        "org/example/dep/Dep.java" to """
+          package org.example.dep;
+          public class Dep {}
+        """.trimIndent()
+      )
+    )
+    val sources = mapOf(
+      "org/example/api/UsesDep.java" to """
+        package org.example.api;
+        import org.example.dep.Dep;
+        public class UsesDep {
+          public Dep dep() { return null; }
+        }
+      """.trimIndent()
+    )
+    val requireBundle = "org.example.dep;bundle-version=\"[1.0.0,2.0.0)\""
+    val baseline = bundleJar("org.example.explodedrequires", "1.0.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+    val current = bundleJar("org.example.explodedrequires", "1.1.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+
+    val report = analyzeThroughEquinox(current = current, baseline = baseline, dependencies = listOf(dependency))
+
+    assertTrue("Dependency fixture must be an exploded directory", dependency.path.isDirectory())
+    assertTrue(report.problems.none { it.category == "component-resolution" })
+  }
+
+  @Test
   fun `uses dependency artifact with nested bundle classpath while resolving current bundle`() {
     val dependency = bundleJar(
       bsn = "org.example.dep",
@@ -150,6 +233,40 @@ class DirectApiAnalyzerHarnessTest {
 
     val report = analyzeThroughEquinox(current = current, baseline = baseline, dependencies = listOf(dependency))
 
+    assertTrue(report.problems.none { it.category == "component-resolution" })
+  }
+
+  @Test
+  fun `uses exploded dependency artifact with nested bundle classpath while resolving current bundle`() {
+    val dependency = bundleJar(
+      bsn = "org.example.dep",
+      version = "1.0.0.v202607011545",
+      layout = BundleLayout.EXPLODED,
+      sources = mapOf(
+        "org/example/dep/Dep.java" to """
+          package org.example.dep;
+          public class Dep {}
+        """.trimIndent()
+      ),
+      nestedClasspath = true
+    )
+    val sources = mapOf(
+      "org/example/api/UsesDep.java" to """
+        package org.example.api;
+        import org.example.dep.Dep;
+        public class UsesDep {
+          public Dep dep() { return null; }
+        }
+      """.trimIndent()
+    )
+    val requireBundle = "org.example.dep;bundle-version=\"[1.0.0,2.0.0)\""
+    val baseline = bundleJar("org.example.explodednested", "1.0.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+    val current = bundleJar("org.example.explodednested", "1.1.0", sources, requireBundle = requireBundle, classpath = listOf(dependency))
+
+    val report = analyzeThroughEquinox(current = current, baseline = baseline, dependencies = listOf(dependency))
+
+    assertTrue("Dependency fixture must be an exploded directory", dependency.path.isDirectory())
+    assertTrue("Nested classpath jar must exist in exploded dependency", dependency.path.resolve("${dependency.bundleSymbolicName}-classes.jar").isRegularFile())
     assertTrue(report.problems.none { it.category == "component-resolution" })
   }
 
@@ -268,6 +385,52 @@ class DirectApiAnalyzerHarnessTest {
       )
     )
 
+  private fun analyzeBatchThroughEquinox(
+    bundles: List<AnalyzerBundleArtifact>,
+    baseline: AnalyzerBundleArtifact,
+    dependencies: List<AnalyzerBundleArtifact> = emptyList()
+  ): List<ApiAnalysisReport> {
+    val runtime = assembleRuntime()
+    val reports = mutableListOf<ApiAnalysisReport>()
+
+    for (i in bundles.indices) {
+      val reportPath = temp.root.toPath().resolve("batch-report-$i.json")
+      val inputPath = temp.root.toPath().resolve("batch-analyzer-input-$i.json")
+      inputPath.writeText(
+        DirectApiAnalyzerInputJson.write(
+          DirectApiAnalyzerInput(
+            currentBundle = bundles[i],
+            dependencyArtifacts = dependencies,
+            baselineArtifacts = listOf(baseline),
+            outputReportPath = reportPath
+          )
+        )
+      )
+
+      val process = ProcessBuilder(
+        javaExecutable().toString(),
+        "-jar", runtime.launcher.toString(),
+        "-application", DirectApiAnalyzerApplication.APPLICATION_ID,
+        "-data", runtime.workspace.toString(),
+        "-configuration", runtime.config.toString(),
+        "-consoleLog",
+        "--input", inputPath.toString()
+      )
+        .redirectErrorStream(true)
+        .start()
+      val output = process.inputStream.bufferedReader().readText()
+      assertTrue("Analyzer process timed out. Output:\n$output", process.waitFor(60, TimeUnit.SECONDS))
+      assertEquals("Analyzer process failed. Output:\n$output", 0, process.exitValue())
+      assertTrue("Analyzer process printed an Equinox framework error. Output:\n$output", "FrameworkEvent ERROR" !in output)
+      assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "LaunchManager.shutdown" !in output)
+      assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "DebugPlugin.stop" !in output)
+      assertTrue("Analyzer did not write report. Output:\n$output", reportPath.exists())
+      reports += ApiAnalysisReportJson.read(reportPath)
+    }
+
+    return reports
+  }
+
     val process = ProcessBuilder(
       javaExecutable().toString(),
       "-jar", runtime.launcher.toString(),
@@ -287,6 +450,19 @@ class DirectApiAnalyzerHarnessTest {
     assertTrue("Analyzer process printed the old shutdown exception. Output:\n$output", "DebugPlugin.stop" !in output)
     assertTrue("Analyzer did not write report. Output:\n$output", reportPath.exists())
     return ApiAnalysisReportJson.read(reportPath)
+  }
+
+  private fun assertRemovedPublicMethodProblem(report: ApiAnalysisReport, bsn: String) {
+    val problem = report.problems.singleOrNull { problem ->
+      problem.category == "compatibility" &&
+        problem.messageArguments.any { it.contains("removed") || it.contains("Example") }
+    } ?: error("Expected one removed public method compatibility problem in ${report.problems}")
+    assertTrue("Problem id must be populated", problem.problemId != 0)
+    assertTrue("Problem type must be populated", !problem.problemTypeName.isNullOrBlank())
+    assertTrue("Resource path must identify Example", problem.resourcePath?.contains("Example") == true)
+    assertEquals(bsn, problem.bundleSymbolicName)
+    assertEquals("$bsn:1.0.0", problem.baselineComponentId)
+    assertEquals("$bsn:1.1.0", problem.currentComponentId)
   }
 
   private fun assembleRuntime(): RuntimePaths {
@@ -507,7 +683,8 @@ class DirectApiAnalyzerHarnessTest {
     sources: Map<String, String>,
     requireBundle: String? = null,
     classpath: List<AnalyzerBundleArtifact> = emptyList(),
-    nestedClasspath: Boolean = false
+    nestedClasspath: Boolean = false,
+    layout: BundleLayout = BundleLayout.PACKED
   ): AnalyzerBundleArtifact {
     val dir = Files.createTempDirectory(temp.root.toPath(), "${bsn.replace('.', '-')}-${version.replace('.', '-')}-")
     val classes = dir.resolve("classes")
@@ -518,9 +695,11 @@ class DirectApiAnalyzerHarnessTest {
       Files.writeString(file, content)
     }
     compileJava(dir.resolve("src"), classes, javacClasspath(classpath))
-    val jar = dir.resolve("$bsn-$version.jar")
-    writeBundleJar(jar, classes, bsn, version, requireBundle, nestedClasspath)
-    return AnalyzerBundleArtifact(bsn, version, jar)
+    val artifact = when (layout) {
+      BundleLayout.PACKED -> dir.resolve("$bsn-$version.jar").also { writeBundleJar(it, classes, bsn, version, requireBundle, nestedClasspath) }
+      BundleLayout.EXPLODED -> dir.resolve("$bsn-$version").also { writeBundleDirectory(it, classes, bsn, version, requireBundle, nestedClasspath) }
+    }
+    return AnalyzerBundleArtifact(bsn, version, artifact)
   }
 
   private fun compileJava(sourceRoot: Path, outputRoot: Path, classpath: List<Path>) {
@@ -538,7 +717,11 @@ class DirectApiAnalyzerHarnessTest {
   }
 
   private fun javacClasspath(artifacts: List<AnalyzerBundleArtifact>): List<Path> = artifacts.flatMap { artifact ->
-    val nestedClassesJar = artifact.path.parent.resolve("${artifact.bundleSymbolicName}-classes.jar")
+    val nestedClassesJar = if (artifact.path.isDirectory()) {
+      artifact.path.resolve("${artifact.bundleSymbolicName}-classes.jar")
+    } else {
+      artifact.path.parent.resolve("${artifact.bundleSymbolicName}-classes.jar")
+    }
     if (nestedClassesJar.isRegularFile()) listOf(artifact.path, nestedClassesJar) else listOf(artifact.path)
   }
 
@@ -547,16 +730,7 @@ class DirectApiAnalyzerHarnessTest {
     if (nestedClasspath) {
       writeClassesJar(nestedJar, classes)
     }
-    val manifest = Manifest().apply {
-      mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
-      mainAttributes.putValue("Bundle-ManifestVersion", "2")
-      mainAttributes.putValue("Bundle-SymbolicName", bsn)
-      mainAttributes.putValue("Bundle-Version", version)
-      mainAttributes.putValue("Bundle-Name", bsn)
-      mainAttributes.putValue("Bundle-ClassPath", if (nestedClasspath) nestedJar.name else ".")
-      mainAttributes.putValue("Export-Package", "$bsn;version=\"$version\"")
-      requireBundle?.let { mainAttributes.putValue("Require-Bundle", it) }
-    }
+    val manifest = bundleManifest(bsn, version, requireBundle, if (nestedClasspath) nestedJar.name else ".")
     JarOutputStream(path.outputStream(), manifest).use { jar ->
       if (nestedClasspath) {
         jar.putNextEntry(JarEntry(nestedJar.name))
@@ -566,6 +740,29 @@ class DirectApiAnalyzerHarnessTest {
         addClassesToJar(jar, classes)
       }
     }
+  }
+
+  private fun writeBundleDirectory(path: Path, classes: Path, bsn: String, version: String, requireBundle: String?, nestedClasspath: Boolean) {
+    path.resolve("META-INF").createDirectories()
+    val nestedJar = path.resolve("$bsn-classes.jar")
+    val manifest = bundleManifest(bsn, version, requireBundle, if (nestedClasspath) nestedJar.name else ".")
+    path.resolve("META-INF/MANIFEST.MF").outputStream().use(manifest::write)
+    if (nestedClasspath) {
+      writeClassesJar(nestedJar, classes)
+    } else {
+      copyDirectory(classes, path)
+    }
+  }
+
+  private fun bundleManifest(bsn: String, version: String, requireBundle: String?, bundleClasspath: String): Manifest = Manifest().apply {
+    mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
+    mainAttributes.putValue("Bundle-ManifestVersion", "2")
+    mainAttributes.putValue("Bundle-SymbolicName", bsn)
+    mainAttributes.putValue("Bundle-Version", version)
+    mainAttributes.putValue("Bundle-Name", bsn)
+    mainAttributes.putValue("Bundle-ClassPath", bundleClasspath)
+    mainAttributes.putValue("Export-Package", "$bsn;version=\"$version\"")
+    requireBundle?.let { mainAttributes.putValue("Require-Bundle", it) }
   }
 
   private fun writeClassesJar(path: Path, classes: Path) {
@@ -588,4 +785,5 @@ class DirectApiAnalyzerHarnessTest {
   private data class RuntimePaths(val config: Path, val workspace: Path, val launcher: Path)
   private data class BundleMetadata(val bsn: String, val version: String)
   private data class BundleEntry(val bsn: String, val version: String, val location: String)
+  private enum class BundleLayout { PACKED, EXPLODED }
 }

@@ -38,26 +38,43 @@ class AnalyzerArtifactMaterializerTest {
   }
 
   @Test
-  fun `converts exploded target bundle to valid jar preserving manifest resources and nested jars`() {
+  fun `passes exploded target bundle directories through unchanged`() {
     val bundleDir = temp.newFolder("org.example.exploded").toPath()
     writeManifest(bundleDir, "org.example.exploded", "1.0.0", extraHeaders = mapOf("Bundle-ClassPath" to ".,lib/nested.jar"))
     Files.createDirectories(bundleDir.resolve("lib"))
-    Files.createDirectories(bundleDir.resolve("OSGI-INF"))
-    Files.writeString(bundleDir.resolve("OSGI-INF/component.xml"), "<component/>")
     Files.write(bundleDir.resolve("lib/nested.jar"), byteArrayOf(1, 2, 3))
     val bundle = ResolvedBundle(bundleDir, readDirectoryManifest(bundleDir), isDirectory = true)
 
     val result = materialize(targetBundles = listOf(bundle))
 
     assertEquals(1, result.artifacts.size)
-    assertTrue(result.artifacts.single().synthetic)
-    JarFile(result.artifacts.single().path.toFile()).use { jar ->
-      assertEquals("org.example.exploded", jar.manifest.mainAttributes.getValue("Bundle-SymbolicName"))
-      assertTrue(jar.getEntry("OSGI-INF/component.xml") != null)
-      assertTrue(jar.getEntry("lib/nested.jar") != null)
-    }
-    assertTrue(result.diagnostics.any { it.type == AnalyzerArtifactDiagnosticType.EXPLODED_TARGET_BUNDLE })
-    assertTrue(result.diagnostics.any { it.type == AnalyzerArtifactDiagnosticType.NESTED_JAR_WITHOUT_OSGI_IDENTITY })
+    assertEquals(bundleDir, result.artifacts.single().path)
+    assertFalse(result.artifacts.single().synthetic)
+    assertTrue(Files.list(temp.root.toPath().resolve("synthetic")).use { it.noneMatch(Files::isRegularFile) })
+    assertTrue(result.diagnostics.isEmpty())
+  }
+
+  @Test
+  fun `reports invalid target bundle artifact paths`() {
+    val missing = temp.root.toPath().resolve("missing.jar")
+    val bundle = ResolvedBundle(missing, BundleManifest.parse(manifest("org.example.missing", "1.0.0", emptyMap())), isDirectory = false)
+
+    val result = materialize(targetBundles = listOf(bundle))
+
+    assertTrue(result.artifacts.isEmpty())
+    assertEquals(AnalyzerArtifactDiagnosticType.INVALID_BUNDLE_ARTIFACT, result.diagnostics.single().type)
+  }
+
+  @Test
+  fun `reports target bundle artifacts without bundle identity`() {
+    val jar = temp.root.toPath().resolve("no-identity.jar")
+    JarOutputStream(Files.newOutputStream(jar), manifestWithoutBundleIdentity()).use { }
+    val bundle = ResolvedBundle(jar, readJarManifest(jar), isDirectory = false)
+
+    val result = materialize(targetBundles = listOf(bundle))
+
+    assertTrue(result.artifacts.isEmpty())
+    assertEquals(AnalyzerArtifactDiagnosticType.INVALID_BUNDLE_ARTIFACT, result.diagnostics.single().type)
   }
 
   @Test
@@ -162,6 +179,11 @@ class AnalyzerArtifactMaterializerTest {
     mainAttributes.putValue("Bundle-SymbolicName", bsn)
     mainAttributes.putValue("Bundle-Version", version)
     extraHeaders.forEach { (key, value) -> mainAttributes.putValue(key, value) }
+  }
+
+  private fun manifestWithoutBundleIdentity(): Manifest = Manifest().apply {
+    mainAttributes.putValue("Manifest-Version", "1.0")
+    mainAttributes.putValue("Bundle-ManifestVersion", "2")
   }
 
   private fun readDirectoryManifest(path: Path): BundleManifest =

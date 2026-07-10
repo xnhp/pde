@@ -101,7 +101,7 @@ class ApiFiltersTest {
   }
 
   @Test
-  fun `add-from-report consumes structured schema v2 report`() {
+  fun `add-from-report consumes schema v2 fixture report`() {
     val root = Files.createTempDirectory("api-filters-test")
     try {
       val bundleDir = createBundle(root, "org.example.bundle")
@@ -109,31 +109,8 @@ class ApiFiltersTest {
       val filterFile = bundleDir.resolve(".settings").resolve(".api_filters")
       Files.writeString(
         report,
-        """
-        {
-          "schemaVersion": 2,
-          "generatedAt": "2026-07-07T00:00:00Z",
-          "tool": "pde api-analyze",
-          "problems": [
-            {
-              "problemRef": "P000001",
-              "problemId": 643842064,
-              "messageArguments": ["A", "B", "C"],
-              "problemTypeName": "org.example.Type",
-              "resourcePath": "src/org/example/Type.java",
-              "severity": "error",
-              "line": 12,
-              "charStart": 4,
-              "charEnd": 18,
-              "sourceFile": "Type.java",
-              "bundleSymbolicName": "org.example.bundle",
-              "baselineComponentId": "org.example.bundle:1.0.0",
-              "currentComponentId": "org.example.bundle:2.0.0",
-              "apiFilterFile": "${filterFile.toAbsolutePath().normalize()}"
-            }
-          ]
-        }
-        """.trimIndent()
+        readResource("api-filters/schema-v2-report.json")
+          .replace("__API_FILTER_FILE__", filterFile.toAbsolutePath().normalize().toString())
       )
 
       val exit = apiFiltersMain(
@@ -141,8 +118,7 @@ class ApiFiltersTest {
           "add-from-report",
           "--report",
           report.toString(),
-          "--problem",
-          "P000001",
+          "--all",
           "--apply"
         )
       )
@@ -152,11 +128,28 @@ class ApiFiltersTest {
       assertTrue(content.contains("<component id=\"org.example.bundle\" version=\"2\""))
       assertTrue(content.contains("path=\"src/org/example/Type.java\""))
       assertTrue(content.contains("type=\"org.example.Type\""))
-      assertTrue(content.contains("<message_argument value=\"C\""))
+      assertEquals(1, occurrences(content, "<filter id=\"643842064\""))
+      val firstArg = content.indexOf("value=\"org.example.Type\"")
+      val secondArg = content.indexOf(
+        "value=\"public &lt;T extends java.lang.Comparable&lt;T&gt;&gt; T convert(java.util.List&lt;T&gt; values)\""
+      )
+      val thirdArg = content.indexOf(
+        "value=\"java.util.Map&lt;java.lang.String, java.util.List&lt;T&gt;&gt;\""
+      )
+      assertTrue(firstArg >= 0)
+      assertTrue(secondArg > firstArg)
+      assertTrue(thirdArg > secondArg)
     } finally {
       root.toFile().deleteRecursively()
     }
   }
+
+  private fun readResource(path: String): String =
+    javaClass.classLoader.getResource(path)?.readText()
+      ?: error("Missing test resource: $path")
+
+  private fun occurrences(text: String, needle: String): Int =
+    Regex(Regex.escape(needle)).findAll(text).count()
 
   private fun createBundle(root: Path, bsn: String): Path {
     val bundleDir = root.resolve(bsn)

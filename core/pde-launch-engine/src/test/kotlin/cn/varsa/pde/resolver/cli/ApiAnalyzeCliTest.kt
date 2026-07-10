@@ -6,6 +6,7 @@ import cn.varsa.pde.resolver.api.DirectApiAnalyzerInputJson
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -130,6 +131,127 @@ class ApiAnalyzeCliTest {
     assertEquals(1, invocations.size)
     val input = DirectApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
     assertEquals(reportPath, input.outputReportPath)
+  }
+
+  @Test
+  fun `api analyze only invokes analyzer for selected workspace bundle`() {
+    val baseDir = tmp.newFolder("cfg-direct-bundle").toPath()
+    val apiWorkspace = tmp.newFolder("workspace-direct-bundle-api").toPath()
+    val otherWorkspace = tmp.newFolder("workspace-direct-bundle-other").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(apiWorkspace, compiledOutput = true, bsn = "org.example.api")
+    createWorkspaceBundle(otherWorkspace, compiledOutput = true, bsn = "org.example.other")
+    val configFile = writeMultiBundleConfigFile(baseDir, apiWorkspace, otherWorkspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
+        "--bundle", "org.example.other"
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(1, invocations.size)
+    val input = DirectApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertEquals("org.example.other", input.currentBundle.bundleSymbolicName)
+  }
+
+  @Test
+  fun `api analyze direct app keeps target and baseline directory artifacts and plans baseline once`() {
+    val baseDir = tmp.newFolder("cfg-direct-directory-artifacts").toPath()
+    val apiWorkspace = tmp.newFolder("workspace-direct-directory-artifacts-api").toPath()
+    val otherWorkspace = tmp.newFolder("workspace-direct-directory-artifacts-other").toPath()
+    createProfileWithFramework(baseDir)
+    val targetDependency = createTargetBundleDirectory(baseDir, "org.example.dep")
+    val apiBaseline = createTargetBundleDirectory(baseDir, "org.example.api", version = "0.9.0")
+    createTargetBundleDirectory(baseDir, "org.example.other", version = "0.9.0")
+    rewriteProfileArtifacts(baseDir)
+    createWorkspaceBundle(apiWorkspace, compiledOutput = true, bsn = "org.example.api")
+    createWorkspaceBundle(otherWorkspace, compiledOutput = true, bsn = "org.example.other")
+    val configFile = writeMultiBundleConfigFile(baseDir, apiWorkspace, otherWorkspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(2, invocations.size)
+    val inputs = invocations
+      .map { DirectApiAnalyzerInputJson.read(Path.of(it.valueAfter("--input"))) }
+      .sortedBy { it.currentBundle.bundleSymbolicName }
+    assertEquals(
+      listOf("org.example.api", "org.example.other"),
+      inputs.map { it.currentBundle.bundleSymbolicName }
+    )
+    val apiInput = inputs.first()
+    assertTrue(
+      apiInput.baselineArtifacts.any { artifact ->
+        artifact.bundleSymbolicName == "org.example.dep" &&
+          artifact.path.toAbsolutePath().normalize() == targetDependency.toAbsolutePath().normalize() &&
+          !artifact.synthetic
+      },
+      "Expected target baseline directory in ${apiInput.baselineArtifacts}"
+    )
+    assertTrue(apiInput.baselineArtifacts.any { artifact ->
+      artifact.bundleSymbolicName == "org.example.api" && artifact.path == apiBaseline && !artifact.synthetic
+    })
+    assertTrue(Files.isDirectory(targetDependency))
+    assertTrue(Files.isDirectory(apiBaseline))
+    assertEquals(
+      inputs.first().baselineArtifacts.map { it.path }.toSet(),
+      inputs.last().baselineArtifacts.map { it.path }.toSet()
+    )
+    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.api.json"), inputs.first().outputReportPath)
+    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.other.json"), inputs.last().outputReportPath)
+    assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.api")))
+    assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.other")))
+  }
+
+  @Test
+  fun `api analyze fails before launch when selected workspace bundle is missing`() {
+    val baseDir = tmp.newFolder("cfg-direct-bundle-missing").toPath()
+    val workspace = tmp.newFolder("workspace-direct-bundle-missing").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val runtimeResolutions = mutableListOf<Path>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
+        "--bundle", "org.example.missing"
+      ),
+      analyzerRuntimeResolver = { outputRoot ->
+        runtimeResolutions.add(outputRoot)
+        fakeAnalyzerRuntime(outputRoot)
+      },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, runtimeResolutions.size)
+    assertEquals(0, invocations.size)
   }
 
   @Test
@@ -419,23 +541,87 @@ class ApiAnalyzeCliTest {
     dataDir = outputRoot.resolve("workspace")
   )
 
-  private fun createWorkspaceBundle(dir: Path, compiledOutput: Boolean = false) {
+  private fun createWorkspaceBundle(dir: Path, compiledOutput: Boolean = false, bsn: String = "org.example.api") {
     val meta = dir.resolve("META-INF").createDirectories()
-    meta.resolve("MANIFEST.MF").writeText(
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-Name: Test API Bundle
-        Bundle-SymbolicName: org.example.api
-        Bundle-Version: 1.0.0
-        Bundle-ClassPath: .
-      """.trimIndent()
-    )
+    meta.resolve("MANIFEST.MF").writeText(buildString {
+      appendLine("Manifest-Version: 1.0")
+      appendLine("Bundle-ManifestVersion: 2")
+      appendLine("Bundle-Name: Test API Bundle")
+      appendLine("Bundle-SymbolicName: $bsn")
+      appendLine("Bundle-Version: 1.0.0")
+      appendLine("Bundle-ClassPath: .")
+    })
     dir.resolve("src").createDirectories()
     if (compiledOutput) {
       dir.resolve("build.properties").writeText("output.. = bin\n")
       dir.resolve("bin/org/example").createDirectories()
       dir.resolve("bin/org/example/Dummy.class").toFile().writeBytes(byteArrayOf(0xCA.toByte(), 0xFE.toByte()))
     }
+  }
+
+  private fun createTargetBundleDirectory(baseDir: Path, bsn: String, version: String = "1.0.0"): Path {
+    val bundleDir = baseDir.resolve("target").resolve("p2").resolve("bundle-pool")
+      .resolve("plugins").resolve("${bsn}_$version").createDirectories()
+    bundleDir.resolve("META-INF").createDirectories().resolve("MANIFEST.MF").writeText(
+      buildString {
+        appendLine("Manifest-Version: 1.0")
+        appendLine("Bundle-ManifestVersion: 2")
+        appendLine("Bundle-Name: $bsn")
+        appendLine("Bundle-SymbolicName: $bsn")
+        appendLine("Bundle-Version: $version")
+      }
+    )
+    return bundleDir
+  }
+
+  private fun rewriteProfileArtifacts(baseDir: Path) {
+    val p2Root = baseDir.resolve("target").resolve("p2")
+    val pool = p2Root.resolve("bundle-pool")
+    val plugins = pool.resolve("plugins")
+    val artifacts = Files.list(plugins).use { stream ->
+      stream.iterator().asSequence()
+        .filterNot { Files.isHidden(it) }
+        .mapNotNull { plugin ->
+          val name = plugin.fileName.toString().removeSuffix(".jar")
+          val separator = name.lastIndexOf('_')
+          if (separator <= 0) null else name.substring(0, separator) to name.substring(separator + 1)
+        }
+        .toList()
+    }
+    val profileFile = p2Root.resolve("org.eclipse.equinox.p2.engine")
+      .resolve("profileRegistry")
+      .resolve("profile.Profile")
+      .resolve("1.profile")
+    profileFile.writeText(
+      buildString {
+        appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+        appendLine("<profile id=\"profile\" timestamp=\"1\" version=\"1.0.0\">")
+        appendLine("  <properties>")
+        appendLine("    <property name=\"org.eclipse.equinox.p2.cache\" value=\"${pool.toUri()}\"/>")
+        appendLine("  </properties>")
+        appendLine("  <artifacts size=\"${artifacts.size}\">")
+        artifacts.forEach { (id, version) ->
+          appendLine("    <artifact classifier=\"osgi.bundle\" id=\"$id\" version=\"$version\"/>")
+        }
+        appendLine("  </artifacts>")
+        appendLine("</profile>")
+      }
+    )
+  }
+
+  private fun writeMultiBundleConfigFile(baseDir: Path, vararg workspaces: Path): Path {
+    val configFile = baseDir.resolve("pde.yaml")
+    configFile.writeText(
+      buildString {
+        appendLine("target:")
+        appendLine("  profileId: profile")
+        appendLine("  p2Path: target/p2")
+        appendLine("bundles:")
+        workspaces.forEach { workspace ->
+          appendLine("  - path: ${workspace.toAbsolutePath()}")
+        }
+      }
+    )
+    return configFile
   }
 }

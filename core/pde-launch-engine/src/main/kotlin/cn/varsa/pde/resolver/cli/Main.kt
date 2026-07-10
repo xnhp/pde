@@ -223,6 +223,7 @@ internal val apiAnalyzeOptionsRequiringValue = setOf(
   "--config",
   "--log",
   "--baseline-root",
+  "--bundle",
   "--report"
 )
 internal val targetMirrorOptionsRequiringValue = setOf(
@@ -2834,7 +2835,7 @@ private fun resolveApiAnalyzeBaselineRootPath(
 ): Path {
   val targetConfig = context.config.target
   fun resolveTargetConfigPath(path: String): Path = context.baseDir.resolve(path).normalize()
-  return when {
+  val baselineRoot = when {
     baselineRootValue != null -> Paths.get(baselineRootValue)
     !targetConfig?.apiBaselineRoot.isNullOrBlank() -> {
       logger.info("Using target.apiBaselineRoot from config as baseline root.")
@@ -2852,6 +2853,16 @@ private fun resolveApiAnalyzeBaselineRootPath(
       logger.info("Using target profile path as baseline root.")
       profilePath
     }
+  }
+  val configuredP2Root = targetConfig?.p2Path
+    ?.takeUnless { it.isBlank() }
+    ?.let(::resolveTargetConfigPath)
+    ?.toAbsolutePath()
+    ?.normalize()
+  return if (configuredP2Root != null && baselineRoot.toAbsolutePath().normalize() == configuredP2Root) {
+    profilePath
+  } else {
+    baselineRoot
   }
 }
 
@@ -3667,6 +3678,11 @@ internal fun apiAnalyzeMain(
     fullName = "report",
     description = "Write machine-readable API problem report JSON"
   )
+  val bundleFilters by parser.option(
+    ArgType.String,
+    fullName = "bundle",
+    description = "Analyze only the selected workspace bundle symbolic name (repeatable)"
+  ).multiple()
   val configPosOpt by parser.argument(
     ArgType.String,
     description = "Launch config YAML"
@@ -3726,11 +3742,24 @@ internal fun apiAnalyzeMain(
     return 2
   }
   val workspaceDescriptors = workspaceInputs.descriptors
-  val descriptorsToAnalyze = workspaceDescriptors.filter { descriptor ->
+  val nonTestDescriptors = workspaceDescriptors.filter { descriptor ->
     val bsn = descriptor.manifest.bundleSymbolicName?.key.orEmpty()
     !bsn.contains(".tests") && !bsn.endsWith(".test")
   }
-  val skippedCount = workspaceDescriptors.size - descriptorsToAnalyze.size
+  val requestedBundles = bundleFilters.toSet()
+  val descriptorsToAnalyze = if (requestedBundles.isEmpty()) {
+    nonTestDescriptors
+  } else {
+    nonTestDescriptors.filter { descriptor ->
+      descriptor.manifest.bundleSymbolicName?.key in requestedBundles
+    }
+  }
+  val missingBundles = requestedBundles - descriptorsToAnalyze.mapNotNull { it.manifest.bundleSymbolicName?.key }.toSet()
+  if (missingBundles.isNotEmpty()) {
+    logger.severe("No workspace bundle matched --bundle: ${missingBundles.joinToString(", ")}")
+    return 2
+  }
+  val skippedCount = workspaceDescriptors.size - nonTestDescriptors.size
   if (skippedCount > 0) {
     logger.info("Skipping $skippedCount test bundles for API analysis.")
   }
@@ -3771,6 +3800,11 @@ internal fun apiAnalyzeMain(
   val syntheticRoot = outputRoot.resolve("synthetic-artifacts")
   val directDependencyTargetBundles = selectedTargetBundlesForAnalyzer(dependencyPlan, targetIndex)
   val directBaselineTargetBundles = collectTargetBundles(baselineIndex)
+  val baselineArtifacts = AnalyzerArtifactMaterializer.materialize(
+    AnalyzerArtifactMaterializerInput(targetBundles = directBaselineTargetBundles),
+    AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("baseline"))
+  )
+  if (!logAnalyzerArtifactDiagnostics("baseline", baselineArtifacts.diagnostics)) return 2
   descriptorsToAnalyze.forEach { descriptor ->
     val label = descriptor.manifest.bundleSymbolicName?.key ?: descriptor.path.toString()
     logger.info("Running API analysis for $label")
@@ -3805,14 +3839,9 @@ internal fun apiAnalyzeMain(
       ),
       AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("dependencies").resolve(suffix))
     )
-    val baselineArtifacts = AnalyzerArtifactMaterializer.materialize(
-      AnalyzerArtifactMaterializerInput(targetBundles = directBaselineTargetBundles),
-      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("baseline").resolve(suffix))
-    )
     val diagnosticsOk = listOf(
       "current" to currentArtifacts.diagnostics,
-      "dependencies" to dependencyArtifacts.diagnostics,
-      "baseline" to baselineArtifacts.diagnostics
+      "dependencies" to dependencyArtifacts.diagnostics
     ).all { (scope, diagnostics) -> logAnalyzerArtifactDiagnostics("$label $scope", diagnostics) }
     if (!diagnosticsOk) return 2
     val reportPath = if (reportOpt != null && descriptorsToAnalyze.size == 1) {

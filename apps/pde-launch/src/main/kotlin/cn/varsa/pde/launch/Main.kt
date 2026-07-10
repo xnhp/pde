@@ -161,6 +161,7 @@ private val apiAnalyzeOptions = listOf(
   CliOption(listOf("--verbose", "-v"), "Enable verbose logging"),
   CliOption(listOf("--debug"), "Enable debug logging"),
   CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--bundle"), "Analyze only the selected workspace bundle BSN (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--report"), "Write JSON problem report (schemaVersion/problemRef/problemId/messageArgs/...) for downstream tools", takesValue = true, valueLabel = "String")
 )
 

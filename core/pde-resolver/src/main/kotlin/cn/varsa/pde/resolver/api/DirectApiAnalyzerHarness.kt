@@ -57,11 +57,29 @@ class DirectApiAnalyzerHarness(
     }
   }
 
+  fun analyzeBatch(input: BatchApiAnalyzerInput): List<ApiAnalysisReport> {
+    val reports = mutableListOf<ApiAnalysisReport>()
+    
+    for (bundleInfo in input.currentBundles) {
+      val singleInput = DirectApiAnalyzerInput(
+        currentBundle = bundleInfo.currentBundle,
+        dependencyArtifacts = input.dependencyArtifacts,
+        baselineArtifacts = input.baselineArtifacts,
+        apiFilterFile = bundleInfo.apiFilterPath,
+        preferences = input.preferences,
+        outputReportPath = bundleInfo.outputReportPath
+      )
+      reports += analyze(singleInput)
+    }
+    
+    return reports
+  }
+
   private fun createComponents(baseline: ApiBaseline, artifacts: List<AnalyzerBundleArtifact>): List<BundleComponent> =
     artifacts.mapIndexed { index, artifact ->
       BundleComponent(baseline, artifact.path.toAbsolutePath().normalize().toString(), index.toLong() + 1).also { component ->
         require(component.isValidBundle) {
-          "Analyzer artifact is not a valid OSGi bundle jar: ${artifact.path}"
+          "Analyzer artifact is not a valid OSGi bundle artifact: ${artifact.path}"
         }
       }
     }

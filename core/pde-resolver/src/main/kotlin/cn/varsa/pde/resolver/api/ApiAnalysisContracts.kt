@@ -14,6 +14,20 @@ data class DirectApiAnalyzerInput(
   val outputReportPath: Path
 )
 
+data class BatchApiAnalyzerInput(
+  val currentBundles: List<CurrentBundleInfo> = emptyList(),
+  val dependencyArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
+  val baselineArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
+  val apiFilterFile: Path? = null,
+  val preferences: Map<String, String> = emptyMap()
+)
+
+data class CurrentBundleInfo(
+  val currentBundle: AnalyzerBundleArtifact,
+  val outputReportPath: Path,
+  val apiFilterPath: Path? = null
+)
+
 data class AnalyzerBundleArtifact(
   val bundleSymbolicName: String,
   val version: String? = null,

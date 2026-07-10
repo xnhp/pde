@@ -9,7 +9,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
 import java.util.jar.JarEntry
-import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
 import java.util.jar.Manifest
 
@@ -38,8 +37,6 @@ data class AnalyzerArtifactDiagnostic(
 enum class AnalyzerArtifactDiagnosticSeverity { INFO, WARNING, ERROR }
 
 enum class AnalyzerArtifactDiagnosticType {
-  EXPLODED_TARGET_BUNDLE,
-  NESTED_JAR_WITHOUT_OSGI_IDENTITY,
   UNRESOLVED_REQUIRE_BUNDLE_PROVIDER,
   WORKSPACE_BUNDLE_WITHOUT_COMPILED_OUTPUT,
   INVALID_BUNDLE_ARTIFACT
@@ -64,24 +61,14 @@ object AnalyzerArtifactMaterializer {
           severity = AnalyzerArtifactDiagnosticSeverity.ERROR,
           type = AnalyzerArtifactDiagnosticType.INVALID_BUNDLE_ARTIFACT,
           path = bundle.location,
-          message = "Target bundle lacks Bundle-SymbolicName: ${bundle.location}"
+          message = "Target bundle artifact lacks Bundle-SymbolicName: ${bundle.location}"
         )
         return@forEach
       }
 
-      if (bundle.isDirectory) {
-        diagnostics += AnalyzerArtifactDiagnostic(
-          severity = AnalyzerArtifactDiagnosticSeverity.WARNING,
-          type = AnalyzerArtifactDiagnosticType.EXPLODED_TARGET_BUNDLE,
-          path = bundle.location,
-          bundleSymbolicName = bsn,
-          message = "Exploded target bundle would be ignored by BundleJarFiles; created synthetic jar"
-        )
-        val synthetic = syntheticRoot.resolve("${sanitize(bsn)}_${bundle.manifest.bundleVersion}.jar")
-        createJarFromDirectory(bundle.location, synthetic)
-        artifacts += AnalyzerBundleArtifact(bsn, bundle.manifest.bundleVersion.toString(), synthetic, bundle.location, synthetic = true)
-        manifests += synthetic to bundle.manifest
-        diagnostics += nestedJarDiagnostics(bundle.location, bsn)
+      if (Files.isDirectory(bundle.location)) {
+        artifacts += AnalyzerBundleArtifact(bsn, bundle.manifest.bundleVersion.toString(), bundle.location, synthetic = false)
+        manifests += bundle.location to bundle.manifest
       } else if (Files.isRegularFile(bundle.location)) {
         artifacts += AnalyzerBundleArtifact(bsn, bundle.manifest.bundleVersion.toString(), bundle.location, synthetic = false)
         manifests += bundle.location to bundle.manifest
@@ -129,26 +116,6 @@ object AnalyzerArtifactMaterializer {
 
     diagnostics += unresolvedRequireBundleDiagnostics(manifests)
     return AnalyzerArtifactMaterializerResult(artifacts = artifacts, diagnostics = diagnostics)
-  }
-
-  private fun createJarFromDirectory(source: Path, target: Path) {
-    val manifestPath = source.resolve("META-INF/MANIFEST.MF")
-    val manifest = Files.newInputStream(manifestPath).use(::Manifest)
-    target.parent?.let { Files.createDirectories(it) }
-    val written = linkedSetOf<String>()
-    JarOutputStream(Files.newOutputStream(target), manifest).use { jar ->
-      written += "META-INF/MANIFEST.MF"
-      Files.walk(source).use { stream ->
-        stream
-          .filter { Files.isRegularFile(it) }
-          .sorted()
-          .forEach { file ->
-            val entryName = source.relativize(file).toString().replace('\\', '/')
-            if (entryName == "META-INF/MANIFEST.MF") return@forEach
-            addFileEntry(jar, written, entryName, file)
-          }
-      }
-    }
   }
 
   private fun createWorkspaceJar(bundle: WorkspaceBundleDescriptor, compiledRoots: List<Path>, target: Path) {
@@ -200,31 +167,6 @@ object AnalyzerArtifactMaterializer {
       stream.anyMatch { Files.isRegularFile(it) && it.toString().endsWith(".class", ignoreCase = true) }
     }
     else -> false
-  }
-
-  private fun nestedJarDiagnostics(bundleDir: Path, bundleBsn: String): List<AnalyzerArtifactDiagnostic> {
-    val diagnostics = mutableListOf<AnalyzerArtifactDiagnostic>()
-    Files.walk(bundleDir).use { stream ->
-      stream
-        .filter { Files.isRegularFile(it) && it.toString().endsWith(".jar", ignoreCase = true) }
-        .forEach { jarPath ->
-          val hasIdentity = runCatching {
-            JarFile(jarPath.toFile()).use { jar ->
-              jar.manifest?.let { BundleManifest.parse(it).bundleSymbolicName?.key } != null
-            }
-          }.getOrDefault(false)
-          if (!hasIdentity) {
-            diagnostics += AnalyzerArtifactDiagnostic(
-              severity = AnalyzerArtifactDiagnosticSeverity.WARNING,
-              type = AnalyzerArtifactDiagnosticType.NESTED_JAR_WITHOUT_OSGI_IDENTITY,
-              path = jarPath,
-              bundleSymbolicName = bundleBsn,
-              message = "Nested jar does not provide an OSGi identity: $jarPath"
-            )
-          }
-        }
-    }
-    return diagnostics
   }
 
   private fun unresolvedRequireBundleDiagnostics(manifests: List<Pair<Path, BundleManifest>>): List<AnalyzerArtifactDiagnostic> {

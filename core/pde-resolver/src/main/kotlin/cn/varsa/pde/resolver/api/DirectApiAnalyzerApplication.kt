@@ -11,7 +11,8 @@ class DirectApiAnalyzerApplication : IApplication {
     val args = applicationArgs(context)
     val inputPath = parseInputPath(args)
     try {
-      DirectApiAnalyzerHarness().analyze(DirectApiAnalyzerInputJson.read(inputPath))
+      val input = DirectApiAnalyzerInputJson.read(inputPath)
+      DirectApiAnalyzerHarness().analyze(input)
     } finally {
       stopDebugBundlesBeforeRegistryShutdown()
     }
