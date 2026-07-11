@@ -410,6 +410,44 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
+  fun `api analyze pulls in target platform fragments of a selected host bundle`() {
+    // Regression test for issue #150: augmentTargetBundlesForRequireBundleProviders only walked
+    // Require-Bundle closures, never Fragment-Host. A fragment that attaches to a selected host at
+    // runtime but that nothing Require-Bundles (the normal case for fragments) was silently dropped
+    // from the analyzer's dependency artifact set even though it is genuinely present in the target
+    // platform, which can make component-resolution results for the host incomplete.
+    val baseDir = tmp.newFolder("cfg-fragment-host-closure").toPath()
+    val workspace = tmp.newFolder("workspace-fragment-host-closure").toPath()
+    createProfileWithFramework(baseDir)
+    createTargetBundleDirectory(baseDir, "org.example.host")
+    createTargetBundleDirectory(baseDir, "org.example.fragment", fragmentHost = "org.example.host")
+    rewriteProfileArtifacts(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true, requireBundle = "org.example.host")
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(1, invocations.size)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertTrue(
+      input.dependencyArtifacts.any { it.bundleSymbolicName == "org.example.fragment" },
+      "Expected org.example.fragment (Fragment-Host: org.example.host) in ${input.dependencyArtifacts}"
+    )
+  }
+
+  @Test
   fun `api analyze does not falsely flag current bundle Require-Bundle satisfied by dependency scope`() {
     // Regression test for the "current" direction of the cross-scope diagnostic bug: the current
     // workspace bundle's own materialize() call only ever sees its own manifest, so before the fix
@@ -881,7 +919,8 @@ class ApiAnalyzeCliTest {
     baseDir: Path,
     bsn: String,
     version: String = "1.0.0",
-    requireBundle: String? = null
+    requireBundle: String? = null,
+    fragmentHost: String? = null
   ): Path {
     val bundleDir = baseDir.resolve("target").resolve("p2").resolve("bundle-pool")
       .resolve("plugins").resolve("${bsn}_$version").createDirectories()
@@ -893,6 +932,7 @@ class ApiAnalyzeCliTest {
         appendLine("Bundle-SymbolicName: $bsn")
         appendLine("Bundle-Version: $version")
         if (requireBundle != null) appendLine("Require-Bundle: $requireBundle")
+        if (fragmentHost != null) appendLine("Fragment-Host: $fragmentHost")
       }
     )
     return bundleDir
