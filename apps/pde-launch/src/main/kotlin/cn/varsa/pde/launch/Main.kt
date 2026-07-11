@@ -200,9 +200,25 @@ internal val pdeCommand = CliCommandGroup(
           handler = { args -> IjInit.main(args) }
         ),
         CliCommandLeaf(
-          name = "jdtls",
+          name = "vscode",
+          description = "Generate VS Code multi-root workspace",
+          handler = { args -> VscodeInit.main(args) }
+        )
+      )
+    ),
+    CliCommandGroup(
+      name = "lsp",
+      description = "Java Language Server (JDT LS) integration",
+      children = listOf(
+        CliCommandLeaf(
+          name = "init",
           description = "Generate .project/.classpath for JDT LS",
           handler = { args -> JdtlsInitCommand.main(args) }
+        ),
+        CliCommandLeaf(
+          name = "run",
+          description = "Generate metadata and launch JDT LS for this workspace",
+          handler = { args -> LspRunCommand.main(args) }
         )
       )
     ),

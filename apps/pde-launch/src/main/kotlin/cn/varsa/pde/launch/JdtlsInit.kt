@@ -21,7 +21,7 @@ import java.nio.file.Paths
 
 object JdtlsInitCommand {
   fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde jdtls-init [WIP]")
+    val parser = ArgParser("pde lsp init")
     val configOpt by parser.option(
       ArgType.String,
       fullName = "config",
@@ -70,7 +70,8 @@ object JdtlsInitCommand {
       val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
       val targetIndex = resolveTargetIndex(context)
       val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex)
-      touchProjectile(issueDir)
+      touchProjectile(workingDir)
+      writeVscodeSettings(workingDir)
       println("Generated .project/.classpath for ${result.written} workspace bundles.")
       val projectConfigurationsOutValue = projectConfigurationsOut
       val projectConfigurationsPath = when {
@@ -117,6 +118,27 @@ private fun touchProjectile(issueDir: Path) {
   if (Files.notExists(projectile)) {
     Files.createFile(projectile)
   }
+}
+
+/**
+ * VS Code's redhat.java extension always runs its own bundled JDT LS (no way to point it
+ * at `pde lsp run`) and defaults to Maven/Gradle auto-import, which would hijack import for
+ * bundles that also carry a Tycho pom.xml. Disabling those importers falls the extension back
+ * to Eclipse project import, which picks up the .project/.classpath lsp init just wrote.
+ * Only written if absent, so we never clobber a user's existing settings.json.
+ */
+private fun writeVscodeSettings(issueDir: Path) {
+  val vscodeDir = issueDir.resolve(".vscode")
+  val settingsFile = vscodeDir.resolve("settings.json")
+  if (Files.exists(settingsFile)) return
+  Files.createDirectories(vscodeDir)
+  val json = """
+    {
+      "java.import.maven.enabled": false,
+      "java.import.gradle.enabled": false
+    }
+  """.trimIndent() + "\n"
+  Files.writeString(settingsFile, json, StandardCharsets.UTF_8)
 }
 
 private fun writeWorkspaceConfigs(
