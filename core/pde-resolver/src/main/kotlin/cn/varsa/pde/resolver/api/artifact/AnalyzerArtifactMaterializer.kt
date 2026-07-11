@@ -23,7 +23,8 @@ data class AnalyzerArtifactMaterializerInput(
 
 data class AnalyzerArtifactMaterializerResult(
   val artifacts: List<AnalyzerBundleArtifact>,
-  val diagnostics: List<AnalyzerArtifactDiagnostic>
+  val diagnostics: List<AnalyzerArtifactDiagnostic>,
+  val manifests: List<Pair<Path, BundleManifest>> = emptyList()
 )
 
 data class AnalyzerArtifactDiagnostic(
@@ -45,7 +46,8 @@ enum class AnalyzerArtifactDiagnosticType {
 object AnalyzerArtifactMaterializer {
   fun materialize(
     input: AnalyzerArtifactMaterializerInput,
-    options: AnalyzerArtifactMaterializerOptions
+    options: AnalyzerArtifactMaterializerOptions,
+    computeRequireBundleDiagnostics: Boolean = true
   ): AnalyzerArtifactMaterializerResult {
     val syntheticRoot = options.syntheticRoot.toAbsolutePath().normalize()
     Files.createDirectories(syntheticRoot)
@@ -114,8 +116,10 @@ object AnalyzerArtifactMaterializer {
       manifests += synthetic to bundle.manifest
     }
 
-    diagnostics += unresolvedRequireBundleDiagnostics(manifests)
-    return AnalyzerArtifactMaterializerResult(artifacts = artifacts, diagnostics = diagnostics)
+    if (computeRequireBundleDiagnostics) {
+      diagnostics += unresolvedRequireBundleDiagnostics(manifests)
+    }
+    return AnalyzerArtifactMaterializerResult(artifacts = artifacts, diagnostics = diagnostics, manifests = manifests)
   }
 
   private fun createWorkspaceJar(bundle: WorkspaceBundleDescriptor, compiledRoots: List<Path>, target: Path) {
@@ -169,7 +173,16 @@ object AnalyzerArtifactMaterializer {
     else -> false
   }
 
-  private fun unresolvedRequireBundleDiagnostics(manifests: List<Pair<Path, BundleManifest>>): List<AnalyzerArtifactDiagnostic> {
+  /**
+   * Checks each manifest's Require-Bundle entries against providers drawn from [manifests] itself
+   * -- i.e. the manifests to check ARE the provider universe. Callers that only materialize a
+   * narrow slice of the real analyzer input in one [materialize] call (e.g. "current bundle" and
+   * "its dependencies" as two separate calls) must pass materialize(computeRequireBundleDiagnostics
+   * = false) and instead call this directly with the union of every scope's manifests, otherwise
+   * requirements satisfied by a sibling scope get falsely flagged as unresolved. See
+   * AnalyzerArtifactMaterializerTest for the narrow-call-produces-false-positive regression tests.
+   */
+  fun unresolvedRequireBundleDiagnostics(manifests: List<Pair<Path, BundleManifest>>): List<AnalyzerArtifactDiagnostic> {
     val providers = manifests.mapNotNull { (_, manifest) ->
       manifest.bundleSymbolicName?.key?.let { it to manifest.bundleVersion }
     }.groupBy({ it.first }, { it.second })

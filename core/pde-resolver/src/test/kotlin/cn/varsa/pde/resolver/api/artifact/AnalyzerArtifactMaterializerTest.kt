@@ -132,6 +132,57 @@ class AnalyzerArtifactMaterializerTest {
     assertTrue(result.diagnostics.any { it.type == AnalyzerArtifactDiagnosticType.UNRESOLVED_REQUIRE_BUNDLE_PROVIDER })
   }
 
+  @Test
+  fun `computeRequireBundleDiagnostics false skips the check but still exposes manifests`() {
+    val jar = temp.root.toPath().resolve("org.example.needs.jar")
+    createJar(jar, "org.example.needs", "1.0.0", extraHeaders = mapOf("Require-Bundle" to "org.example.missing"))
+    val bundle = ResolvedBundle(jar, readJarManifest(jar), isDirectory = false)
+
+    val result = AnalyzerArtifactMaterializer.materialize(
+      AnalyzerArtifactMaterializerInput(targetBundles = listOf(bundle)),
+      AnalyzerArtifactMaterializerOptions(temp.newFolder("synthetic-skip").toPath()),
+      computeRequireBundleDiagnostics = false
+    )
+
+    assertTrue(result.diagnostics.none { it.type == AnalyzerArtifactDiagnosticType.UNRESOLVED_REQUIRE_BUNDLE_PROVIDER })
+    assertEquals(1, result.manifests.size)
+    assertEquals("org.example.needs", result.manifests.single().second.bundleSymbolicName?.key)
+  }
+
+  @Test
+  fun `unresolvedRequireBundleDiagnostics resolves requirements against the full manifest union`() {
+    val requirerJar = temp.root.toPath().resolve("org.example.requirer.jar")
+    createJar(requirerJar, "org.example.requirer", "1.0.0", extraHeaders = mapOf("Require-Bundle" to "org.example.provider"))
+    val providerJar = temp.root.toPath().resolve("org.example.provider.jar")
+    createJar(providerJar, "org.example.provider", "1.0.0")
+
+    val manifests = listOf(
+      requirerJar to readJarManifest(requirerJar),
+      providerJar to readJarManifest(providerJar)
+    )
+
+    val diagnostics = AnalyzerArtifactMaterializer.unresolvedRequireBundleDiagnostics(manifests)
+
+    assertTrue(diagnostics.none { it.type == AnalyzerArtifactDiagnosticType.UNRESOLVED_REQUIRE_BUNDLE_PROVIDER })
+  }
+
+  @Test
+  fun `unresolvedRequireBundleDiagnostics still flags a genuine gap in the manifest union`() {
+    val requirerJar = temp.root.toPath().resolve("org.example.requirer2.jar")
+    createJar(requirerJar, "org.example.requirer2", "1.0.0", extraHeaders = mapOf("Require-Bundle" to "org.example.absent"))
+    val otherJar = temp.root.toPath().resolve("org.example.unrelated.jar")
+    createJar(otherJar, "org.example.unrelated", "1.0.0")
+
+    val manifests = listOf(
+      requirerJar to readJarManifest(requirerJar),
+      otherJar to readJarManifest(otherJar)
+    )
+
+    val diagnostics = AnalyzerArtifactMaterializer.unresolvedRequireBundleDiagnostics(manifests)
+
+    assertTrue(diagnostics.any { it.type == AnalyzerArtifactDiagnosticType.UNRESOLVED_REQUIRE_BUNDLE_PROVIDER })
+  }
+
   private fun materialize(
     targetBundles: List<ResolvedBundle> = emptyList(),
     workspaceBundles: List<WorkspaceBundleDescriptor> = emptyList()

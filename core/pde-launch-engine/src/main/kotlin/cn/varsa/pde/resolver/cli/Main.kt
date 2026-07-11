@@ -3896,20 +3896,36 @@ internal fun apiAnalyzeMain(
       return 2
     }
     val dependencyWorkspaceBundles = selectedWorkspaceBundlesForAnalyzer(dependencyPlan, workspaceInputs.descriptors, currentBsn)
+    // The "current" and "dependencies" scopes are materialized via two separate materialize() calls
+    // (each a narrow slice of this bundle's real analyzer input), so neither call's own manifest
+    // list is a complete provider universe for Require-Bundle resolution: the current bundle's own
+    // Require-Bundle entries are typically satisfied by dependency-scope artifacts, and a
+    // dependency-scope bundle may legitimately Require-Bundle the current bundle itself. Skip each
+    // call's self-contained UNRESOLVED_REQUIRE_BUNDLE_PROVIDER check and instead compute it once
+    // against the union of both scopes' manifests below, so a requirement satisfied by the OTHER
+    // scope isn't falsely flagged.
     val currentArtifacts = AnalyzerArtifactMaterializer.materialize(
       AnalyzerArtifactMaterializerInput(workspaceBundles = listOf(descriptor)),
-      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("current").resolve(suffix))
+      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("current").resolve(suffix)),
+      computeRequireBundleDiagnostics = false
     )
     val dependencyArtifacts = AnalyzerArtifactMaterializer.materialize(
       AnalyzerArtifactMaterializerInput(
         targetBundles = directDependencyTargetBundles,
         workspaceBundles = dependencyWorkspaceBundles
       ),
-      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("dependencies").resolve(suffix))
+      AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("dependencies").resolve(suffix)),
+      computeRequireBundleDiagnostics = false
     )
+    val combinedRequireBundleDiagnostics = AnalyzerArtifactMaterializer.unresolvedRequireBundleDiagnostics(
+      currentArtifacts.manifests + dependencyArtifacts.manifests
+    )
+    val currentManifestPaths = currentArtifacts.manifests.map { it.first }.toSet()
+    val (currentRequireBundleDiagnostics, dependencyRequireBundleDiagnostics) =
+      combinedRequireBundleDiagnostics.partition { it.path in currentManifestPaths }
     val diagnosticsOk = listOf(
-      "current" to currentArtifacts.diagnostics,
-      "dependencies" to dependencyArtifacts.diagnostics
+      "current" to currentArtifacts.diagnostics + currentRequireBundleDiagnostics,
+      "dependencies" to dependencyArtifacts.diagnostics + dependencyRequireBundleDiagnostics
     ).all { (scope, diagnostics) -> logAnalyzerArtifactDiagnostics("$label $scope", diagnostics) }
     if (!diagnosticsOk) return 2
     val reportPath = if (reportOpt != null && descriptorsToAnalyze.size == 1) {

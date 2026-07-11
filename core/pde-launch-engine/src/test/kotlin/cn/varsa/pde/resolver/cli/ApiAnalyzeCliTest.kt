@@ -9,9 +9,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.logging.Handler
+import java.util.logging.LogRecord
+import java.util.logging.Logger
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ApiAnalyzeCliTest {
@@ -321,6 +325,105 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
+  fun `api analyze does not falsely flag current bundle Require-Bundle satisfied by dependency scope`() {
+    // Regression test for the "current" direction of the cross-scope diagnostic bug: the current
+    // workspace bundle's own materialize() call only ever sees its own manifest, so before the fix
+    // ANY Require-Bundle entry on the current bundle was unconditionally flagged as unresolved, even
+    // when the provider genuinely is present in that bundle's dependency artifact set.
+    val baseDir = tmp.newFolder("cfg-current-satisfied-by-dependency").toPath()
+    val workspace = tmp.newFolder("workspace-current-satisfied-by-dependency").toPath()
+    createProfileWithFramework(baseDir)
+    createTargetBundleDirectory(baseDir, "org.example.dep")
+    rewriteProfileArtifacts(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true, requireBundle = "org.example.dep")
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val (exit, messages) = captureLogRecords {
+      apiAnalyzeMain(
+        args = arrayOf(
+          "--config", configFile.toString(),
+          "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+        ),
+        analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+        analyzerRunner = { 0 }
+      )
+    }
+
+    assertEquals(0, exit)
+    assertFalse(
+      messages.any { it.contains("Require-Bundle provider not present") && it.contains("org.example.dep") },
+      "Expected no false-positive Require-Bundle diagnostic for org.example.dep in $messages"
+    )
+  }
+
+  @Test
+  fun `api analyze does not falsely flag dependency-scope Require-Bundle on the current bundle`() {
+    // Regression test for the "dependencies" direction of the cross-scope diagnostic bug: a
+    // dependency-scope sibling workspace bundle whose Require-Bundle points at the bundle currently
+    // being analyzed was falsely flagged, because the "dependencies" materialize() call never sees
+    // the current bundle's own manifest (mirrors the real org.knime.gateway.json ->
+    // org.knime.gateway.impl case).
+    val baseDir = tmp.newFolder("cfg-dependency-requires-current").toPath()
+    val apiWorkspace = tmp.newFolder("workspace-dependency-requires-current-api").toPath()
+    val consumerWorkspace = tmp.newFolder("workspace-dependency-requires-current-consumer").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(apiWorkspace, compiledOutput = true, bsn = "org.example.api")
+    createWorkspaceBundle(
+      consumerWorkspace,
+      compiledOutput = true,
+      bsn = "org.example.consumer",
+      requireBundle = "org.example.api"
+    )
+    val configFile = writeMultiBundleConfigFile(baseDir, apiWorkspace, consumerWorkspace)
+
+    val (exit, messages) = captureLogRecords {
+      apiAnalyzeMain(
+        args = arrayOf(
+          "--config", configFile.toString(),
+          "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
+          "--bundle", "org.example.api"
+        ),
+        analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+        analyzerRunner = { 0 }
+      )
+    }
+
+    assertEquals(0, exit)
+    assertFalse(
+      messages.any { it.contains("Require-Bundle provider not present") && it.contains("org.example.api") },
+      "Expected no false-positive Require-Bundle diagnostic for org.example.api in $messages"
+    )
+  }
+
+  @Test
+  fun `api analyze still flags a Require-Bundle gap not satisfied by current or dependency scope`() {
+    // Regression guard: the fix must not silence genuine gaps -- a Require-Bundle entry unsatisfied
+    // by anything in current+dependency scope must still produce a diagnostic.
+    val baseDir = tmp.newFolder("cfg-genuine-require-gap").toPath()
+    val workspace = tmp.newFolder("workspace-genuine-require-gap").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true, requireBundle = "org.example.absent")
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val (exit, messages) = captureLogRecords {
+      apiAnalyzeMain(
+        args = arrayOf(
+          "--config", configFile.toString(),
+          "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+        ),
+        analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+        analyzerRunner = { 0 }
+      )
+    }
+
+    assertEquals(0, exit)
+    assertTrue(
+      messages.any { it.contains("Require-Bundle provider not present") && it.contains("org.example.absent") },
+      "Expected a genuine Require-Bundle diagnostic for org.example.absent in $messages"
+    )
+  }
+
+  @Test
   fun `api analyze fails before launch when selected workspace bundle is missing`() {
     val baseDir = tmp.newFolder("cfg-direct-bundle-missing").toPath()
     val workspace = tmp.newFolder("workspace-direct-bundle-missing").toPath()
@@ -625,6 +728,31 @@ class ApiAnalyzeCliTest {
     assertEquals(filters, input.apiFilterFile)
     assertEquals(listOf("org.example.dep"), input.dependencyArtifacts.map { it.bundleSymbolicName })
     assertEquals(listOf("org.example.api"), input.baselineArtifacts.map { it.bundleSymbolicName })
+  }
+
+  /**
+   * Attaches a handler directly to the "pde-launch-engine" logger (independent of whatever
+   * configureLogging() does to the root logger's handlers/formatter) to collect log messages
+   * emitted while [block] runs, so tests can assert on which diagnostics were actually logged.
+   */
+  private fun captureLogRecords(block: () -> Int): Pair<Int, List<String>> {
+    val logger = Logger.getLogger("pde-launch-engine")
+    val messages = mutableListOf<String>()
+    val handler = object : Handler() {
+      override fun publish(record: LogRecord) {
+        messages += record.message
+      }
+
+      override fun flush() = Unit
+      override fun close() = Unit
+    }
+    logger.addHandler(handler)
+    try {
+      val exit = block()
+      return exit to messages
+    } finally {
+      logger.removeHandler(handler)
+    }
   }
 
   private fun ApiAnalyzerInvocation.valueAfter(option: String): String {
