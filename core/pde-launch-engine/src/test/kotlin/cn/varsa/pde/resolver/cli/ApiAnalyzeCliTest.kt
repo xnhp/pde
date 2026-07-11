@@ -222,6 +222,105 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
+  fun `api analyze includes every target version needed by disjoint Require-Bundle ranges`() {
+    // Regression test for the single-version-per-BSN gap: LaunchPlanner-style selection (used by
+    // pde run/pde compile) picks exactly ONE artifact per bundle-symbolic-name across the whole
+    // workspace, which silently drops the version(s) needed by requirers with non-overlapping
+    // Require-Bundle ranges on that same BSN. Here two target-platform bundles that both end up in
+    // the analyzer's dependency set (org.example.needsold and org.example.needsnew) Require-Bundle
+    // disjoint ranges of org.example.lib -- [1.0.0,1.5.0) and [2.0.0,3.0.0) -- and only one of those
+    // two org.example.lib versions is present in the target platform's LaunchPlanner selection.
+    // Both must still end up in the materialized dependency artifact set for API analysis.
+    val baseDir = tmp.newFolder("cfg-disjoint-require-ranges").toPath()
+    val workspace = tmp.newFolder("workspace-disjoint-require-ranges").toPath()
+    createProfileWithFramework(baseDir)
+    createTargetBundleDirectory(baseDir, "org.example.lib", version = "1.0.0")
+    createTargetBundleDirectory(baseDir, "org.example.lib", version = "2.0.0")
+    createTargetBundleDirectory(
+      baseDir,
+      "org.example.needsold",
+      requireBundle = "org.example.lib;bundle-version=\"[1.0.0,1.5.0)\""
+    )
+    createTargetBundleDirectory(
+      baseDir,
+      "org.example.needsnew",
+      requireBundle = "org.example.lib;bundle-version=\"[2.0.0,3.0.0)\""
+    )
+    rewriteProfileArtifacts(baseDir)
+    createWorkspaceBundle(
+      workspace,
+      compiledOutput = true,
+      requireBundle = "org.example.needsold,org.example.needsnew"
+    )
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(1, invocations.size)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    val libVersions = input.dependencyArtifacts
+      .filter { it.bundleSymbolicName == "org.example.lib" }
+      .map { it.version }
+      .toSet()
+    assertEquals(
+      setOf("1.0.0", "2.0.0"),
+      libVersions,
+      "Expected both org.example.lib versions in ${input.dependencyArtifacts}"
+    )
+  }
+
+  @Test
+  fun `api analyze does not add extra target versions when a single version satisfies every requirer`() {
+    // Regression guard for the fix above: when there is no conflicting Require-Bundle range, the
+    // augmentation must not blow up the dependency set with redundant/unneeded extra versions --
+    // the common case (single version per BSN) must stay exactly as before.
+    val baseDir = tmp.newFolder("cfg-single-require-range").toPath()
+    val workspace = tmp.newFolder("workspace-single-require-range").toPath()
+    createProfileWithFramework(baseDir)
+    createTargetBundleDirectory(baseDir, "org.example.lib", version = "1.0.0")
+    createTargetBundleDirectory(
+      baseDir,
+      "org.example.needsold",
+      requireBundle = "org.example.lib;bundle-version=\"[1.0.0,1.5.0)\""
+    )
+    rewriteProfileArtifacts(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true, requireBundle = "org.example.needsold")
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(1, invocations.size)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    val libArtifacts = input.dependencyArtifacts.filter { it.bundleSymbolicName == "org.example.lib" }
+    assertEquals(1, libArtifacts.size, "Expected exactly one org.example.lib artifact in ${input.dependencyArtifacts}")
+    assertEquals("1.0.0", libArtifacts.single().version)
+  }
+
+  @Test
   fun `api analyze fails before launch when selected workspace bundle is missing`() {
     val baseDir = tmp.newFolder("cfg-direct-bundle-missing").toPath()
     val workspace = tmp.newFolder("workspace-direct-bundle-missing").toPath()
@@ -541,7 +640,12 @@ class ApiAnalyzeCliTest {
     dataDir = outputRoot.resolve("workspace")
   )
 
-  private fun createWorkspaceBundle(dir: Path, compiledOutput: Boolean = false, bsn: String = "org.example.api") {
+  private fun createWorkspaceBundle(
+    dir: Path,
+    compiledOutput: Boolean = false,
+    bsn: String = "org.example.api",
+    requireBundle: String? = null
+  ) {
     val meta = dir.resolve("META-INF").createDirectories()
     meta.resolve("MANIFEST.MF").writeText(buildString {
       appendLine("Manifest-Version: 1.0")
@@ -550,6 +654,7 @@ class ApiAnalyzeCliTest {
       appendLine("Bundle-SymbolicName: $bsn")
       appendLine("Bundle-Version: 1.0.0")
       appendLine("Bundle-ClassPath: .")
+      if (requireBundle != null) appendLine("Require-Bundle: $requireBundle")
     })
     dir.resolve("src").createDirectories()
     if (compiledOutput) {
@@ -559,7 +664,12 @@ class ApiAnalyzeCliTest {
     }
   }
 
-  private fun createTargetBundleDirectory(baseDir: Path, bsn: String, version: String = "1.0.0"): Path {
+  private fun createTargetBundleDirectory(
+    baseDir: Path,
+    bsn: String,
+    version: String = "1.0.0",
+    requireBundle: String? = null
+  ): Path {
     val bundleDir = baseDir.resolve("target").resolve("p2").resolve("bundle-pool")
       .resolve("plugins").resolve("${bsn}_$version").createDirectories()
     bundleDir.resolve("META-INF").createDirectories().resolve("MANIFEST.MF").writeText(
@@ -569,6 +679,7 @@ class ApiAnalyzeCliTest {
         appendLine("Bundle-Name: $bsn")
         appendLine("Bundle-SymbolicName: $bsn")
         appendLine("Bundle-Version: $version")
+        if (requireBundle != null) appendLine("Require-Bundle: $requireBundle")
       }
     )
     return bundleDir

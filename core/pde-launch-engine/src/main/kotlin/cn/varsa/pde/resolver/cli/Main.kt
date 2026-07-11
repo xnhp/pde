@@ -34,6 +34,7 @@ import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
 import cn.varsa.pde.resolver.index.getBundlePoolPath
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.compile.BundleCompileCache
 import cn.varsa.pde.resolver.compile.BundleCompileResult
 import cn.varsa.pde.resolver.compile.CompileExecutor
@@ -2228,14 +2229,74 @@ private fun collectTargetBundles(targetIndex: TargetPlatformIndex, excludedBsns:
 
 private fun selectedTargetBundlesForAnalyzer(
   dependencyPlan: LaunchPlanner.PlanResult,
-  targetIndex: TargetPlatformIndex
+  targetIndex: TargetPlatformIndex,
+  extraRequirerManifests: List<BundleManifest> = emptyList()
 ): List<TargetResolvedBundle> {
   val targetBundlesByPath = collectTargetBundles(targetIndex)
     .associateBy { it.location.toAbsolutePath().normalize().toString() }
-  return dependencyPlan.selectedBundles
+  val selected = dependencyPlan.selectedBundles
     .filterNot { it.isWorkspace }
     .mapNotNull { targetBundlesByPath[it.path.toAbsolutePath().normalize().toString()] }
     .distinctBy { it.location.toAbsolutePath().normalize().toString() }
+  return augmentTargetBundlesForRequireBundleProviders(selected, targetIndex, extraRequirerManifests)
+}
+
+/**
+ * LaunchPlanner's selection (see [selectedTargetBundlesForAnalyzer]) picks exactly ONE artifact
+ * per bundle-symbolic-name across the whole workspace, which is correct for an actual runnable
+ * OSGi launch (`pde run`/`pde compile`) but wrong for API analysis: different bundles pulled into
+ * the analyzer's dependency set can Require-Bundle disjoint, non-overlapping version ranges of
+ * the very same BSN (e.g. one needs guava [19.0.0,20.0.0), another needs whatever range resolves
+ * to 33.4.8.jre), and only one of those versions survives the single-version-per-BSN selection.
+ *
+ * This walks the Require-Bundle headers of [selected] plus [extraRequirerManifests] (typically the
+ * workspace bundles being analyzed), and for any requirement not satisfied by an already-selected
+ * provider, looks up [targetIndex] for any other version of that BSN that does satisfy the range
+ * and adds it ADDITIONALLY (never replacing the originally selected version, since other requirers
+ * may still need that one). Newly-added target bundles are themselves enqueued and their own
+ * Require-Bundle headers walked too -- a full fixed-point closure, not just one level. A single
+ * level was tried first and is NOT sufficient in practice: real target platforms contain large
+ * bundles (e.g. org.knime.core) whose own Require-Bundle closure is many bundles deep, and PDE API
+ * Tools reports the whole component as unresolved if any of that closure is missing, even when the
+ * component itself is present. The closure is bounded by the (finite) target platform BSN space and
+ * guarded by [byPath], so it always terminates even with cyclic Require-Bundle graphs.
+ */
+internal fun augmentTargetBundlesForRequireBundleProviders(
+  selected: List<TargetResolvedBundle>,
+  targetIndex: TargetPlatformIndex,
+  extraRequirerManifests: List<BundleManifest> = emptyList()
+): List<TargetResolvedBundle> {
+  val byPath = linkedMapOf<String, TargetResolvedBundle>()
+  selected.forEach { byPath[it.location.toAbsolutePath().normalize().toString()] = it }
+
+  val providers = mutableMapOf<String, MutableSet<Version>>()
+  selected.forEach { bundle ->
+    val bsn = bundle.manifest.bundleSymbolicName?.key ?: return@forEach
+    providers.getOrPut(bsn) { mutableSetOf() } += bundle.manifest.bundleVersion
+  }
+
+  val queue = ArrayDeque<TargetResolvedBundle>()
+
+  fun resolveRequirements(manifest: BundleManifest) {
+    manifest.requiredBundleAndVersion().forEach { (requiredBsn, range) ->
+      val satisfied = providers[requiredBsn]?.any { range.includes(it) } == true
+      if (satisfied) return@forEach
+      val candidate = targetIndex.get(requiredBsn, range) ?: return@forEach
+      val key = candidate.location.toAbsolutePath().normalize().toString()
+      if (byPath.putIfAbsent(key, candidate) == null) {
+        providers.getOrPut(requiredBsn) { mutableSetOf() } += candidate.manifest.bundleVersion
+        queue += candidate
+      }
+    }
+  }
+
+  selected.forEach { resolveRequirements(it.manifest) }
+  extraRequirerManifests.forEach { resolveRequirements(it) }
+  while (queue.isNotEmpty()) {
+    resolveRequirements(queue.removeFirst().manifest)
+  }
+
+  return byPath.values.toList()
 }
 
 private fun selectedWorkspaceBundlesForAnalyzer(
@@ -3806,7 +3867,11 @@ internal fun apiAnalyzeMain(
   val dependencyPlan = buildCompilePlanForWarning(apiContext, targetIndex, workspaceInputs)
 
   val syntheticRoot = outputRoot.resolve("synthetic-artifacts")
-  val directDependencyTargetBundles = selectedTargetBundlesForAnalyzer(dependencyPlan, targetIndex)
+  val directDependencyTargetBundles = selectedTargetBundlesForAnalyzer(
+    dependencyPlan,
+    targetIndex,
+    extraRequirerManifests = workspaceDescriptors.map { it.manifest }
+  )
   val directBaselineTargetBundles = collectTargetBundles(baselineIndex)
   val baselineArtifacts = AnalyzerArtifactMaterializer.materialize(
     AnalyzerArtifactMaterializerInput(targetBundles = directBaselineTargetBundles),
