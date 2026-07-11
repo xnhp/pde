@@ -2230,14 +2230,16 @@ private fun collectTargetBundles(targetIndex: TargetPlatformIndex, excludedBsns:
 private fun selectedTargetBundlesForAnalyzer(
   dependencyPlan: LaunchPlanner.PlanResult,
   targetIndex: TargetPlatformIndex,
-  extraRequirerManifests: List<BundleManifest> = emptyList()
+  extraRequirerManifests: List<BundleManifest> = emptyList(),
+  extraSeedBundles: List<TargetResolvedBundle> = emptyList()
 ): List<TargetResolvedBundle> {
   val targetBundlesByPath = collectTargetBundles(targetIndex)
     .associateBy { it.location.toAbsolutePath().normalize().toString() }
-  val selected = dependencyPlan.selectedBundles
-    .filterNot { it.isWorkspace }
-    .mapNotNull { targetBundlesByPath[it.path.toAbsolutePath().normalize().toString()] }
-    .distinctBy { it.location.toAbsolutePath().normalize().toString() }
+  val selected = (
+    dependencyPlan.selectedBundles
+      .filterNot { it.isWorkspace }
+      .mapNotNull { targetBundlesByPath[it.path.toAbsolutePath().normalize().toString()] } + extraSeedBundles
+    ).distinctBy { it.location.toAbsolutePath().normalize().toString() }
   return augmentTargetBundlesForRequireBundleProviders(selected, targetIndex, extraRequirerManifests)
 }
 
@@ -3872,7 +3874,17 @@ internal fun apiAnalyzeMain(
     targetIndex,
     extraRequirerManifests = workspaceDescriptors.map { it.manifest }
   )
-  val directBaselineTargetBundles = collectTargetBundles(baselineIndex)
+  val baselineDependencyPlan = buildCompilePlanForWarning(apiContext, baselineIndex, workspaceInputs)
+  val baselineCounterparts = descriptorsToAnalyze.mapNotNull { descriptor ->
+    descriptor.manifest.bundleSymbolicName?.key?.let { baselineIndex.get(it) }
+  }
+  val directBaselineTargetBundles = selectedTargetBundlesForAnalyzer(
+    baselineDependencyPlan,
+    baselineIndex,
+    extraRequirerManifests = workspaceDescriptors.map { it.manifest },
+    extraSeedBundles = baselineCounterparts
+  )
+  logger.info("Reduced baseline closure to ${directBaselineTargetBundles.size} bundle(s) for ${descriptorsToAnalyze.size} analyzed bundle(s).")
   val baselineArtifacts = AnalyzerArtifactMaterializer.materialize(
     AnalyzerArtifactMaterializerInput(targetBundles = directBaselineTargetBundles),
     AnalyzerArtifactMaterializerOptions(syntheticRoot.resolve("baseline"))

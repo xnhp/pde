@@ -179,7 +179,7 @@ class ApiAnalyzeCliTest {
     val apiBaseline = createTargetBundleDirectory(baseDir, "org.example.api", version = "0.9.0")
     createTargetBundleDirectory(baseDir, "org.example.other", version = "0.9.0")
     rewriteProfileArtifacts(baseDir)
-    createWorkspaceBundle(apiWorkspace, compiledOutput = true, bsn = "org.example.api")
+    createWorkspaceBundle(apiWorkspace, compiledOutput = true, bsn = "org.example.api", requireBundle = "org.example.dep")
     createWorkspaceBundle(otherWorkspace, compiledOutput = true, bsn = "org.example.other")
     val configFile = writeMultiBundleConfigFile(baseDir, apiWorkspace, otherWorkspace)
 
@@ -199,6 +199,9 @@ class ApiAnalyzeCliTest {
     assertEquals(0, exit)
     // A 2-bundle selection must still launch exactly ONE analyzer JVM: both bundles are folded
     // into a single BatchApiAnalyzerInput sharing one materialized baseline artifact set.
+    // org.example.api Require-Bundles org.example.dep, so its baseline counterpart is pulled into
+    // the (now-reduced) baseline closure via the Require-Bundle closure walk, not the full target
+    // platform.
     assertEquals(1, invocations.size)
     val batchInput = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
     val bundles = batchInput.currentBundles.sortedBy { it.currentBundle.bundleSymbolicName }
@@ -223,6 +226,88 @@ class ApiAnalyzeCliTest {
     assertEquals(baseDir.resolve("api-analyzer/reports/org.example.other.json"), bundles.last().outputReportPath)
     assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.api")))
     assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.other")))
+  }
+
+  @Test
+  fun `api analyze reduces baseline closure to what is actually needed`() {
+    // Regression test for the baseline-side analogue of the target-side closure fix: the baseline
+    // used to be materialized as the ENTIRE baseline target platform (collectTargetBundles over the
+    // whole index) regardless of what the analyzed workspace bundle actually needs. A baseline
+    // bundle that is neither the analyzed bundle's own baseline counterpart nor (transitively)
+    // Require-Bundle'd by it must NOT be pulled into the materialized baseline artifact set.
+    val baseDir = tmp.newFolder("cfg-reduced-baseline-closure").toPath()
+    val workspace = tmp.newFolder("workspace-reduced-baseline-closure").toPath()
+    createProfileWithFramework(baseDir)
+    createTargetBundleDirectory(baseDir, "org.example.dep")
+    createTargetBundleDirectory(baseDir, "org.example.api", version = "0.9.0")
+    createTargetBundleDirectory(baseDir, "org.example.unrelated")
+    rewriteProfileArtifacts(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true, requireBundle = "org.example.dep")
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(1, invocations.size)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertFalse(
+      input.baselineArtifacts.any { it.bundleSymbolicName == "org.example.unrelated" },
+      "Expected org.example.unrelated to be excluded from the reduced baseline closure in ${input.baselineArtifacts}"
+    )
+    assertTrue(
+      input.baselineArtifacts.any { it.bundleSymbolicName == "org.example.api" },
+      "Expected the analyzed bundle's own baseline counterpart in ${input.baselineArtifacts}"
+    )
+    assertTrue(
+      input.baselineArtifacts.any { it.bundleSymbolicName == "org.example.dep" },
+      "Expected the Require-Bundle'd baseline dependency in ${input.baselineArtifacts}"
+    )
+  }
+
+  @Test
+  fun `api analyze seeds baseline counterpart even without any Require-Bundle relationship`() {
+    // The analyzed bundle's own baseline counterpart is never "required" by anything in the
+    // workspace -- nothing Require-Bundle-declares it -- so it can only be picked up via the
+    // explicit seed, never via the Require-Bundle closure walk alone.
+    val baseDir = tmp.newFolder("cfg-baseline-seed-no-requires").toPath()
+    val workspace = tmp.newFolder("workspace-baseline-seed-no-requires").toPath()
+    createProfileWithFramework(baseDir)
+    createTargetBundleDirectory(baseDir, "org.example.api", version = "0.9.0")
+    rewriteProfileArtifacts(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    assertEquals(1, invocations.size)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertTrue(
+      input.baselineArtifacts.any { it.bundleSymbolicName == "org.example.api" && it.version == "0.9.0" },
+      "Expected the analyzed bundle's own baseline counterpart in ${input.baselineArtifacts}"
+    )
   }
 
   @Test
