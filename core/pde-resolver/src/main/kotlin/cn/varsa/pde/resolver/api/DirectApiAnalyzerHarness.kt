@@ -1,5 +1,6 @@
 package cn.varsa.pde.resolver.api
 
+import cn.varsa.pde.resolver.manifest.BundleManifest
 import org.eclipse.core.runtime.NullProgressMonitor
 import org.eclipse.pde.api.tools.internal.builder.BaseApiAnalyzer
 import org.eclipse.pde.api.tools.internal.builder.BuildContext
@@ -8,11 +9,15 @@ import org.eclipse.pde.api.tools.internal.model.BundleComponent
 import org.eclipse.pde.api.tools.internal.provisional.ApiPlugin
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblem
+import org.osgi.framework.Constants.SINGLETON_DIRECTIVE
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 import java.util.Properties
+import java.util.jar.JarFile
+import java.util.jar.Manifest
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -69,8 +74,8 @@ class DirectApiAnalyzerHarness(
         artifact.path.toAbsolutePath().normalize().toString() in currentBundlePaths
       }
 
-      val currentArtifacts = input.currentBundles.map { it.currentBundle } + sharedDependencyArtifacts
-      val referenceArtifacts = input.baselineArtifacts + sharedDependencyArtifacts
+      val currentArtifacts = mergeWithSharedDependencyArtifacts(input.currentBundles.map { it.currentBundle }, sharedDependencyArtifacts)
+      val referenceArtifacts = mergeWithSharedDependencyArtifacts(input.baselineArtifacts, sharedDependencyArtifacts)
       currentBaseline.addApiComponents(createComponents(currentBaseline, currentArtifacts).toTypedArray())
       referenceBaseline.addApiComponents(createComponents(referenceBaseline, referenceArtifacts).toTypedArray())
 
@@ -126,6 +131,41 @@ class DirectApiAnalyzerHarness(
       BundleAnalysisOutcome(bsn, failure = failure)
     } finally {
       analyzer.dispose()
+    }
+  }
+
+  /**
+   * Merges [sharedDependencyArtifacts] into [scopeOwnArtifacts] for one [ApiBaseline] (current or
+   * reference/baseline scope). Both baselines are seeded with the SAME dependency-scope artifact
+   * set, so a `singleton:=true` BSN that this scope's own artifacts already supply at a different
+   * version than the shared/dependency-scope copy would otherwise land in this baseline twice --
+   * only one singleton version can resolve in one OSGi state, so the other one's requirer would
+   * spuriously fail to resolve even though a satisfying version is genuinely present in the input.
+   * This scope's own artifacts always take precedence, so the conflicting shared copy is dropped.
+   */
+  private fun mergeWithSharedDependencyArtifacts(
+    scopeOwnArtifacts: List<AnalyzerBundleArtifact>,
+    sharedDependencyArtifacts: List<AnalyzerBundleArtifact>
+  ): List<AnalyzerBundleArtifact> {
+    val ownVersionsByBsn = scopeOwnArtifacts.groupBy({ it.bundleSymbolicName }, { it.version })
+    val nonConflictingShared = sharedDependencyArtifacts.filterNot { candidate ->
+      val ownVersions = ownVersionsByBsn[candidate.bundleSymbolicName] ?: return@filterNot false
+      candidate.version !in ownVersions && candidate.isSingletonArtifact()
+    }
+    return scopeOwnArtifacts + nonConflictingShared
+  }
+
+  private fun AnalyzerBundleArtifact.isSingletonArtifact(): Boolean {
+    val manifest = readManifest(path) ?: return false
+    return manifest.bundleSymbolicName?.value?.directive?.get(SINGLETON_DIRECTIVE) == "true"
+  }
+
+  private fun readManifest(path: Path): BundleManifest? {
+    val file = path.toFile()
+    return if (file.isDirectory) {
+      File(file, "META-INF/MANIFEST.MF").takeIf { it.isFile }?.inputStream()?.use { BundleManifest.parse(Manifest(it)) }
+    } else {
+      JarFile(file).use { it.manifest?.let(BundleManifest::parse) }
     }
   }
 
