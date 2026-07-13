@@ -1,5 +1,10 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.cli.core.CliFailure
+import cn.varsa.cli.core.CliLogLevel
+import cn.varsa.cli.core.CliLogging
+import cn.varsa.cli.core.CliStyle
+import cn.varsa.cli.core.ColorMode
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
@@ -13,14 +18,18 @@ import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.optional
-import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.logging.Level
+import java.util.logging.Logger
 
 object JdtlsInitCommand {
+  private val logger = Logger.getLogger(JdtlsInitCommand::class.java.name)
+
   fun main(args: Array<String>): Int {
+    CliLogging.configure(CliLogLevel.INFO, CliStyle.useColor(ColorMode.AUTO))
     val parser = ArgParser("pde lsp init")
     val configOpt by parser.option(
       ArgType.String,
@@ -52,11 +61,11 @@ object JdtlsInitCommand {
     val explicitConfig = resolveConfigPath(issueDir, configOpt, configPos)
     val configPath = explicitConfig ?: findConfigPath(issueDir)
     if (explicitConfig != null && (configPath == null || !Files.exists(configPath))) {
-      System.err.println("Config file not found: ${explicitConfig.toAbsolutePath().normalize()}")
+      logger.severe("Config file not found: ${explicitConfig.toAbsolutePath().normalize()}")
       return 1
     }
     if (configPath == null) {
-      System.err.println("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml). Use --config.")
+      logger.severe("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml). Use --config.")
       return 1
     }
 
@@ -73,7 +82,7 @@ object JdtlsInitCommand {
       val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, projectsDir)
       touchProjectile(workingDir)
       writeVscodeSettings(workingDir)
-      println("Generated .project/.classpath for ${result.written} workspace bundles in ${projectsDir.toAbsolutePath().normalize()}")
+      logger.info("Generated .project/.classpath for ${result.written} workspace bundles in ${projectsDir.toAbsolutePath().normalize()}")
       val projectConfigurationsOutValue = projectConfigurationsOut
       val projectConfigurationsPath = when {
         projectConfigurationsOutValue != null -> resolvePath(context.baseDir, projectConfigurationsOutValue)
@@ -94,11 +103,11 @@ object JdtlsInitCommand {
           listOf(workspaceRoot),
           workspaceFolders
         )
-        println("Wrote projectConfigurations to ${projectConfigurationsPath.toAbsolutePath().normalize()}")
+        logger.info("Wrote projectConfigurations to ${projectConfigurationsPath.toAbsolutePath().normalize()}")
       }
       0
     } catch (ex: Exception) {
-      System.err.println(ex.message ?: "jdtls-init failed")
+      logger.log(Level.SEVERE, ex.message ?: "jdtls-init failed", ex)
       1
     }
   }
@@ -450,4 +459,4 @@ private fun jsonEscape(value: String): String {
     .replace("\"", "\\\"")
 }
 
-private fun fail(message: String): Nothing = throw IOException(message)
+private fun fail(message: String): Nothing = throw CliFailure(message)

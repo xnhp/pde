@@ -1,11 +1,11 @@
 package cn.varsa.pde.launch
 
 import org.junit.Test
-import java.io.ByteArrayOutputStream
-import java.io.PrintStream
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.logging.Handler
+import java.util.logging.LogRecord
+import java.util.logging.Logger
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -590,16 +590,22 @@ class JdtlsInitTest {
   }
 
   private fun captureStderr(block: () -> Int): Pair<Int, String> {
-    val originalErr = System.err
-    val buffer = ByteArrayOutputStream()
-    val capturing = PrintStream(buffer, true, StandardCharsets.UTF_8)
+    val rootLogger = Logger.getLogger("")
+    val messages = StringBuilder()
+    val handler = object : Handler() {
+      override fun publish(record: LogRecord) {
+        messages.append(record.message).append('\n')
+      }
+
+      override fun flush() {}
+      override fun close() {}
+    }
+    rootLogger.addHandler(handler)
     return try {
-      System.setErr(capturing)
       val exitCode = block()
-      exitCode to buffer.toString(StandardCharsets.UTF_8)
+      exitCode to messages.toString()
     } finally {
-      System.setErr(originalErr)
-      capturing.flush()
+      rootLogger.removeHandler(handler)
     }
   }
 
