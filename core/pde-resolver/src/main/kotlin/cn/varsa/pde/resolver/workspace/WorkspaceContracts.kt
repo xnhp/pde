@@ -44,6 +44,23 @@ object WorkspaceSetupInputJson {
         mapper.readValue(path.toFile(), WorkspaceSetupInput::class.java)
 }
 
+data class JdtBuildInput(
+    val projects: List<String> = emptyList(),
+    val fullRebuild: Boolean = false
+)
+
+object JdtBuildInputJson {
+    private val mapper = ObjectMapper()
+        .registerModule(KotlinModule.Builder().build())
+        .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+
+    fun write(input: JdtBuildInput): String =
+        mapper.writerWithDefaultPrettyPrinter().writeValueAsString(input)
+
+    fun read(path: Path): JdtBuildInput =
+        mapper.readValue(path.toFile(), JdtBuildInput::class.java)
+}
+
 fun WorkspaceBundleDescriptor.toWorkspaceProjectSpec(
     version: String,
     dependencies: List<String>,
