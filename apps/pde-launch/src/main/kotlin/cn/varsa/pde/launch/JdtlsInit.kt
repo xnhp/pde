@@ -169,6 +169,9 @@ private fun writeWorkspaceConfigs(
     val bundleName = descriptor.manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
     val isTestBundle = isTestBundle(bundleName, moduleDir, descriptor.fragmentHost != null)
     val sourceRoots = determineSourceRoots(moduleDir, descriptor.sourceRoots)
+    if (sourceRoots.isEmpty()) {
+      return@forEach
+    }
     val outputDir = descriptor.outputDirectory ?: moduleDir.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
     val outputDirAbs = outputDir.toAbsolutePath().normalize()
     val compliance = resolveJavaCompliance(descriptor.compilerPrefs)

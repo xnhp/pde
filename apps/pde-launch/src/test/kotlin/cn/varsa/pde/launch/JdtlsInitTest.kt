@@ -444,6 +444,65 @@ class JdtlsInitTest {
   }
 
   @Test
+  fun `jdtls-init skips bundles with no source roots`() {
+    val baseDir = Files.createTempDirectory("jdtls-init-no-src")
+    val repoDir = baseDir.resolve("knime-gateway")
+
+    val javaBundleDir = repoDir.resolve("org.knime.gateway.api")
+    val javaMetaInf = javaBundleDir.resolve("META-INF")
+    Files.createDirectories(javaMetaInf)
+    Files.createDirectories(javaBundleDir.resolve("src"))
+    Files.writeString(
+      javaMetaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.knime.gateway.api
+        Bundle-Version: 1.0.0
+      """.trimIndent()
+    )
+
+    val resourceBundleDir = repoDir.resolve("org.knime.gateway.resources")
+    val resourceMetaInf = resourceBundleDir.resolve("META-INF")
+    Files.createDirectories(resourceMetaInf)
+    Files.writeString(
+      resourceMetaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: org.knime.gateway.resources
+        Bundle-Version: 1.0.0
+      """.trimIndent()
+    )
+
+    val configPath = baseDir.resolve("pde.yaml")
+    Files.writeString(
+      configPath,
+      configText(
+        writeTargetConfig(baseDir),
+        listOf(
+          "bundles:",
+          "  - path: knime-gateway/org.knime.gateway.api",
+          "  - path: knime-gateway/org.knime.gateway.resources"
+        )
+      )
+    )
+
+    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
+    assertEquals(0, exitCode)
+
+    val projectsDir = configPath.parent.resolve(".lsp").resolve("projects")
+    val javaProjectDir = projectsDir.resolve("org.knime.gateway.api")
+    assertTrue(Files.exists(javaProjectDir.resolve(".project")))
+    assertTrue(Files.exists(javaProjectDir.resolve(".classpath")))
+
+    val resourceProjectDir = projectsDir.resolve("org.knime.gateway.resources")
+    assertFalse(Files.exists(resourceProjectDir.resolve(".project")))
+    assertFalse(Files.exists(resourceProjectDir.resolve(".classpath")))
+    assertFalse(Files.exists(resourceProjectDir))
+  }
+
+  @Test
   fun `jdtls-init fails without target config`() {
     val baseDir = Files.createTempDirectory("jdtls-init-missing-target")
     val repoDir = baseDir.resolve("knime-gateway")
