@@ -317,6 +317,93 @@ class DirectApiAnalyzerHarnessTest {
   }
 
   @Test
+  fun `does not report false positive component-resolution when singleton dependency version collides across scopes`() {
+    // S is singleton:=true. baselineA (the analyzed bundle's baseline release) requires S at
+    // v1.0.0 and is supplied only via baselineArtifacts. otherDependencyRequirer is an unrelated
+    // bundle that requires S at v2.0.0 and is supplied via dependencyArtifacts (the current/
+    // dependency scope's own need for the newer S) -- it stands in for any dependency-scope
+    // bundle sharing the batch's dependency artifact set. sharedDependencyArtifacts (including S
+    // v2.0.0 and otherDependencyRequirer) is merged into BOTH currentArtifacts and
+    // referenceArtifacts, so referenceBaseline ends up holding baselineA + S v1.0.0 (from
+    // baselineArtifacts) AND otherDependencyRequirer + S v2.0.0 (from the shared dependency set)
+    // all in one OSGi state. Since S is a singleton only one version can resolve there: if v2.0.0
+    // wins the slot, baselineA's requirement on S (satisfied only by v1.0.0) spuriously fails to
+    // resolve even though v1.0.0 is genuinely present in the analyzer's input.
+    val singletonV1 = bundleJar(
+      bsn = "org.example.singleton.dep",
+      version = "1.0.0",
+      sources = mapOf(
+        "org/example/singleton/dep/Dep.java" to """
+          package org.example.singleton.dep;
+          public class Dep {}
+        """.trimIndent()
+      ),
+      singleton = true
+    )
+    val singletonV2 = bundleJar(
+      bsn = "org.example.singleton.dep",
+      version = "2.0.0",
+      sources = mapOf(
+        "org/example/singleton/dep/Dep.java" to """
+          package org.example.singleton.dep;
+          public class Dep {}
+        """.trimIndent()
+      ),
+      singleton = true
+    )
+    val sourcesA = mapOf(
+      "org/example/singleton/requires/UsesDep.java" to """
+        package org.example.singleton.requires;
+        import org.example.singleton.dep.Dep;
+        public class UsesDep {
+          public Dep dep() { return null; }
+        }
+      """.trimIndent()
+    )
+    val baselineA = bundleJar(
+      "org.example.singleton.requires",
+      "1.0.0",
+      sourcesA,
+      requireBundle = "org.example.singleton.dep;bundle-version=\"[1.0.0,2.0.0)\"",
+      classpath = listOf(singletonV1)
+    )
+    val currentA = bundleJar(
+      "org.example.singleton.requires",
+      "1.1.0",
+      sourcesA,
+      requireBundle = "org.example.singleton.dep;bundle-version=\"[2.0.0,3.0.0)\"",
+      classpath = listOf(singletonV2)
+    )
+    val otherDependencyRequirer = bundleJar(
+      "org.example.singleton.other",
+      "1.0.0",
+      mapOf(
+        "org/example/singleton/other/UsesDep.java" to """
+          package org.example.singleton.other;
+          import org.example.singleton.dep.Dep;
+          public class UsesDep {
+            public Dep dep() { return null; }
+          }
+        """.trimIndent()
+      ),
+      requireBundle = "org.example.singleton.dep;bundle-version=\"[2.0.0,3.0.0)\"",
+      classpath = listOf(singletonV2)
+    )
+
+    val report = analyzeThroughEquinox(
+      current = currentA,
+      baseline = baselineA,
+      dependencies = listOf(singletonV2, otherDependencyRequirer),
+      extraBaselineArtifacts = listOf(singletonV1)
+    )
+
+    assertTrue(
+      "Expected no component-resolution problems, got: ${report.problems}",
+      report.problems.none { it.category == "component-resolution" }
+    )
+  }
+
+  @Test
   fun `analyzes two current bundles inside one analyzer JVM invocation with isolated problem state`() {
     val baselineA = bundleJar(
       bsn = "org.example.batcha",
@@ -759,7 +846,8 @@ class DirectApiAnalyzerHarnessTest {
     requireBundle: String? = null,
     classpath: List<AnalyzerBundleArtifact> = emptyList(),
     nestedClasspath: Boolean = false,
-    layout: BundleLayout = BundleLayout.PACKED
+    layout: BundleLayout = BundleLayout.PACKED,
+    singleton: Boolean = false
   ): AnalyzerBundleArtifact {
     val dir = Files.createTempDirectory(temp.root.toPath(), "${bsn.replace('.', '-')}-${version.replace('.', '-')}-")
     val classes = dir.resolve("classes")
@@ -771,8 +859,8 @@ class DirectApiAnalyzerHarnessTest {
     }
     compileJava(dir.resolve("src"), classes, javacClasspath(classpath))
     val artifact = when (layout) {
-      BundleLayout.PACKED -> dir.resolve("$bsn-$version.jar").also { writeBundleJar(it, classes, bsn, version, requireBundle, nestedClasspath) }
-      BundleLayout.EXPLODED -> dir.resolve("$bsn-$version").also { writeBundleDirectory(it, classes, bsn, version, requireBundle, nestedClasspath) }
+      BundleLayout.PACKED -> dir.resolve("$bsn-$version.jar").also { writeBundleJar(it, classes, bsn, version, requireBundle, nestedClasspath, singleton) }
+      BundleLayout.EXPLODED -> dir.resolve("$bsn-$version").also { writeBundleDirectory(it, classes, bsn, version, requireBundle, nestedClasspath, singleton) }
     }
     return AnalyzerBundleArtifact(bsn, version, artifact)
   }
@@ -800,12 +888,12 @@ class DirectApiAnalyzerHarnessTest {
     if (nestedClassesJar.isRegularFile()) listOf(artifact.path, nestedClassesJar) else listOf(artifact.path)
   }
 
-  private fun writeBundleJar(path: Path, classes: Path, bsn: String, version: String, requireBundle: String?, nestedClasspath: Boolean) {
+  private fun writeBundleJar(path: Path, classes: Path, bsn: String, version: String, requireBundle: String?, nestedClasspath: Boolean, singleton: Boolean = false) {
     val nestedJar = path.parent.resolve("$bsn-classes.jar")
     if (nestedClasspath) {
       writeClassesJar(nestedJar, classes)
     }
-    val manifest = bundleManifest(bsn, version, requireBundle, if (nestedClasspath) nestedJar.name else ".")
+    val manifest = bundleManifest(bsn, version, requireBundle, if (nestedClasspath) nestedJar.name else ".", singleton)
     JarOutputStream(path.outputStream(), manifest).use { jar ->
       if (nestedClasspath) {
         jar.putNextEntry(JarEntry(nestedJar.name))
@@ -817,10 +905,10 @@ class DirectApiAnalyzerHarnessTest {
     }
   }
 
-  private fun writeBundleDirectory(path: Path, classes: Path, bsn: String, version: String, requireBundle: String?, nestedClasspath: Boolean) {
+  private fun writeBundleDirectory(path: Path, classes: Path, bsn: String, version: String, requireBundle: String?, nestedClasspath: Boolean, singleton: Boolean = false) {
     path.resolve("META-INF").createDirectories()
     val nestedJar = path.resolve("$bsn-classes.jar")
-    val manifest = bundleManifest(bsn, version, requireBundle, if (nestedClasspath) nestedJar.name else ".")
+    val manifest = bundleManifest(bsn, version, requireBundle, if (nestedClasspath) nestedJar.name else ".", singleton)
     path.resolve("META-INF/MANIFEST.MF").outputStream().use(manifest::write)
     if (nestedClasspath) {
       writeClassesJar(nestedJar, classes)
@@ -829,10 +917,10 @@ class DirectApiAnalyzerHarnessTest {
     }
   }
 
-  private fun bundleManifest(bsn: String, version: String, requireBundle: String?, bundleClasspath: String): Manifest = Manifest().apply {
+  private fun bundleManifest(bsn: String, version: String, requireBundle: String?, bundleClasspath: String, singleton: Boolean = false): Manifest = Manifest().apply {
     mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
     mainAttributes.putValue("Bundle-ManifestVersion", "2")
-    mainAttributes.putValue("Bundle-SymbolicName", bsn)
+    mainAttributes.putValue("Bundle-SymbolicName", if (singleton) "$bsn;singleton:=true" else bsn)
     mainAttributes.putValue("Bundle-Version", version)
     mainAttributes.putValue("Bundle-Name", bsn)
     mainAttributes.putValue("Bundle-ClassPath", bundleClasspath)
