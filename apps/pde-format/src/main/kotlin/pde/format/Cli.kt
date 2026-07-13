@@ -338,7 +338,11 @@ private fun resolveBootstrapRuntimeHome(configPath: Path?): Path {
             if (path.isAbsolute) path else (baseDir.resolve(path).normalize())
         }
     val repos = target?.p2Repositories ?: emptyList()
-    return EclipseRuntimeBootstrap.resolve(cacheOverride, repos)
+    return runCatching {
+        EclipseRuntimeBootstrap.resolve(cacheOverride, repos)
+    }.getOrElse {
+        FormatterRuntimeBootstrap.resolve()
+    }
 }
 
 private fun readStdinLines(): List<String> {
