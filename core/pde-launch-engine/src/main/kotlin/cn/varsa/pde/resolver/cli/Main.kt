@@ -90,6 +90,12 @@ import kotlin.io.path.inputStream
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
+import cn.varsa.pde.resolver.workspace.WorkspaceSetupInput
+import cn.varsa.pde.resolver.workspace.WorkspaceSetupInputJson
+import cn.varsa.pde.resolver.workspace.WorkspaceSetupService
+import cn.varsa.pde.resolver.workspace.JdtBuildInput
+import cn.varsa.pde.resolver.workspace.JdtBuildInputJson
+import cn.varsa.pde.resolver.workspace.toWorkspaceProjectSpec
 import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
 import cn.varsa.pde.resolver.launch.LaunchContext
 import org.osgi.framework.FrameworkUtil
@@ -231,7 +237,8 @@ internal val apiAnalyzeOptionsRequiringValue = setOf(
   "--log",
   "--baseline-root",
   "--bundle",
-  "--report"
+  "--report",
+  "--workspace-data"
 )
 internal val targetMirrorOptionsRequiringValue = setOf(
   "--config",
@@ -1846,7 +1853,26 @@ internal data class ApiAnalyzerRuntime(
   val dataDir: Path
 )
 
+internal data class EquinoxAppInvocation(
+  val launcherExecutable: Path,
+  val configurationDir: String,
+  val dataDir: String,
+  val applicationId: String,
+  val args: List<String>,
+  val logFile: Path? = null
+)
+
+internal data class EquinoxAppRuntime(
+  val launcherExecutable: Path,
+  val configurationDir: Path,
+  val dataDir: Path
+)
+
 internal const val DIRECT_API_ANALYZER_APPLICATION_ID = "cn.varsa.pde.api_analyzer"
+internal const val WORKSPACE_SETUP_APPLICATION_ID = "cn.varsa.pde.workspace_setup"
+internal const val JDT_BUILD_APPLICATION_ID = "cn.varsa.pde.jdt_build"
+private const val WORKSPACE_SETUP_RUNTIME_ARCHIVE = "workspace-setup-runtime.zip"
+private const val JDT_BUILD_RUNTIME_ARCHIVE = "jdt-build-runtime.zip"
 
 internal data class BatchApiAnalyzerLaunchPlan(
   val inputPath: Path,
@@ -1917,26 +1943,34 @@ internal fun writeBatchApiAnalyzerLaunchPlan(
 
 private fun runApiAnalyzer(
   invocation: ApiAnalyzerInvocation
-): Int {
-  val command = buildApiAnalyzerCommand(invocation)
-  val process = ProcessBuilder(command).apply {
-    redirectErrorStream(true)
-    if (invocation.logFile != null) {
-      invocation.logFile.parent?.let { Files.createDirectories(it) }
-      redirectOutput(invocation.logFile.toFile())
-    } else {
-      inheritIO()
-    }
-  }.start()
-  val exitCode = process.waitFor()
-  if (exitCode != 0) {
-    logger.severe("API analyzer exited with code $exitCode")
-  }
-  return exitCode
-}
+): Int = runEquinoxApp(
+  EquinoxAppInvocation(
+    launcherExecutable = invocation.launcherExecutable,
+    configurationDir = invocation.configurationDir,
+    dataDir = invocation.dataDir,
+    applicationId = invocation.applicationId,
+    args = invocation.args,
+    logFile = invocation.logFile
+  )
+)
 
 internal fun buildApiAnalyzerCommand(
   invocation: ApiAnalyzerInvocation,
+  javaBin: String = resolveJavaBin()
+): List<String> = buildEquinoxAppCommand(
+  EquinoxAppInvocation(
+    launcherExecutable = invocation.launcherExecutable,
+    configurationDir = invocation.configurationDir,
+    dataDir = invocation.dataDir,
+    applicationId = invocation.applicationId,
+    args = invocation.args,
+    logFile = invocation.logFile
+  ),
+  javaBin
+)
+
+internal fun buildEquinoxAppCommand(
+  invocation: EquinoxAppInvocation,
   javaBin: String = resolveJavaBin()
 ): List<String> {
   val command = mutableListOf(
@@ -1956,43 +1990,69 @@ internal fun buildApiAnalyzerCommand(
   return command
 }
 
-private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRuntime? {
-  val archive = findPackagedApiAnalyzerRuntimeArchive()
-  if (archive == null) {
-    logger.severe("Missing $API_ANALYZER_RUNTIME_ARCHIVE next to the pde CLI libraries.")
-    return null
+private fun runEquinoxApp(
+  invocation: EquinoxAppInvocation
+): Int {
+  val command = buildEquinoxAppCommand(invocation)
+  val process = ProcessBuilder(command).apply {
+    redirectErrorStream(true)
+    if (invocation.logFile != null) {
+      invocation.logFile.parent?.let { Files.createDirectories(it) }
+      redirectOutput(invocation.logFile.toFile())
+    } else {
+      inheritIO()
+    }
+  }.start()
+  val exitCode = process.waitFor()
+  if (exitCode != 0) {
+    logger.severe("Equinox app ${invocation.applicationId} exited with code $exitCode")
   }
-  val runtimeRoot = outputRoot.resolve("runtime")
-  recreateDirectory(runtimeRoot)
-  extractZipArchive(archive, runtimeRoot)
-  val plugins = runtimeRoot.resolve("plugins")
-  if (!Files.isDirectory(plugins)) {
-    logger.severe("Analyzer runtime archive does not contain a plugins/ directory: ${archive.toAbsolutePath().normalize()}")
-    return null
-  }
-  val configurationDir = ensureApiAnalyzerRuntimeConfiguration(runtimeRoot)
-  val launcher = findRuntimeBundle(plugins, "org.eclipse.equinox.launcher")
-  if (launcher == null) {
-    logger.severe("Analyzer runtime archive does not contain org.eclipse.equinox.launcher: ${archive.toAbsolutePath().normalize()}")
-    return null
-  }
-  val workspace = runtimeRoot.resolve("workspace")
-  Files.createDirectories(workspace)
-  return ApiAnalyzerRuntime(launcherExecutable = launcher, configurationDir = configurationDir, dataDir = workspace)
+  return exitCode
 }
 
-private fun findPackagedApiAnalyzerRuntimeArchive(): Path? {
-  val codeSource = ApiAnalyzerInvocation::class.java.protectionDomain.codeSource?.location?.toURI()?.let(Paths::get)
+private fun findPackagedRuntimeArchive(archiveName: String, outputRoot: Path): Path? {
+  val codeSource = EquinoxAppInvocation::class.java.protectionDomain.codeSource?.location?.toURI()?.let(Paths::get)
   val roots = buildList {
     if (codeSource != null) {
       add(if (Files.isRegularFile(codeSource)) codeSource.parent else codeSource)
       codeSource.parent?.let { add(it.resolve("lib")) }
     }
+    add(outputRoot)
   }
   return roots
-    .map { it.resolve(API_ANALYZER_RUNTIME_ARCHIVE) }
+    .map { it.resolve(archiveName) }
     .firstOrNull(Files::isRegularFile)
 }
+
+private fun resolvePackagedEquinoxAppRuntime(outputRoot: Path, runtimeArchiveName: String, applicationId: String): EquinoxAppRuntime? {
+  val archive = findPackagedRuntimeArchive(runtimeArchiveName, outputRoot)
+  if (archive == null) {
+    logger.severe("Missing $runtimeArchiveName next to the pde CLI libraries.")
+    return null
+  }
+  val runtimeRoot = outputRoot.resolve("runtime-$runtimeArchiveName")
+  recreateDirectory(runtimeRoot)
+  extractZipArchive(archive, runtimeRoot)
+  val plugins = runtimeRoot.resolve("plugins")
+  if (!Files.isDirectory(plugins)) {
+    logger.severe("Runtime archive does not contain a plugins/ directory: ${archive.toAbsolutePath().normalize()}")
+    return null
+  }
+  val configurationDir = ensureEquinoxAppRuntimeConfiguration(runtimeRoot, applicationId)
+  val launcher = findRuntimeBundle(plugins, "org.eclipse.equinox.launcher")
+  if (launcher == null) {
+    logger.severe("Runtime archive does not contain org.eclipse.equinox.launcher: ${archive.toAbsolutePath().normalize()}")
+    return null
+  }
+  val workspace = runtimeRoot.resolve("workspace")
+  Files.createDirectories(workspace)
+  return EquinoxAppRuntime(launcherExecutable = launcher, configurationDir = configurationDir, dataDir = workspace)
+}
+
+private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRuntime? =
+  resolvePackagedEquinoxAppRuntime(outputRoot, API_ANALYZER_RUNTIME_ARCHIVE, DIRECT_API_ANALYZER_APPLICATION_ID)?.let {
+    ApiAnalyzerRuntime(it.launcherExecutable, it.configurationDir, it.dataDir)
+  }
 
 private fun recreateDirectory(path: Path) {
   if (Files.exists(path)) {
@@ -2020,17 +2080,20 @@ private fun extractZipArchive(zip: Path, destination: Path) {
   }
 }
 
-private fun ensureApiAnalyzerRuntimeConfiguration(runtimeRoot: Path): Path {
+private fun ensureApiAnalyzerRuntimeConfiguration(runtimeRoot: Path): Path =
+  ensureEquinoxAppRuntimeConfiguration(runtimeRoot, DIRECT_API_ANALYZER_APPLICATION_ID)
+
+private fun ensureEquinoxAppRuntimeConfiguration(runtimeRoot: Path, applicationId: String): Path {
   val configDir = runtimeRoot.resolve("configuration")
   Files.createDirectories(configDir)
   val bundlesInfo = configDir.resolve("org.eclipse.equinox.simpleconfigurator").resolve("bundles.info")
   Files.createDirectories(bundlesInfo.parent)
-  writeApiAnalyzerBundlesInfo(bundlesInfo, runtimeRoot.resolve("plugins"))
-  writeApiAnalyzerConfigIni(configDir.resolve("config.ini"), runtimeRoot, bundlesInfo)
+  writeEquinoxAppBundlesInfo(bundlesInfo, runtimeRoot.resolve("plugins"))
+  writeEquinoxAppConfigIni(configDir.resolve("config.ini"), runtimeRoot, bundlesInfo, applicationId)
   return configDir
 }
 
-private fun writeApiAnalyzerConfigIni(configIni: Path, runtimeRoot: Path, bundlesInfo: Path) {
+private fun writeEquinoxAppConfigIni(configIni: Path, runtimeRoot: Path, bundlesInfo: Path, applicationId: String) {
   val framework = findRuntimeBundle(runtimeRoot.resolve("plugins"), "org.eclipse.osgi")
     ?: throw IllegalStateException("Unable to locate org.eclipse.osgi in ${runtimeRoot.resolve("plugins")}")
   val osgiBundles = buildList {
@@ -2043,7 +2106,7 @@ private fun writeApiAnalyzerConfigIni(configIni: Path, runtimeRoot: Path, bundle
     configIni,
     listOf(
       "#Configuration File",
-      "eclipse.application=$DIRECT_API_ANALYZER_APPLICATION_ID",
+      "eclipse.application=$applicationId",
       "eclipse.p2.data.area=@config.dir/.p2",
       "org.eclipse.equinox.simpleconfigurator.configUrl=${bundlesInfo.toUri()}",
       "org.eclipse.update.reconcile=false",
@@ -2057,7 +2120,10 @@ private fun writeApiAnalyzerConfigIni(configIni: Path, runtimeRoot: Path, bundle
   )
 }
 
-private fun writeApiAnalyzerBundlesInfo(bundlesInfo: Path, plugins: Path) {
+private fun writeApiAnalyzerBundlesInfo(bundlesInfo: Path, plugins: Path) =
+  writeEquinoxAppBundlesInfo(bundlesInfo, plugins)
+
+private fun writeEquinoxAppBundlesInfo(bundlesInfo: Path, plugins: Path) {
   val entries = Files.list(plugins).use { stream ->
     stream
       .map { path -> readRuntimeBundleMetadata(path)?.let { metadata -> RuntimeBundleEntry(metadata.bsn, metadata.version, runtimeBundleLocation(path)) } }
@@ -3828,6 +3894,11 @@ internal fun apiAnalyzeMain(
     fullName = "bundle",
     description = "Analyze only the selected workspace bundle symbolic name (repeatable)"
   ).multiple()
+  val workspaceDataOpt by parser.option(
+    ArgType.String,
+    fullName = "workspace-data",
+    description = "Path to workspace data directory (from pde workspace setup) for since-tag analysis"
+  )
   val configPosOpt by parser.argument(
     ArgType.String,
     description = "Launch config YAML"
@@ -4027,8 +4098,11 @@ internal fun apiAnalyzeMain(
       outputReportPath = reportPath,
       apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
     )
+    val workspaceProjectName: String? = if (workspaceDataOpt != null) {
+      WorkspaceSetupService.invisibleProjectName(currentBsn, descriptor.path.toString())
+    } else null
     currentBundleInfos += CurrentBundleInfo(
-      currentBundle = builtInput.currentBundle,
+      currentBundle = builtInput.currentBundle.copy(workspaceProjectName = workspaceProjectName),
       outputReportPath = builtInput.outputReportPath,
       apiFilterPath = builtInput.apiFilterFile
     )
@@ -4061,12 +4135,156 @@ internal fun apiAnalyzeMain(
     input = BatchApiAnalyzerInput(
       currentBundles = currentBundleInfos,
       dependencyArtifacts = batchDependencyArtifacts,
-      baselineArtifacts = batchBaselineArtifacts
+      baselineArtifacts = batchBaselineArtifacts,
+      workspaceDataDir = workspaceDataOpt
     ),
     logFile = batchLogFile
   ).invocation
   logger.info("Launching one analyzer JVM for ${currentBundleInfos.size} bundle(s): ${currentBsns.sorted().joinToString(", ")}")
   return analyzerRunner(invocation)
+}
+
+fun workspaceSetupMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
+  val parser = ArgParser("pde workspace setup ${maturityTag("WIP")}")
+  val configFileOpt by parser.option(
+    ArgType.String,
+    fullName = "config",
+    description = "YAML launch configuration"
+  )
+  val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .pde/workspace)")
+  val dataDirOpt by parser.option(ArgType.String, fullName = "data-dir", description = "Workspace data directory for Eclipse projects (default: <output-root>/data)")
+  val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
+  parser.parse(normalizedArgs)
+  configureLogging(Level.INFO, shouldUseColor())
+
+  val configFile = configFileOpt ?: discoverConfigFile()?.toString()
+  if (configFile == null) {
+    logger.severe("Missing --config and no launch config discovered in current directory.")
+    return 2
+  }
+  val resolvedConfigFile = Paths.get(configFile)
+  if (!Files.exists(resolvedConfigFile)) {
+    logger.severe("Launch config does not exist: ${resolvedConfigFile.toAbsolutePath().normalize()}")
+    return 2
+  }
+  logger.info("Using launch config at ${resolvedConfigFile.toAbsolutePath().normalize()}")
+
+  val configContext = LaunchConfigLoader.load(resolvedConfigFile)
+  val extraBundles = configuredExtraBundles(configContext)
+  val pinnedVersions = configuredPinnedVersions(configContext)
+  logActiveExtraBundles(extraBundles)
+  val profilePath = resolveProfilePath(configContext)
+  if (profilePath == null) {
+    logger.severe("target profile path missing in YAML config; set target.profileId + target.p2Path.")
+    return 2
+  }
+  if (!Files.exists(profilePath)) {
+    logger.severe("target profile registry does not exist: $profilePath (check target.profileId/target.p2Path or run pde target install)")
+    return 2
+  }
+
+  val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
+  val workspaceInputs = WorkspaceModuleResolver.resolve(configContext, allowMissingClasses = true)
+  if (workspaceInputs.descriptors.isEmpty()) {
+    logger.severe("No workspace bundles resolved from config; add bundles.")
+    return 2
+  }
+  val env = LaunchEnvironment(
+    targetIndex = targetIndex,
+    workspaceEntries = workspaceInputs.descriptors,
+    resolverOptions = ResolveOptions(
+      whitelistPrefixes = emptySet(),
+      preferWorkspace = true,
+      includeHostsForFragments = true,
+      pinnedVersions = pinnedVersions,
+      extraBundles = extraBundles
+    ),
+    autoStartBundles = emptyMap(),
+    startupLevels = emptyMap(),
+    devProperties = emptyMap()
+  )
+  val options = LauncherOptions(
+    frameworkBSN = framework,
+    autoStartDefault = false
+  )
+  val planResult = LaunchPlanner.build(env, options)
+  logPlanSummary(planResult)
+
+  val workspaceSpecs = workspaceInputs.descriptors.map { descriptor ->
+    val bsn = descriptor.manifest.bundleSymbolicName?.key ?: error("No BSN")
+    val version = descriptor.manifest.bundleVersion?.toString() ?: "0.0.0"
+    val deps = planResult.workspaceDependencies[bsn]?.toList() ?: emptyList()
+    descriptor.toWorkspaceProjectSpec(version, deps)
+  }
+  val targetClasspath = planResult.plan.bundles
+    .filter { !it.isWorkspace }
+    .map { it.location.toString() }
+    .distinct()
+  val input = WorkspaceSetupInput(projects = workspaceSpecs, targetClasspath = targetClasspath)
+
+  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".pde/workspace")
+  val inputsDir = resolvedOutputRoot.resolve("inputs")
+  Files.createDirectories(inputsDir)
+  val inputPath = inputsDir.resolve("workspace-setup.json")
+  Files.writeString(inputPath, WorkspaceSetupInputJson.write(input))
+
+  val dataDir = dataDirOpt?.let { Paths.get(it) } ?: resolvedOutputRoot.resolve("data")
+  val runtime = resolvePackagedEquinoxAppRuntime(resolvedOutputRoot, WORKSPACE_SETUP_RUNTIME_ARCHIVE, WORKSPACE_SETUP_APPLICATION_ID) ?: return 2
+  val invocation = EquinoxAppInvocation(
+    launcherExecutable = runtime.launcherExecutable,
+    configurationDir = runtime.configurationDir.toString(),
+    dataDir = dataDir.toString(),
+    applicationId = WORKSPACE_SETUP_APPLICATION_ID,
+    args = listOf("--input", inputPath.toString())
+  )
+  val exitCode = runEquinoxApp(invocation)
+  if (exitCode == 0) {
+    logger.info("Workspace setup complete. Data dir: ${dataDir.toAbsolutePath()}")
+  }
+  return exitCode
+}
+
+fun jdtBuildMain(args: Array<String>): Int {
+  val parser = ArgParser("pde jdt-build ${maturityTag("WIP")}")
+  val dataDir by parser.option(ArgType.String, fullName = "data", description = "Workspace data directory (from pde workspace setup)")
+  val fullRebuild by parser.option(ArgType.Boolean, fullName = "full", description = "Force full rebuild").default(false)
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration (auto-setup)")
+  val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (auto-setup, repeatable)").multiple()
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .pde/workspace)")
+  parser.parse(args)
+  configureLogging(Level.INFO, shouldUseColor())
+
+  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".pde/workspace")
+  val resolvedDataDir = if (dataDir != null) {
+    Paths.get(dataDir)
+  } else {
+    val setupArgs = mutableListOf<String>()
+    configFileOpt?.let { setupArgs += listOf("--config", it) }
+    workspaceRoots.forEach { setupArgs += listOf("--workspace", it) }
+    setupArgs += "--output-root"
+    setupArgs += resolvedOutputRoot.toString()
+    val setupResult = workspaceSetupMain(setupArgs.toTypedArray())
+    if (setupResult != 0) return setupResult
+    resolvedOutputRoot.resolve("data")
+  }
+
+  val input = JdtBuildInput(fullRebuild = fullRebuild)
+  val inputsDir = resolvedOutputRoot.resolve("inputs")
+  Files.createDirectories(inputsDir)
+  val inputPath = inputsDir.resolve("jdt-build.json")
+  Files.writeString(inputPath, JdtBuildInputJson.write(input))
+
+  val runtime = resolvePackagedEquinoxAppRuntime(resolvedOutputRoot, JDT_BUILD_RUNTIME_ARCHIVE, JDT_BUILD_APPLICATION_ID) ?: return 2
+  val invocation = EquinoxAppInvocation(
+    launcherExecutable = runtime.launcherExecutable,
+    configurationDir = runtime.configurationDir.toString(),
+    dataDir = resolvedDataDir.toString(),
+    applicationId = JDT_BUILD_APPLICATION_ID,
+    args = listOf("--input", inputPath.toString())
+  )
+  return runEquinoxApp(invocation)
 }
 
 fun compileMain(args: Array<String>): Int {
