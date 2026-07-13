@@ -69,10 +69,11 @@ object JdtlsInitCommand {
       val context = LaunchConfigLoader.load(configPath, workingDir)
       val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
       val targetIndex = resolveTargetIndex(context)
-      val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex)
+      val projectsDir = workingDir.resolve(".jdtls-data").resolve("projects")
+      val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, projectsDir)
       touchProjectile(workingDir)
       writeVscodeSettings(workingDir)
-      println("Generated .project/.classpath for ${result.written} workspace bundles.")
+      println("Generated .project/.classpath for ${result.written} workspace bundles in ${projectsDir.toAbsolutePath().normalize()}")
       val projectConfigurationsOutValue = projectConfigurationsOut
       val projectConfigurationsPath = when {
         projectConfigurationsOutValue != null -> resolvePath(context.baseDir, projectConfigurationsOutValue)
@@ -144,12 +145,14 @@ private fun writeVscodeSettings(issueDir: Path) {
 private fun writeWorkspaceConfigs(
   context: LaunchConfigContext,
   workspaceDescriptors: List<WorkspaceBundleDescriptor>,
-  targetIndex: TargetPlatformIndex
+  targetIndex: TargetPlatformIndex,
+  projectsDir: Path
 ): WorkspaceConfigResult {
   val moduleDefinitions = WorkspaceModuleResolver.resolveDefinitions(context)
   if (moduleDefinitions.isEmpty()) {
     fail("No workspace bundles resolved from config; add bundles.")
   }
+  Files.createDirectories(projectsDir)
   val descriptorByPath = workspaceDescriptors.associateBy { it.path.toAbsolutePath().normalize() }
   val projectNameByBsn = workspaceDescriptors.associate {
     val bsn = it.manifest.bundleSymbolicName?.key ?: it.path.fileName.toString()
@@ -167,7 +170,7 @@ private fun writeWorkspaceConfigs(
     val isTestBundle = isTestBundle(bundleName, moduleDir, descriptor.fragmentHost != null)
     val sourceRoots = determineSourceRoots(moduleDir, descriptor.sourceRoots)
     val outputDir = descriptor.outputDirectory ?: moduleDir.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
-    val outputPath = relativizeOrDefault(moduleDir, outputDir, WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
+    val outputDirAbs = outputDir.toAbsolutePath().normalize()
     val compliance = resolveJavaCompliance(descriptor.compilerPrefs)
     val resolved = Resolver.resolve(
       targetIndex,
@@ -181,13 +184,14 @@ private fun writeWorkspaceConfigs(
       projectNameByBsn
     )
 
-    val projectFile = moduleDir.resolve(".project")
-    val projectWritten = writeProjectFile(moduleDir, bundleName)
+    val projectConfigDir = projectsDir.resolve(bundleName)
+    val projectFile = projectConfigDir.resolve(".project")
+    val projectWritten = writeProjectFile(projectConfigDir, bundleName)
     val classpathWritten = writeClasspathFile(
-      moduleDir,
+      projectConfigDir,
       sourceRoots,
       resolvedEntries,
-      outputPath,
+      outputDirAbs.toString(),
       isTestBundle,
       compliance
     )
@@ -201,8 +205,9 @@ private fun writeWorkspaceConfigs(
   return WorkspaceConfigResult(written, projectConfigurations.toList())
 }
 
-private fun writeProjectFile(moduleDir: Path, projectName: String): Boolean {
-  val projectFile = moduleDir.resolve(".project")
+private fun writeProjectFile(projectConfigDir: Path, projectName: String): Boolean {
+  Files.createDirectories(projectConfigDir)
+  val projectFile = projectConfigDir.resolve(".project")
   val builder = StringBuilder()
   builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
   builder.appendLine("<projectDescription>")
@@ -233,20 +238,21 @@ private fun writeProjectFile(moduleDir: Path, projectName: String): Boolean {
 }
 
 private fun writeClasspathFile(
-  moduleDir: Path,
+  projectConfigDir: Path,
   sourceRoots: List<Path>,
   resolvedEntries: List<ClasspathEntry>,
   outputPath: String,
   isTestBundle: Boolean,
   compliance: String
 ): Boolean {
-  val classpathFile = moduleDir.resolve(".classpath")
+  Files.createDirectories(projectConfigDir)
+  val classpathFile = projectConfigDir.resolve(".classpath")
   val builder = StringBuilder()
   builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
   builder.appendLine("<classpath>")
   sourceRoots.forEach { root ->
-    val relative = relativizeOrDefault(moduleDir, root, root.toString())
-    builder.appendLine("  <classpathentry kind=\"src\" path=\"${xmlEscape(relative)}\">")
+    val absPath = root.toAbsolutePath().normalize().toString()
+    builder.appendLine("  <classpathentry kind=\"src\" path=\"${xmlEscape(absPath)}\">")
     if (isTestBundle) {
       builder.appendLine("    <attributes>")
       builder.appendLine("      <attribute name=\"test\" value=\"true\"/>")
@@ -424,14 +430,6 @@ private fun resolveProfilePath(context: LaunchConfigContext, targetConfig: cn.va
   val lowercase = registryDir.resolve("$profileId.profile").normalize()
   if (Files.exists(lowercase)) return lowercase
   return preferred
-}
-
-private fun relativizeOrDefault(baseDir: Path, path: Path, fallback: String): String {
-  return if (path.startsWith(baseDir)) {
-    baseDir.relativize(path).toString().replace('\\', '/')
-  } else {
-    fallback
-  }
 }
 
 private fun xmlEscape(value: String): String {
