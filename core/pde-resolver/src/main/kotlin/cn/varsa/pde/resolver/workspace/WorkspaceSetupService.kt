@@ -70,6 +70,19 @@ class WorkspaceSetupService {
         val linkedFolder = project.getFolder("_")
         linkedFolder.createLink(bundlePath.toUri(), IResource.NONE, monitor)
 
+        // PDE's WorkspaceModelManager (PluginRegistry.findModel) discovers a project's plugin
+        // model by looking for META-INF/MANIFEST.MF at the project-relative path, regardless of
+        // project nature. It won't find it nested inside the "_" linked folder, so link it a
+        // second time directly at the project root. This is a location "overlap" with the "_"
+        // link, but Eclipse only warns (IResourceStatus.OVERLAPPING_LOCATION), it doesn't block
+        // creation. Without this, ProjectComponent.getModel() aborts with a CoreException the
+        // first time it's needed (e.g. resolving the bundle description), which is exactly when
+        // since-tag analysis runs.
+        val manifestDir = bundlePath.resolve("META-INF")
+        if (java.nio.file.Files.isDirectory(manifestDir)) {
+            project.getFolder("META-INF").createLink(manifestDir.toUri(), IResource.NONE, monitor)
+        }
+
         val javaProject = JavaCore.create(project)
 
         val classpathEntries = mutableListOf<IClasspathEntry>()
@@ -89,6 +102,19 @@ class WorkspaceSetupService {
         }
 
         classpathEntries += JavaRuntime.getDefaultJREContainerEntry()
+
+        // Sibling workspace bundles this bundle depends on. `dependencies`/referencedProjectNames
+        // above only control JDT build ORDER; without a project classpath entry too, this
+        // project's compiler has no visibility into the dependency's exported types at all (its
+        // own classPathEntries only ever cover its own bundle directory, and targetClasspath
+        // excludes workspace bundles by design).
+        for (depProjectName in referencedProjectNames) {
+            classpathEntries += JavaCore.newProjectEntry(
+                org.eclipse.core.runtime.Path("/$depProjectName"),
+                null, false,
+                null, false
+            )
+        }
 
         for (jar in targetClasspath) {
             classpathEntries += JavaCore.newLibraryEntry(
