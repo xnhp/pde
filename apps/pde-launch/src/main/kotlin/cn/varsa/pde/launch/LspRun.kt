@@ -25,7 +25,7 @@ object LspRunCommand {
     val dataDirOpt by parser.option(
       ArgType.String,
       fullName = "data-dir",
-      description = "JDT LS workspace data directory (defaults to <issue-dir>/.jdtls-data)"
+      description = "JDT LS workspace data directory (defaults to <issue-dir>/.lsp)"
     )
     val jdtlsHomeOpt by parser.option(
       ArgType.String,
@@ -59,7 +59,7 @@ object LspRunCommand {
     if (initExit != 0) return initExit
 
     val dataDir = dataDirOpt?.let { Paths.get(it).toAbsolutePath().normalize() }
-      ?: issueDir.resolve(".jdtls-data")
+      ?: issueDir.resolve(".lsp")
     Files.createDirectories(dataDir)
 
     val home = jdtlsHomeOpt?.let { Paths.get(it).toAbsolutePath().normalize() }

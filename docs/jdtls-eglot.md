@@ -20,7 +20,7 @@ pde lsp init
 pde lsp init --issue-dir /path/to/workspace
 pde lsp init --config /path/to/pde.yaml
 pde lsp init --issue-dir /path/to/workspace \
-  --project-configurations-out /path/to/workspace/.jdtls-data/projectConfigurations.json
+  --project-configurations-out /path/to/workspace/.lsp/projectConfigurations.json
 ```
 
 `lsp init` discovers `pde.yaml`, `launch.yaml`, or `pde.yaml` if you omit `--config`.
@@ -30,7 +30,7 @@ Notes:
   a manual re-run is usually enough — you don't need to also trigger `java.project.import`).
 - When you run from an issue root that contains `pde.yaml`, `lsp init` defaults
   `--issue-dir` to the current directory and writes
-  `./.jdtls-data/projectConfigurations.json` if you omit `--project-configurations-out`.
+  `./.lsp/projectConfigurations.json` if you omit `--project-configurations-out`.
 - Files are written per bundle directory and always overwrite existing metadata.
 - `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations
   for editor integrations that need explicit workspace roots.
@@ -57,11 +57,11 @@ JVM properties, set *before* `-jar` if invoking the `java` command directly).
 pde lsp run --download          # first run: fetch + cache, then launch
 pde lsp run                     # subsequent runs: reuse the cache, fail fast if missing
 pde lsp run --issue-dir /path/to/workspace
-pde lsp run --config /path/to/pde.yaml --data-dir /path/to/workspace/.jdtls-data
+pde lsp run --config /path/to/pde.yaml --data-dir /path/to/workspace/.lsp
 pde lsp run --jdtls-home ~/tools/jdt-language-server-1.56.0   # skip cache entirely
 ```
 
-Options: `--config`, `--issue-dir`, `--data-dir` (defaults to `<issue-dir>/.jdtls-data`),
+Options: `--config`, `--issue-dir`, `--data-dir` (defaults to `<issue-dir>/.lsp`),
 `--jdtls-home`, `--download`.
 
 ### Live reimport
@@ -128,19 +128,19 @@ jq '.projectConfigurations | map(.projectName)' projectConfigurations.json
 ## Eglot setup (Spacemacs + Projectile, issue-dir)
 
 1) In the issue dir: `touch .projectile`.
-2) Generate metadata: `pde lsp init` (writes `./.jdtls-data/projectConfigurations.json`).
+2) Generate metadata: `pde lsp init` (writes `./.lsp/projectConfigurations.json`).
 3) Add this to `~/.spacemacs` to pass `projectConfigurations` at initialization:
 
 ```elisp
 (defun ben/jdtls--issue-root ()
-  (or (locate-dominating-file default-directory ".jdtls-data")
+  (or (locate-dominating-file default-directory ".lsp")
       (locate-dominating-file default-directory "pde.yaml")
       (when-let ((project (project-current nil)))
         (project-root project))))
 
 (defun ben/jdtls--project-configurations (issue-root)
   (let ((config-file (and issue-root
-                          (expand-file-name ".jdtls-data/projectConfigurations.json" issue-root))))
+                          (expand-file-name ".lsp/projectConfigurations.json" issue-root))))
     (when (and config-file (file-exists-p config-file))
       (let ((json-object-type 'plist)
             (json-array-type 'vector)

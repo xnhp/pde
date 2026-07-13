@@ -55,7 +55,7 @@ fun runJdtlsSmoke(config: JdtlsSmokeConfig): Int {
   val launcherPath = config.launcherJar
   val configPath = config.configDir
   val rootPath = config.rootDir
-  val dataPath = config.dataDir ?: rootPath.resolve(".jdtls-data")
+  val dataPath = config.dataDir ?: rootPath.resolve(".lsp")
   val shutdownMessage = """
     {"jsonrpc":"2.0","id":2,"method":"shutdown","params":{}}
   """.trimIndent()

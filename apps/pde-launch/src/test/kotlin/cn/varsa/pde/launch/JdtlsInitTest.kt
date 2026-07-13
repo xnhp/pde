@@ -63,7 +63,7 @@ class JdtlsInitTest {
     )
     assertEquals(0, exitCode)
 
-    val projectDir = baseDir.resolve(".jdtls-data").resolve("projects").resolve("org.knime.gateway.api.tests")
+    val projectDir = baseDir.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api.tests")
     val projectFile = projectDir.resolve(".project")
     val classpathFile = projectDir.resolve(".classpath")
     assertTrue(Files.exists(projectFile))
@@ -121,7 +121,7 @@ class JdtlsInitTest {
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
     assertEquals(0, exitCode)
 
-    val projectDir = configPath.parent.resolve(".jdtls-data").resolve("projects").resolve("org.knime.gateway.impl")
+    val projectDir = configPath.parent.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.impl")
     val classpathContents = Files.readString(projectDir.resolve(".classpath"))
     val absEclipse = bundleDir.resolve("src/eclipse").toAbsolutePath().normalize().toString()
     val absGenerated = bundleDir.resolve("src/generated").toAbsolutePath().normalize().toString()
@@ -186,7 +186,7 @@ class JdtlsInitTest {
     )
     assertEquals(0, exitCode)
 
-    val projectDir = issueDir.resolve(".jdtls-data").resolve("projects").resolve("org.knime.gateway.api")
+    val projectDir = issueDir.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api")
     val projectFile = projectDir.resolve(".project")
     val classpathFile = projectDir.resolve(".classpath")
     assertTrue(Files.exists(projectFile))
@@ -212,7 +212,7 @@ class JdtlsInitTest {
       """.trimIndent()
     )
 
-    val projectConfigDir = baseDir.resolve(".jdtls-data").resolve("projects").resolve("org.knime.gateway.api")
+    val projectConfigDir = baseDir.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api")
     Files.createDirectories(projectConfigDir)
     val projectFile = projectConfigDir.resolve(".project")
     val classpathFile = projectConfigDir.resolve(".classpath")
@@ -274,7 +274,7 @@ class JdtlsInitTest {
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
     assertEquals(0, exitCode)
 
-    val projectDir = configPath.parent.resolve(".jdtls-data").resolve("projects").resolve("org.knime.gateway.json")
+    val projectDir = configPath.parent.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.json")
     val classpathContents = Files.readString(projectDir.resolve(".classpath"))
     assertTrue(classpathContents.contains("JavaSE-21"))
   }
@@ -331,7 +331,7 @@ class JdtlsInitTest {
     val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
     assertEquals(0, exitCode)
 
-    val projectDir = configPath.parent.resolve(".jdtls-data").resolve("projects").resolve("org.example.client")
+    val projectDir = configPath.parent.resolve(".lsp").resolve("projects").resolve("org.example.client")
     val classpathContents = Files.readString(projectDir.resolve(".classpath"))
     assertTrue(
       classpathContents.contains(targetBundle.toAbsolutePath().toString()),
@@ -383,7 +383,7 @@ class JdtlsInitTest {
     val contents = Files.readString(outputPath)
     val expectedRoot = baseDir.toAbsolutePath().normalize()
     val expectedRootUri = expectedRoot.toUri().toString()
-    val projectFile = expectedRoot.resolve(".jdtls-data").resolve("projects").resolve("org.knime.gateway.api").resolve(".project")
+    val projectFile = expectedRoot.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api").resolve(".project")
     val expectedUri = projectFile.toAbsolutePath().normalize().toUri().toString()
     assertTrue(contents.contains("\"rootPaths\""))
     assertTrue(contents.contains(expectedRoot.toString()))
@@ -429,14 +429,14 @@ class JdtlsInitTest {
     }
     assertEquals(0, exitCode)
 
-    val outputPath = baseDir.resolve(".jdtls-data").resolve("projectConfigurations.json")
+    val outputPath = baseDir.resolve(".lsp").resolve("projectConfigurations.json")
     assertTrue(Files.exists(outputPath))
     assertTrue(Files.exists(baseDir.resolve(".projectile")))
 
     val contents = Files.readString(outputPath)
     val expectedRoot = baseDir.toAbsolutePath().normalize()
     val expectedRootUri = expectedRoot.toUri().toString()
-    val projectFile = expectedRoot.resolve(".jdtls-data").resolve("projects").resolve("org.knime.gateway.api").resolve(".project")
+    val projectFile = expectedRoot.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api").resolve(".project")
     val expectedUri = projectFile.toAbsolutePath().normalize().toUri().toString()
     assertTrue(contents.contains(expectedRoot.toString()))
     assertTrue(contents.contains(expectedRootUri))

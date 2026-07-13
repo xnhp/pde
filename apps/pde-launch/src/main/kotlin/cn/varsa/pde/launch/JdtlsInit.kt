@@ -69,7 +69,7 @@ object JdtlsInitCommand {
       val context = LaunchConfigLoader.load(configPath, workingDir)
       val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
       val targetIndex = resolveTargetIndex(context)
-      val projectsDir = workingDir.resolve(".jdtls-data").resolve("projects")
+      val projectsDir = workingDir.resolve(".lsp").resolve("projects")
       val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, projectsDir)
       touchProjectile(workingDir)
       writeVscodeSettings(workingDir)
@@ -77,7 +77,7 @@ object JdtlsInitCommand {
       val projectConfigurationsOutValue = projectConfigurationsOut
       val projectConfigurationsPath = when {
         projectConfigurationsOutValue != null -> resolvePath(context.baseDir, projectConfigurationsOutValue)
-        issueDirOpt == null && hasCwdConfig -> issueDir.resolve(".jdtls-data").resolve("projectConfigurations.json")
+        issueDirOpt == null && hasCwdConfig -> issueDir.resolve(".lsp").resolve("projectConfigurations.json")
         else -> null
       }
       if (projectConfigurationsPath != null) {

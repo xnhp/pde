@@ -22,7 +22,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke initialize with JDT LS`() {
     val root = envPath("JDTLS_ROOT") ?: createWorkspaceFixture()
-    val dataDir = envPath("JDTLS_DATA") ?: root.resolve(".jdtls-data-test")
+    val dataDir = envPath("JDTLS_DATA") ?: root.resolve(".lsp-test")
     val launcher = envPath("JDTLS_LAUNCHER")
     val config = envPath("JDTLS_CONFIG")
     val (resolvedLauncher, resolvedConfig) = if (launcher != null && config != null) {
@@ -53,7 +53,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke implementation request in synthetic workspace`() {
     val root = createWorkspaceWithImplementation()
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -79,7 +79,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke definition across project dependency`() {
     val root = createWorkspaceWithDependency()
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -103,7 +103,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke definition resolves method across project dependency`() {
     val root = createWorkspaceWithDependency()
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -127,7 +127,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke references across project dependency`() {
     val root = createWorkspaceWithDependency()
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -151,7 +151,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke type hierarchy shows subtype`() {
     val root = createWorkspaceWithHierarchy()
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -175,7 +175,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke completion suggests subtype`() {
     val root = createWorkspaceWithCompletion()
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -199,7 +199,7 @@ class JdtlsSmokeTest {
   @Test
   fun `smoke diagnostics reports error`() {
     val root = createWorkspaceWithDiagnostics()
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -229,7 +229,7 @@ class JdtlsSmokeTest {
     }
 
     val root = createWorkspaceWithTargetSource(targetJar, sourceJar)
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -262,7 +262,7 @@ class JdtlsSmokeTest {
     }
 
     val root = createWorkspaceWithTargetSource(targetJar, null)
-    val dataDir = root.resolve(".jdtls-data-test")
+    val dataDir = root.resolve(".lsp-test")
     val (launcher, config) = resolveJdtlsInstallation()
     Files.createDirectories(dataDir)
 
@@ -384,7 +384,7 @@ class JdtlsImportSmokeTest {
       "Skipping issue workspace import smoke test; pde.yaml not found. Set JDTLS_ISSUE_CONFIG to override.",
       configPath != null
     )
-    val dataDir = rootPath.resolve(".jdtls-data")
+    val dataDir = rootPath.resolve(".lsp")
     Files.createDirectories(dataDir)
     val projectConfig = dataDir.resolve("projectConfigurations.json")
 
