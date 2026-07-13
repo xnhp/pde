@@ -4144,7 +4144,14 @@ internal fun apiAnalyzeMain(
   return analyzerRunner(invocation)
 }
 
-fun workspaceSetupMain(args: Array<String>): Int {
+private fun resolvePackagedWorkspaceSetupRuntime(outputRoot: Path): EquinoxAppRuntime? =
+  resolvePackagedEquinoxAppRuntime(outputRoot, WORKSPACE_SETUP_RUNTIME_ARCHIVE, WORKSPACE_SETUP_APPLICATION_ID)
+
+internal fun workspaceSetupMain(
+  args: Array<String>,
+  equinoxRuntimeResolver: (outputRoot: Path) -> EquinoxAppRuntime? = ::resolvePackagedWorkspaceSetupRuntime,
+  equinoxAppRunner: (EquinoxAppInvocation) -> Int = ::runEquinoxApp
+): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
   val parser = ArgParser("pde workspace setup ${maturityTag("WIP")}")
   val configFileOpt by parser.option(
@@ -4231,7 +4238,7 @@ fun workspaceSetupMain(args: Array<String>): Int {
   Files.writeString(inputPath, WorkspaceSetupInputJson.write(input))
 
   val dataDir = dataDirOpt?.let { Paths.get(it) } ?: resolvedOutputRoot.resolve("data")
-  val runtime = resolvePackagedEquinoxAppRuntime(resolvedOutputRoot, WORKSPACE_SETUP_RUNTIME_ARCHIVE, WORKSPACE_SETUP_APPLICATION_ID) ?: return 2
+  val runtime = equinoxRuntimeResolver(resolvedOutputRoot) ?: return 2
   val invocation = EquinoxAppInvocation(
     launcherExecutable = runtime.launcherExecutable,
     configurationDir = runtime.configurationDir.toString(),
@@ -4239,7 +4246,7 @@ fun workspaceSetupMain(args: Array<String>): Int {
     applicationId = WORKSPACE_SETUP_APPLICATION_ID,
     args = listOf("--input", inputPath.toString())
   )
-  val exitCode = runEquinoxApp(invocation)
+  val exitCode = equinoxAppRunner(invocation)
   if (exitCode == 0) {
     logger.info("Workspace setup complete. Data dir: ${dataDir.toAbsolutePath()}")
   }
