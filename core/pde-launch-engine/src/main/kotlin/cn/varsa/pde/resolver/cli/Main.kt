@@ -34,6 +34,7 @@ import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
 import cn.varsa.pde.resolver.index.getBundlePoolPath
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.compile.BundleCompileCache
 import cn.varsa.pde.resolver.compile.BundleCompileResult
@@ -90,6 +91,7 @@ import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
 import cn.varsa.pde.resolver.launch.LaunchContext
 import org.osgi.framework.Version
+import org.osgi.framework.VersionRange
 
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 private const val CRAC_CHECKPOINT_EXIT_CODE = 137
@@ -2262,6 +2264,15 @@ private fun selectedTargetBundlesForAnalyzer(
  * Tools reports the whole component as unresolved if any of that closure is missing, even when the
  * component itself is present. The closure is bounded by the (finite) target platform BSN space and
  * guarded by [byPath], so it always terminates even with cyclic Require-Bundle graphs.
+ *
+ * Symmetrically, every host bundle that ends up in the closure (whether originally [selected] or
+ * pulled in transitively via Require-Bundle) also pulls in any target-platform fragment whose
+ * `Fragment-Host` resolves to it. Fragments are only attached to a host at runtime -- they are
+ * never referenced via Require-Bundle -- so without this a fragment can be entirely missing from
+ * the analyzer's dependency set even though it is genuinely present in the target platform, making
+ * `component-resolution` results for the host (and its dependents) incomplete. Fragments hosting
+ * other fragments is not valid OSGi/PDE, so the fragment closure is not itself walked for further
+ * Fragment-Host matches -- only its own Require-Bundle headers are resolved, same as any other bundle.
  */
 internal fun augmentTargetBundlesForRequireBundleProviders(
   selected: List<TargetResolvedBundle>,
@@ -2276,6 +2287,13 @@ internal fun augmentTargetBundlesForRequireBundleProviders(
     val bsn = bundle.manifest.bundleSymbolicName?.key ?: return@forEach
     providers.getOrPut(bsn) { mutableSetOf() } += bundle.manifest.bundleVersion
   }
+
+  val fragmentsByHostBsn: Map<String, List<Pair<VersionRange, TargetResolvedBundle>>> =
+    collectTargetBundles(targetIndex)
+      .mapNotNull { candidate ->
+        candidate.manifest.fragmentHostAndVersionRange()?.let { (hostBsn, range) -> hostBsn to (range to candidate) }
+      }
+      .groupBy({ it.first }, { it.second })
 
   val queue = ArrayDeque<TargetResolvedBundle>()
 
@@ -2292,10 +2310,26 @@ internal fun augmentTargetBundlesForRequireBundleProviders(
     }
   }
 
-  selected.forEach { resolveRequirements(it.manifest) }
+  fun resolveFragments(bundle: TargetResolvedBundle) {
+    val bsn = bundle.manifest.bundleSymbolicName?.key ?: return
+    val version = bundle.manifest.bundleVersion
+    fragmentsByHostBsn[bsn]?.forEach { (range, fragment) ->
+      if (!range.includes(version)) return@forEach
+      val key = fragment.location.toAbsolutePath().normalize().toString()
+      if (byPath.putIfAbsent(key, fragment) == null) {
+        val fragmentBsn = fragment.manifest.bundleSymbolicName?.key
+        if (fragmentBsn != null) providers.getOrPut(fragmentBsn) { mutableSetOf() } += fragment.manifest.bundleVersion
+        queue += fragment
+      }
+    }
+  }
+
+  selected.forEach { resolveRequirements(it.manifest); resolveFragments(it) }
   extraRequirerManifests.forEach { resolveRequirements(it) }
   while (queue.isNotEmpty()) {
-    resolveRequirements(queue.removeFirst().manifest)
+    val next = queue.removeFirst()
+    resolveRequirements(next.manifest)
+    resolveFragments(next)
   }
 
   return byPath.values.toList()
