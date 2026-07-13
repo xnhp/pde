@@ -10,6 +10,8 @@ import cn.varsa.cli.core.CliPositionalArg
 import cn.varsa.cli.core.cliMcpToolsListText
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
+import cn.varsa.pde.resolver.cli.workspaceSetupMain
+import cn.varsa.pde.resolver.cli.jdtBuildMain
 import pde.format.main as formatMain
 import picocli.CommandLine
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -162,6 +164,7 @@ private val apiAnalyzeOptions = listOf(
   CliOption(listOf("--debug"), "Enable debug logging"),
   CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundle"), "Analyze only the selected workspace bundle BSN (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--workspace-data"), "Path to workspace data directory (from pde workspace setup) for since-tag analysis", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--report"), "Write JSON problem report (schemaVersion/problemRef/problemId/messageArgs/...) for downstream tools", takesValue = true, valueLabel = "String")
 )
 
@@ -226,6 +229,28 @@ internal val pdeCommand = CliCommandGroup(
       name = "compile",
       description = "Compile PDE Java bundles",
       handler = { args -> compileMain(args) },
+      mixinStandardHelpOptions = true,
+      options = compileOptions,
+      positionalArgs = compilePositionals
+    ),
+    CliCommandGroup(
+      name = "workspace",
+      description = "Eclipse workspace management",
+      children = listOf(
+        CliCommandLeaf(
+          name = "setup",
+          description = "Create Eclipse IProject/IJavaProject from resolver output",
+          handler = { args -> workspaceSetupMain(args) },
+          mixinStandardHelpOptions = true,
+          options = compileOptions,
+          positionalArgs = compilePositionals
+        )
+      )
+    ),
+    CliCommandLeaf(
+      name = "jdt-build",
+      description = "Run incremental JDT compilation in an Equinox workspace",
+      handler = { args -> jdtBuildMain(args) },
       mixinStandardHelpOptions = true,
       options = compileOptions,
       positionalArgs = compilePositionals
