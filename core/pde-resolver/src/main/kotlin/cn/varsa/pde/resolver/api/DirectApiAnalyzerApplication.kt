@@ -12,6 +12,9 @@ class DirectApiAnalyzerApplication : IApplication {
     val inputPath = parseInputPath(args)
     return try {
       val input = BatchApiAnalyzerInputJson.read(inputPath)
+      if (input.workspaceDataDir != null) {
+        System.err.println("API analysis with workspace support; since-tag checks enabled.")
+      }
       val result = DirectApiAnalyzerHarness().analyzeBatch(input)
       // Eclipse's launcher uses an Integer return value from IApplication#start as the process
       // exit code (IApplication.EXIT_OK is Integer 0). Continue-and-aggregate: every bundle in

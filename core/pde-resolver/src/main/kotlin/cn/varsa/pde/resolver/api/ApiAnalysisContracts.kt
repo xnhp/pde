@@ -9,7 +9,8 @@ data class BatchApiAnalyzerInput(
   val currentBundles: List<CurrentBundleInfo> = emptyList(),
   val dependencyArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
   val baselineArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
-  val preferences: Map<String, String> = emptyMap()
+  val preferences: Map<String, String> = emptyMap(),
+  val workspaceDataDir: String? = null
 )
 
 data class CurrentBundleInfo(
@@ -23,7 +24,8 @@ data class AnalyzerBundleArtifact(
   val version: String? = null,
   val path: Path,
   val sourcePath: Path? = null,
-  val synthetic: Boolean = false
+  val synthetic: Boolean = false,
+  val workspaceProjectName: String? = null
 )
 
 @JsonInclude(JsonInclude.Include.NON_NULL)

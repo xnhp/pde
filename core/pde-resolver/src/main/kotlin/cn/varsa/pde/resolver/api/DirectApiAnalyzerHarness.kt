@@ -1,11 +1,15 @@
 package cn.varsa.pde.resolver.api
 
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import org.eclipse.core.resources.IResource
+import org.eclipse.core.resources.IWorkspaceRoot
+import org.eclipse.core.resources.ResourcesPlugin
 import org.eclipse.core.runtime.NullProgressMonitor
 import org.eclipse.pde.api.tools.internal.builder.BaseApiAnalyzer
 import org.eclipse.pde.api.tools.internal.builder.BuildContext
 import org.eclipse.pde.api.tools.internal.model.ApiBaseline
 import org.eclipse.pde.api.tools.internal.model.BundleComponent
+import org.eclipse.pde.api.tools.internal.model.ProjectComponent
 import org.eclipse.pde.api.tools.internal.provisional.ApiPlugin
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblem
@@ -60,6 +64,7 @@ class DirectApiAnalyzerHarness(
    */
   fun analyzeBatch(input: BatchApiAnalyzerInput): BatchAnalysisResult {
     require(input.currentBundles.isNotEmpty()) { "Batch analyzer input must contain at least one current bundle." }
+    val workspaceRoot = if (input.workspaceDataDir != null) ResourcesPlugin.getWorkspace().root else null
 
     val currentBaseline = ApiBaseline("current")
     val referenceBaseline = ApiBaseline("baseline")
@@ -76,7 +81,7 @@ class DirectApiAnalyzerHarness(
 
       val currentArtifacts = mergeWithSharedDependencyArtifacts(input.currentBundles.map { it.currentBundle }, sharedDependencyArtifacts)
       val referenceArtifacts = mergeWithSharedDependencyArtifacts(input.baselineArtifacts, sharedDependencyArtifacts)
-      currentBaseline.addApiComponents(createComponents(currentBaseline, currentArtifacts).toTypedArray())
+      currentBaseline.addApiComponents(createComponents(currentBaseline, currentArtifacts, workspaceRoot).toTypedArray())
       referenceBaseline.addApiComponents(createComponents(referenceBaseline, referenceArtifacts).toTypedArray())
 
       val outcomes = input.currentBundles.map { bundleInfo ->
@@ -169,13 +174,33 @@ class DirectApiAnalyzerHarness(
     }
   }
 
-  private fun createComponents(baseline: ApiBaseline, artifacts: List<AnalyzerBundleArtifact>): List<BundleComponent> =
+  private fun createComponents(
+    baseline: ApiBaseline,
+    artifacts: List<AnalyzerBundleArtifact>,
+    workspaceRoot: IWorkspaceRoot? = null
+  ): List<IApiComponent> =
     artifacts
       .distinctBy { it.path.toAbsolutePath().normalize().toString() }
       .mapIndexed { index, artifact ->
-        BundleComponent(baseline, artifact.path.toAbsolutePath().normalize().toString(), index.toLong() + 1).also { component ->
-          require(component.isValidBundle) {
-            "Analyzer artifact is not a valid OSGi bundle artifact: ${artifact.path}"
+        val project = workspaceRoot?.let { root ->
+          artifact.workspaceProjectName?.let { name -> root.getProject(name) }
+        }
+        if (project != null && project.exists()) {
+          if (!project.isOpen) {
+            project.open(IResource.NONE, NullProgressMonitor())
+          }
+          ProjectComponent(
+            baseline,
+            artifact.path.toAbsolutePath().normalize().toString(),
+            project,
+            null,
+            index.toLong() + 1
+          )
+        } else {
+          BundleComponent(baseline, artifact.path.toAbsolutePath().normalize().toString(), index.toLong() + 1).also { component ->
+            require(component.isValidBundle) {
+              "Analyzer artifact is not a valid OSGi bundle artifact: ${artifact.path}"
+            }
           }
         }
       }
