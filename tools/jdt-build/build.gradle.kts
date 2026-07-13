@@ -71,6 +71,7 @@ publishAppP2Repo { dependsOn(appBundleJar) }
 val installIUs = provider {
   listOf(
     appBsn, "org.eclipse.equinox.launcher", "org.eclipse.equinox.simpleconfigurator",
+    "org.eclipse.osgi.compatibility.state", "org.apache.felix.scr",
     "org.eclipse.jdt.core"
   )
 }

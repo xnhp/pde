@@ -1869,8 +1869,8 @@ data class EquinoxAppRuntime(
 )
 
 internal const val DIRECT_API_ANALYZER_APPLICATION_ID = "cn.varsa.pde.api_analyzer"
-internal const val WORKSPACE_SETUP_APPLICATION_ID = "cn.varsa.pde.workspace_setup"
-internal const val JDT_BUILD_APPLICATION_ID = "cn.varsa.pde.jdt_build"
+internal const val WORKSPACE_SETUP_APPLICATION_ID = "cn.varsa.pde.workspace_setup.workspace_setup"
+internal const val JDT_BUILD_APPLICATION_ID = "cn.varsa.pde.jdt_build.jdt_build"
 private const val WORKSPACE_SETUP_RUNTIME_ARCHIVE = "workspace-setup-runtime.zip"
 private const val JDT_BUILD_RUNTIME_ARCHIVE = "jdt-build-runtime.zip"
 
