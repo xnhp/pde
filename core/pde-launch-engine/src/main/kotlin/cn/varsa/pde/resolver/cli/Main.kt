@@ -4160,7 +4160,7 @@ internal fun workspaceSetupMain(
     description = "YAML launch configuration"
   )
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
-  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .pde/workspace)")
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .jdtls/workspace)")
   val dataDirOpt by parser.option(ArgType.String, fullName = "data-dir", description = "Workspace data directory for Eclipse projects (default: <output-root>/data)")
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   parser.parse(normalizedArgs)
@@ -4231,7 +4231,7 @@ internal fun workspaceSetupMain(
     .distinct()
   val input = WorkspaceSetupInput(projects = workspaceSpecs, targetClasspath = targetClasspath)
 
-  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".pde/workspace")
+  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".jdtls/workspace")
   val inputsDir = resolvedOutputRoot.resolve("inputs")
   Files.createDirectories(inputsDir)
   val inputPath = inputsDir.resolve("workspace-setup.json")
@@ -4257,25 +4257,21 @@ fun jdtBuildMain(args: Array<String>): Int {
   val parser = ArgParser("pde jdt-build ${maturityTag("WIP")}")
   val dataDir by parser.option(ArgType.String, fullName = "data", description = "Workspace data directory (from pde workspace setup)")
   val fullRebuild by parser.option(ArgType.Boolean, fullName = "full", description = "Force full rebuild").default(false)
-  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration (auto-setup)")
-  val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (auto-setup, repeatable)").multiple()
-  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .pde/workspace)")
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .jdtls/workspace)")
   parser.parse(args)
   configureLogging(Level.INFO, shouldUseColor())
 
-  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".pde/workspace")
-  val resolvedDataDir = if (dataDir != null) {
-    Paths.get(dataDir)
-  } else {
-    val setupArgs = mutableListOf<String>()
-    configFileOpt?.let { setupArgs += listOf("--config", it) }
-    workspaceRoots.forEach { setupArgs += listOf("--workspace", it) }
-    setupArgs += "--output-root"
-    setupArgs += resolvedOutputRoot.toString()
-    val setupResult = workspaceSetupMain(setupArgs.toTypedArray())
-    if (setupResult != 0) return setupResult
-    resolvedOutputRoot.resolve("data")
+  if (dataDir == null) {
+    logger.severe("Missing --data. Run 'pde workspace setup' first to create the JDT workspace, then pass --data <path>.")
+    return 2
   }
+  val resolvedDataDir = Paths.get(dataDir)
+  if (!Files.exists(resolvedDataDir)) {
+    logger.severe("Workspace data directory not found: $dataDir")
+    logger.severe("Run 'pde workspace setup' first to create the JDT workspace.")
+    return 2
+  }
+  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".jdtls/workspace")
 
   val input = JdtBuildInput(fullRebuild = fullRebuild)
   val inputsDir = resolvedOutputRoot.resolve("inputs")
