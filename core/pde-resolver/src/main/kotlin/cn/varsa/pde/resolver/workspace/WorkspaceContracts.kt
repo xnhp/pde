@@ -71,9 +71,15 @@ fun WorkspaceBundleDescriptor.toWorkspaceProjectSpec(
     val outputDir = (outputDirectory ?: path.resolve("bin")).let {
         path.relativize(it).toString().replace('\\', '/')
     }
-    val libEntries = classPathEntries.map { entry ->
-        ClasspathEntry(kind = "lib", path = entry.toAbsolutePath().normalize().toString())
-    }
+    val libEntries = classPathEntries
+        .filter { entry ->
+            val normalized = entry.toAbsolutePath().normalize()
+            val bundleRoot = path.toAbsolutePath().normalize()
+            normalized != bundleRoot
+        }
+        .map { entry ->
+            ClasspathEntry(kind = "lib", path = entry.toAbsolutePath().normalize().toString())
+        }
     return WorkspaceProjectSpec(
         bsn = bsn,
         version = version,
