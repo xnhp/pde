@@ -1,3 +1,7 @@
+import eclipsep2.equinoxLauncherJar
+import eclipsep2.registerPublishAppP2Repo
+import eclipsep2.registerMaterializeRuntime
+
 plugins {
   base
 }
@@ -21,26 +25,91 @@ dependencies {
   appLibs("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.1")
 }
 
-val runtimeArchive = layout.projectDirectory.file("dist/api-analyzer-runtime.zip")
+val appBsn = "cn.varsa.pde"
+val appVersion = "1.0.0"
 
-val buildRuntime by tasks.registering(Exec::class) {
-  description = "Build the API analyzer Equinox runtime"
+val eclipseSdkDir = providers.gradleProperty("eclipseSdk").map { file(it) }
+val launcherJar = equinoxLauncherJar(eclipseSdkDir)
+
+// FeaturesAndBundlesPublisher wants a directory containing a `plugins/` folder,
+// so the app bundle jar is written directly into appBundle/plugins/.
+val appBundleDir = layout.buildDirectory.dir("appBundle")
+
+val appBundleJar by tasks.registering(Jar::class) {
+  description = "Package the API analyzer as an OSGi bundle"
   group = "build"
-  workingDir = layout.projectDirectory.asFile
-  providers.gradleProperty("eclipseSdk").orNull?.let { environment("ECLIPSE_SDK", it) }
-  providers.gradleProperty("p2Repositories").orNull?.let { environment("P2_REPOSITORIES", it) }
-  inputs.files(appLibs)
-  environment("APP_LIBS", appLibs.files.joinToString(File.pathSeparator) { it.absolutePath })
-  commandLine("bash", "scripts/build-runtime.sh")
-  outputs.file(runtimeArchive)
+  archiveFileName = "$appBsn-$appVersion.jar"
+  destinationDirectory = appBundleDir.map { it.dir("plugins") }
+
+  manifest {
+    attributes(
+      "Bundle-ManifestVersion" to "2",
+      "Bundle-SymbolicName" to "$appBsn;singleton:=true",
+      "Bundle-Version" to appVersion,
+      "Bundle-Name" to "pde API Analyzer",
+      "Bundle-RequiredExecutionEnvironment" to "JavaSE-21",
+      "Bundle-ClassPath" to (
+        listOf(".") + appLibs.files.sortedBy { it.name }.map { "lib/${it.name}" }
+        ).joinToString(","),
+      "Require-Bundle" to listOf(
+        "org.eclipse.equinox.app", "org.eclipse.core.runtime", "org.eclipse.core.resources",
+        "org.eclipse.core.filesystem", "org.eclipse.core.filebuffers", "org.eclipse.core.variables",
+        "org.eclipse.text", "org.eclipse.jdt.core", "org.eclipse.jdt.launching", "org.eclipse.pde.api.tools"
+      ).joinToString(",")
+    )
+  }
+
+  from(layout.projectDirectory.file("plugin.xml"))
+  into("lib") { from(appLibs) }
 }
 
-val apiAnalyzerRuntimeZip by tasks.registering(Copy::class) {
-  description = "Assemble the Gradle-managed API analyzer runtime zip"
+val publishAppP2Repo = registerPublishAppP2Repo(
+  taskName = "publishAppP2Repo",
+  launcherJar = launcherJar,
+  sourceDir = appBundleDir,
+  outputDir = layout.buildDirectory.dir("app-p2repo")
+)
+publishAppP2Repo { dependsOn(appBundleJar) }
+
+val installIUs = provider {
+  listOf(
+    appBsn, "org.eclipse.equinox.launcher", "org.eclipse.equinox.simpleconfigurator",
+    "org.eclipse.osgi.compatibility.state", "org.apache.felix.scr", "org.eclipse.pde.api.tools",
+    "org.eclipse.pde.core", "org.eclipse.jdt.core", "org.eclipse.jdt.launching"
+  )
+}
+
+val sdkP2Repo = rootProject.layout.buildDirectory.dir("sdk-p2repo")
+val runtimeDir = layout.buildDirectory.dir("runtime")
+
+val materializeRuntime = registerMaterializeRuntime(
+  taskName = "materializeRuntime",
+  launcherJar = launcherJar,
+  repositoryDirs = provider { listOf(publishAppP2Repo.get().outputs.files.singleFile, sdkP2Repo.get().asFile) },
+  extraRepositories = providers.gradleProperty("p2Repositories"),
+  installIUs = installIUs,
+  destinationDir = runtimeDir
+)
+materializeRuntime {
+  dependsOn(publishAppP2Repo, rootProject.tasks.named("publishSdkP2Repo"))
+  doLast {
+    val dest = runtimeDir.get().asFile
+    val pluginsDir = dest.resolve("plugins")
+    pluginsDir.mkdirs()
+    if (pluginsDir.listFiles { f -> f.name.startsWith("${appBsn}_") && f.name.endsWith(".jar") }.isNullOrEmpty()) {
+      throw org.gradle.api.GradleException("Runtime materialization failed: $appBsn missing from $pluginsDir")
+    }
+    launcherJar.get().copyTo(pluginsDir.resolve(launcherJar.get().name), overwrite = true)
+  }
+}
+
+val apiAnalyzerRuntimeZip by tasks.registering(Zip::class) {
+  description = "Assemble the API analyzer runtime zip"
   group = "build"
-  dependsOn(buildRuntime)
-  from(runtimeArchive)
-  into(layout.buildDirectory.dir("libs"))
+  dependsOn(materializeRuntime)
+  from(runtimeDir)
+  archiveFileName = "api-analyzer-runtime.zip"
+  destinationDirectory = layout.buildDirectory.dir("libs")
 }
 
 tasks.named("assemble") {

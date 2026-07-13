@@ -52,6 +52,48 @@ tasks.register("buildTargetInstallerLauncher") {
   dependsOn(":target-installer:targetInstallerLauncherJar")
 }
 
+// Shared by :api-analyzer and :target-installer: both need p2 metadata for the
+// local Eclipse SDK to let `p2.director` resolve runtime IUs offline, rather than
+// falling back to a remote p2 site on every build. Registered once at the root so
+// both consumers -- and, via the local build cache, repeat invocations -- reuse a
+// single publish of the (unchanging) local SDK instead of redoing it per-tool.
+val eclipseSdkDir = providers.gradleProperty("eclipseSdk").map { file(it) }
+val sdkP2RepoDir = layout.buildDirectory.dir("sdk-p2repo")
+
+val publishSdkP2Repo by tasks.registering(Exec::class) {
+  description = "Publish the local Eclipse SDK as a p2 repository so runtime IUs resolve offline"
+  group = "build"
+  notCompatibleWithConfigurationCache("Computes commandLine from the local Eclipse SDK layout at execution time")
+  onlyIf { eclipseSdkDir.orNull?.let { it.resolve("plugins").isDirectory } == true }
+
+  // Only plugins/features affect published p2 metadata; the rest of a live Eclipse
+  // SDK install (configuration/, workspace/) mutates constantly just from being run
+  // and would otherwise make this task look "changed" on every build.
+  inputs.dir(eclipseSdkDir.map { it.resolve("plugins") })
+  inputs.dir(eclipseSdkDir.map { it.resolve("features") })
+  outputs.dir(sdkP2RepoDir)
+  outputs.cacheIf { true }
+
+  doFirst {
+    val sdk = eclipseSdkDir.get()
+    val launcherJar = sdk.resolve("plugins")
+      .listFiles { f -> f.name.startsWith("org.eclipse.equinox.launcher_") && f.name.endsWith(".jar") }
+      ?.firstOrNull()
+      ?: throw GradleException("Unable to locate org.eclipse.equinox.launcher in $sdk")
+    val repoDir = sdkP2RepoDir.get().asFile
+    repoDir.deleteRecursively()
+    repoDir.mkdirs()
+    commandLine(
+      "java", "-jar", launcherJar.absolutePath,
+      "-application", "org.eclipse.equinox.p2.publisher.FeaturesAndBundlesPublisher",
+      "-metadataRepository", "file:$repoDir",
+      "-artifactRepository", "file:$repoDir",
+      "-source", sdk.absolutePath,
+      "-compress", "-publishArtifacts"
+    )
+  }
+}
+
 val generateReleaseInfo by tasks.registering {
   notCompatibleWithConfigurationCache("Uses git CLI to compute release metadata")
   outputs.file(layout.buildDirectory.file("release/version.txt"))

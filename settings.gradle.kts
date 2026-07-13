@@ -4,6 +4,12 @@ plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
+buildCache {
+  local {
+    isEnabled = true
+  }
+}
+
 // Gradle substitutes cn.varsa:cli-core with a local source checkout when -PcliCorePath points to one.
 // Without the property Gradle resolves cn.varsa:cli-core from GitHub Packages.
 val cliCorePath = providers.gradleProperty("cliCorePath").orNull
