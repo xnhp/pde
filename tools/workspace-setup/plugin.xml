@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin>
+  <extension id="workspace_setup" point="org.eclipse.core.runtime.applications">
+    <application>
+      <run class="cn.varsa.pde.resolver.workspace.WorkspaceSetupApplication"/>
+    </application>
+  </extension>
+</plugin>
