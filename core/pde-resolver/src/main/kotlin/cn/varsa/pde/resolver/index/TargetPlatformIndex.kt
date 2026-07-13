@@ -1,6 +1,8 @@
 package cn.varsa.pde.resolver.index
 
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import cn.varsa.pde.resolver.manifest.CapabilityClause
+import cn.varsa.pde.resolver.manifest.provideCapabilityClauses
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.support.parseVersion
 import org.osgi.framework.Version
@@ -25,6 +27,25 @@ class TargetPlatformIndex(
   private var exportsByPackageNav: Map<String, NavigableMap<Version, ResolvedBundle>>? = null
   @Volatile
   private var requiresByBsn: Map<String, NavigableMap<Version, Map<String, VersionRange>>>? = null
+  @Volatile
+  private var providersByCapabilityNamespace: Map<String, List<Pair<ResolvedBundle, CapabilityClause>>>? = null
+
+  /** Namespace (e.g. `osgi.extender`) -> every (bundle, Provide-Capability clause) offering it. */
+  fun providersByCapabilityNamespace(): Map<String, List<Pair<ResolvedBundle, CapabilityClause>>> {
+    val cached = providersByCapabilityNamespace
+    if (cached != null) return cached
+
+    val map = HashMap<String, MutableList<Pair<ResolvedBundle, CapabilityClause>>>()
+    byBsn.values.forEach { nav ->
+      nav.values.forEach { rb ->
+        rb.manifest.provideCapabilityClauses().forEach { clause ->
+          map.computeIfAbsent(clause.namespace) { mutableListOf() }.add(rb to clause)
+        }
+      }
+    }
+    providersByCapabilityNamespace = map
+    return map
+  }
 
   fun exportedBundlesByPackage(): Map<String, List<ResolvedBundle>> {
     val cached = exportsByPackage

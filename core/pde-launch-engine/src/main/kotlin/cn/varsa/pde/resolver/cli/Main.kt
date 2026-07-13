@@ -35,6 +35,8 @@ import cn.varsa.pde.resolver.index.getBundlePoolPath
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
+import cn.varsa.pde.resolver.manifest.importedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.requireCapabilityClauses
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.compile.BundleCompileCache
 import cn.varsa.pde.resolver.compile.BundleCompileResult
@@ -90,6 +92,7 @@ import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
 import cn.varsa.pde.resolver.launch.LaunchContext
+import org.osgi.framework.FrameworkUtil
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
 
@@ -2273,6 +2276,20 @@ private fun selectedTargetBundlesForAnalyzer(
  * `component-resolution` results for the host (and its dependents) incomplete. Fragments hosting
  * other fragments is not valid OSGi/PDE, so the fragment closure is not itself walked for further
  * Fragment-Host matches -- only its own Require-Bundle headers are resolved, same as any other bundle.
+ *
+ * The closure also walks mandatory Import-Package requirements, not just Require-Bundle: a bundle
+ * several Require-Bundle hops deep can depend on a package via Import-Package alone (no
+ * Require-Bundle edge at all), and PDE API Tools marks the whole component chain unresolved if that
+ * provider is missing, even though it is genuinely present in the target platform. Optional imports
+ * (`resolution:=optional`) are skipped, matching [cn.varsa.pde.resolver.manifest.importedPackageAndVersion]'s
+ * own mandatory-only filtering.
+ *
+ * Finally, the closure walks mandatory Require-Capability requirements the same way (e.g.
+ * `slf4j.api` requiring the `osgi.extender=osgi.serviceloader.processor` capability that
+ * `org.apache.aries.spifly.dynamic.bundle` provides). Require-Capability filters are arbitrary LDAP
+ * expressions rather than a simple BSN+range or package+range lookup, so matching is delegated to
+ * [org.osgi.framework.Filter] against each candidate's typed Provide-Capability attributes, instead
+ * of hand-rolling filter evaluation.
  */
 internal fun augmentTargetBundlesForRequireBundleProviders(
   selected: List<TargetResolvedBundle>,
@@ -2296,17 +2313,40 @@ internal fun augmentTargetBundlesForRequireBundleProviders(
       .groupBy({ it.first }, { it.second })
 
   val queue = ArrayDeque<TargetResolvedBundle>()
+  val satisfiedCapabilityRequirements = mutableSetOf<Pair<String, String>>()
+
+  fun addCandidate(bsn: String, candidate: TargetResolvedBundle) {
+    val key = candidate.location.toAbsolutePath().normalize().toString()
+    if (byPath.putIfAbsent(key, candidate) == null) {
+      providers.getOrPut(bsn) { mutableSetOf() } += candidate.manifest.bundleVersion
+      queue += candidate
+    }
+  }
 
   fun resolveRequirements(manifest: BundleManifest) {
     manifest.requiredBundleAndVersion().forEach { (requiredBsn, range) ->
       val satisfied = providers[requiredBsn]?.any { range.includes(it) } == true
       if (satisfied) return@forEach
       val candidate = targetIndex.get(requiredBsn, range) ?: return@forEach
-      val key = candidate.location.toAbsolutePath().normalize().toString()
-      if (byPath.putIfAbsent(key, candidate) == null) {
-        providers.getOrPut(requiredBsn) { mutableSetOf() } += candidate.manifest.bundleVersion
-        queue += candidate
-      }
+      addCandidate(requiredBsn, candidate)
+    }
+    manifest.importedPackageAndVersion().forEach { (pkg, range) ->
+      val candidate = targetIndex.exportedBundlesByPackageNav()[pkg]
+        ?.descendingMap()?.entries?.firstOrNull { range.includes(it.key) }?.value ?: return@forEach
+      val bsn = candidate.manifest.bundleSymbolicName?.key ?: return@forEach
+      val satisfied = providers[bsn]?.contains(candidate.manifest.bundleVersion) == true
+      if (satisfied) return@forEach
+      addCandidate(bsn, candidate)
+    }
+    manifest.requireCapabilityClauses().forEach { requirement ->
+      val filterString = requirement.directive["filter"] ?: return@forEach
+      val memoKey = requirement.namespace to filterString
+      if (!satisfiedCapabilityRequirements.add(memoKey)) return@forEach
+      val filter = runCatching { FrameworkUtil.createFilter(filterString) }.getOrNull() ?: return@forEach
+      val (candidate, _) = targetIndex.providersByCapabilityNamespace()[requirement.namespace]
+        ?.firstOrNull { (_, clause) -> filter.matches(java.util.Hashtable(clause.attribute)) } ?: return@forEach
+      val bsn = candidate.manifest.bundleSymbolicName?.key ?: return@forEach
+      addCandidate(bsn, candidate)
     }
   }
 
@@ -3977,7 +4017,7 @@ internal fun apiAnalyzeMain(
     val reportPath = if (reportOpt != null && descriptorsToAnalyze.size == 1) {
       Paths.get(reportOpt)
     } else {
-      outputRoot.resolve("reports").resolve("$suffix.json")
+      outputRoot.resolve("reports").resolve(suffix)
     }
     val builtInput = resolveAnalyzerBundleInput(
       currentBundleSymbolicName = currentBsn,
