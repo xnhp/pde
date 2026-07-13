@@ -1853,7 +1853,7 @@ internal data class ApiAnalyzerRuntime(
   val dataDir: Path
 )
 
-internal data class EquinoxAppInvocation(
+data class EquinoxAppInvocation(
   val launcherExecutable: Path,
   val configurationDir: String,
   val dataDir: String,
@@ -1862,7 +1862,7 @@ internal data class EquinoxAppInvocation(
   val logFile: Path? = null
 )
 
-internal data class EquinoxAppRuntime(
+data class EquinoxAppRuntime(
   val launcherExecutable: Path,
   val configurationDir: Path,
   val dataDir: Path
@@ -4147,7 +4147,7 @@ internal fun apiAnalyzeMain(
 private fun resolvePackagedWorkspaceSetupRuntime(outputRoot: Path): EquinoxAppRuntime? =
   resolvePackagedEquinoxAppRuntime(outputRoot, WORKSPACE_SETUP_RUNTIME_ARCHIVE, WORKSPACE_SETUP_APPLICATION_ID)
 
-internal fun workspaceSetupMain(
+fun workspaceSetupMain(
   args: Array<String>,
   equinoxRuntimeResolver: (outputRoot: Path) -> EquinoxAppRuntime? = ::resolvePackagedWorkspaceSetupRuntime,
   equinoxAppRunner: (EquinoxAppInvocation) -> Int = ::runEquinoxApp
