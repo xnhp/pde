@@ -192,7 +192,6 @@ class DirectApiAnalyzerHarness(
           ProjectComponent(
             baseline,
             artifact.path.toAbsolutePath().normalize().toString(),
-            project,
             null,
             index.toLong() + 1
           )
