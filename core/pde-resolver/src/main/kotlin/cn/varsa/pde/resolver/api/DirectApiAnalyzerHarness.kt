@@ -1,40 +1,39 @@
 package cn.varsa.pde.resolver.api
 
 import cn.varsa.pde.resolver.manifest.BundleManifest
+import org.eclipse.core.resources.IProject
+import org.eclipse.core.resources.IResource
+import org.eclipse.core.resources.IWorkspaceRoot
+import org.eclipse.core.resources.ResourcesPlugin
 import org.eclipse.core.runtime.NullProgressMonitor
 import org.eclipse.pde.api.tools.internal.builder.BaseApiAnalyzer
 import org.eclipse.pde.api.tools.internal.builder.BuildContext
 import org.eclipse.pde.api.tools.internal.model.ApiBaseline
 import org.eclipse.pde.api.tools.internal.model.BundleComponent
+import org.eclipse.pde.api.tools.internal.model.ProjectComponent
 import org.eclipse.pde.api.tools.internal.provisional.ApiPlugin
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblem
+import org.eclipse.osgi.service.resolver.BundleDescription
+import org.eclipse.osgi.service.resolver.StateObjectFactory
+import org.osgi.framework.BundleException
 import org.osgi.framework.Constants.SINGLETON_DIRECTIVE
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
+import java.util.Dictionary
+import java.util.Hashtable
 import java.util.Properties
 import java.util.jar.JarFile
 import java.util.jar.Manifest
 import java.util.logging.Level
 import java.util.logging.Logger
 
-/**
- * Runs Eclipse PDE API Tools analysis inside the single launched Equinox JVM.
- *
- * A batch may contain several "current" bundles that all get analyzed against the same
- * reference (baseline) and dependency artifacts. Building [ApiBaseline] instances is the
- * expensive part of this process (OSGi bundle resolution), so both baselines are built
- * exactly ONCE per batch and shared across every current component. [BaseApiAnalyzer] holds
- * per-run problem/listener state, so a fresh instance is created per current component to
- * keep problems reported for one bundle from leaking into another bundle's report.
- */
 class DirectApiAnalyzerHarness(
   private val clock: Clock = Clock.systemUTC()
 ) {
-  /** Outcome of analyzing a single current bundle within a batch. */
   data class BundleAnalysisOutcome(
     val bundleSymbolicName: String,
     val report: ApiAnalysisReport? = null,
@@ -43,23 +42,14 @@ class DirectApiAnalyzerHarness(
     val succeeded: Boolean get() = failure == null
   }
 
-  /**
-   * Result of a batch run. Failure semantics: a bundle whose analysis throws does not abort the
-   * batch — every other bundle is still analyzed and (if successful) gets its report written.
-   * [allSucceeded] tells the caller whether the overall process should exit non-zero.
-   */
   data class BatchAnalysisResult(val outcomes: List<BundleAnalysisOutcome>) {
     val allSucceeded: Boolean get() = outcomes.all { it.succeeded }
   }
 
-  /**
-   * Analyzes every [BatchApiAnalyzerInput.currentBundles] entry inside ONE shared pair of
-   * baselines built for the whole batch. A current bundle that fails to resolve/analyze is
-   * recorded as a failed [BundleAnalysisOutcome] and does not prevent the remaining bundles in
-   * the batch from being analyzed.
-   */
   fun analyzeBatch(input: BatchApiAnalyzerInput): BatchAnalysisResult {
     require(input.currentBundles.isNotEmpty()) { "Batch analyzer input must contain at least one current bundle." }
+
+    val workspaceRoot = if (input.workspaceDataDir != null) ResourcesPlugin.getWorkspace().root else null
 
     val currentBaseline = ApiBaseline("current")
     val referenceBaseline = ApiBaseline("baseline")
@@ -73,7 +63,7 @@ class DirectApiAnalyzerHarness(
 
       val currentArtifacts = mergeWithSharedDependencyArtifacts(input.currentBundles.map { it.currentBundle }, sharedDependencyArtifacts)
       val referenceArtifacts = mergeWithSharedDependencyArtifacts(input.baselineArtifacts, sharedDependencyArtifacts)
-      currentBaseline.addApiComponents(createComponents(currentBaseline, currentArtifacts).toTypedArray())
+      currentBaseline.addApiComponents(createComponents(currentBaseline, currentArtifacts, workspaceRoot).toTypedArray())
       referenceBaseline.addApiComponents(createComponents(referenceBaseline, referenceArtifacts).toTypedArray())
 
       val outcomes = input.currentBundles.map { bundleInfo ->
@@ -93,9 +83,6 @@ class DirectApiAnalyzerHarness(
     referenceBaseline: ApiBaseline
   ): BundleAnalysisOutcome {
     val bsn = bundleInfo.currentBundle.bundleSymbolicName
-    // Fresh analyzer per component: BaseApiAnalyzer accumulates problems/listener state across
-    // calls, so reusing one instance across bundles would let bundle A's problems leak into
-    // bundle B's report.
     val analyzer = BaseApiAnalyzer()
     return try {
       val currentComponent = currentBaseline.getApiComponent(bsn)
@@ -131,21 +118,11 @@ class DirectApiAnalyzerHarness(
     }
   }
 
-  /**
-   * Merges [sharedDependencyArtifacts] into [scopeOwnArtifacts] for one [ApiBaseline] (current or
-   * reference/baseline scope). Both baselines are seeded with the SAME dependency-scope artifact
-   * set, so a `singleton:=true` BSN that this scope's own artifacts already supply at a different
-   * version than the shared/dependency-scope copy would otherwise land in this baseline twice --
-   * only one singleton version can resolve in one OSGi state, so the other one's requirer would
-   * spuriously fail to resolve even though a satisfying version is genuinely present in the input.
-   * This scope's own artifacts always take precedence, so the conflicting shared copy is dropped.
-   */
   private fun mergeWithSharedDependencyArtifacts(
     scopeOwnArtifacts: List<AnalyzerBundleArtifact>,
     sharedDependencyArtifacts: List<AnalyzerBundleArtifact>
   ): List<AnalyzerBundleArtifact> {
     val ownBsns = scopeOwnArtifacts.map { it.bundleSymbolicName }.toSet()
-    val ownVersionsByBsn = scopeOwnArtifacts.groupBy({ it.bundleSymbolicName }, { it.version })
     val nonConflictingShared = sharedDependencyArtifacts.filterNot { candidate ->
       candidate.bundleSymbolicName in ownBsns
     }
@@ -168,17 +145,86 @@ class DirectApiAnalyzerHarness(
 
   private fun createComponents(
     baseline: ApiBaseline,
-    artifacts: List<AnalyzerBundleArtifact>
+    artifacts: List<AnalyzerBundleArtifact>,
+    workspaceRoot: IWorkspaceRoot? = null
   ): List<IApiComponent> =
     artifacts
       .distinctBy { it.path.toAbsolutePath().normalize().toString() }
       .mapIndexed { index, artifact ->
-        BundleComponent(baseline, artifact.path.toAbsolutePath().normalize().toString(), index.toLong() + 1).also { component ->
-          require(component.isValidBundle) {
-            "Analyzer artifact is not a valid OSGi bundle artifact: ${artifact.path}"
+        val project = workspaceRoot?.let { root ->
+          artifact.workspaceProjectName?.let { name -> root.getProject(name) }
+        }
+        if (project != null && project.exists()) {
+          if (!project.isOpen) {
+            project.open(IResource.NONE, NullProgressMonitor())
+          }
+          val componentLocation = projectComponentLocation(artifact)
+          createWorkspaceProjectComponent(baseline, componentLocation, artifact.path, project, index)
+        } else {
+          BundleComponent(baseline, artifact.path.toAbsolutePath().normalize().toString(), index.toLong() + 1).also { component ->
+            require(component.isValidBundle) {
+              "Analyzer artifact is not a valid OSGi bundle artifact: ${artifact.path}"
+            }
           }
         }
       }
+
+  private fun projectComponentLocation(artifact: AnalyzerBundleArtifact): String {
+    val projectName = artifact.workspaceProjectName!!
+    val sourceDir = artifact.sourcePath
+    if (sourceDir != null) {
+      val locationsRoot = artifact.path.parent.resolve("project-locations")
+      val wrapper = locationsRoot.resolve(projectName)
+      if (!Files.exists(wrapper)) {
+        Files.createDirectories(wrapper)
+        val realManifest = sourceDir.resolve("META-INF")
+        if (Files.isDirectory(realManifest)) {
+          Files.createSymbolicLink(wrapper.resolve("META-INF"), realManifest)
+        }
+      }
+      return wrapper.toAbsolutePath().normalize().toString()
+    }
+    return artifact.path.toAbsolutePath().normalize().toString()
+  }
+
+  private fun createWorkspaceProjectComponent(
+    baseline: ApiBaseline,
+    componentLocation: String,
+    artifactPath: Path,
+    project: IProject,
+    index: Int
+  ): ProjectComponent {
+    val model = org.eclipse.pde.core.plugin.PluginRegistry.findModel(project)
+    return object : ProjectComponent(baseline, componentLocation, model, index.toLong() + 1) {
+      override fun getBundleDescription(properties: MutableMap<String, String>?, location: String?, id: Long): BundleDescription? {
+        @Suppress("UsePropertyAccessSyntax")
+        val manifestFile = artifactPath.toFile().let { path ->
+          if (path.isDirectory) File(path, "META-INF/MANIFEST.MF")
+          else path
+        }
+        val manifest = if (manifestFile.isFile && !manifestFile.isDirectory) {
+          if (manifestFile.name.endsWith(".jar", ignoreCase = true)) {
+            JarFile(manifestFile).use { it.manifest }
+          } else {
+            manifestFile.inputStream().use { Manifest(it) }
+          }
+        } else {
+          throw BundleException("Cannot find META-INF/MANIFEST.MF at $artifactPath")
+        }
+        val dict: Dictionary<String, String> = Hashtable()
+        manifest.mainAttributes.entries.forEach { entry ->
+          dict.put(entry.key.toString(), entry.value?.toString() ?: "")
+        }
+        return try {
+          StateObjectFactory.defaultFactory.createBundleDescription(dict, location, id)
+        } catch (e: BundleException) {
+          throw e
+        } catch (e: Exception) {
+          throw BundleException("Failed to create bundle description for $artifactPath", e)
+        }
+      }
+    }
+  }
 
   private fun Map<String, String>.toProperties(): Properties = Properties().also { properties ->
     forEach { (key, value) -> properties.setProperty(key, value) }

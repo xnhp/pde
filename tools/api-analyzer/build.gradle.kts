@@ -57,7 +57,7 @@ val appBundleJar by tasks.registering(Jar::class) {
       "Require-Bundle" to listOf(
         "org.eclipse.equinox.app", "org.eclipse.core.runtime", "org.eclipse.core.resources",
         "org.eclipse.core.filesystem", "org.eclipse.core.filebuffers", "org.eclipse.core.variables",
-        "org.eclipse.text", "org.eclipse.jdt.core", "org.eclipse.jdt.launching", "org.eclipse.pde.api.tools"
+        "org.eclipse.text", "org.eclipse.jdt.core", "org.eclipse.jdt.launching", "org.eclipse.pde.api.tools", "org.eclipse.pde.core"
       ).joinToString(",")
     )
   }
@@ -114,7 +114,10 @@ registerRegeneratePinnedRuntimeBundles(
   p2ResolvedRuntimeDir = p2ResolvedRuntimeDir,
   lockFile = provider { lockFile },
   cacheDir = pinnedBundleCache,
-  excludeNamePrefixes = provider { listOf("$appBsn-", "org.eclipse.equinox.launcher_") }
+  // p2.director renames installed bundles to the BSN_version convention regardless of the
+  // source jar's own filename (appBundleJar names it "$appBsn-$appVersion.jar", dash-separated),
+  // so the exclude match must use the underscore form p2 actually produces on disk.
+  excludeNamePrefixes = provider { listOf("${appBsn}_", "org.eclipse.equinox.launcher_") }
 ).configure { dependsOn(resolveRuntimeViaP2Director) }
 
 val materializeRuntime = registerPinnedRuntimeMaterialize(
