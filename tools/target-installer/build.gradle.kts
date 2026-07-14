@@ -1,6 +1,9 @@
 import eclipsep2.equinoxLauncherJar
 import eclipsep2.registerPublishAppP2Repo
 import eclipsep2.registerMaterializeRuntime
+import eclipsep2.registerPinnedRuntimeMaterialize
+import eclipsep2.registerRegeneratePinnedRuntimeBundles
+import eclipsep2.pinnedRuntimeBundleCacheDir
 
 plugins {
   base
@@ -96,26 +99,47 @@ val installIUs = hasOsgiServices.map { withServices ->
 val sdkP2Repo = rootProject.layout.buildDirectory.dir("sdk-p2repo")
 val runtimeDir = layout.buildDirectory.dir("runtime")
 
-val materializeRuntime = registerMaterializeRuntime(
-  taskName = "materializeRuntime",
+// Real p2.director resolution -- manual/CI-only, see docs/pinned-runtime-bundles.md. Feeds
+// regeneratePinnedRuntimeBundles below; NOT part of assemble/installDist (materializeRuntime is).
+val p2ResolvedRuntimeDir = layout.buildDirectory.dir("p2-resolved-runtime")
+val resolveRuntimeViaP2Director = registerMaterializeRuntime(
+  taskName = "resolveRuntimeViaP2Director",
   launcherJar = launcherJar,
   repositoryDirs = provider { listOf(publishAppP2Repo.get().outputs.files.singleFile, sdkP2Repo.get().asFile) },
   extraRepositories = providers.gradleProperty("p2Repositories"),
   installIUs = installIUs,
-  destinationDir = runtimeDir
+  destinationDir = p2ResolvedRuntimeDir
 )
-materializeRuntime {
+resolveRuntimeViaP2Director {
   dependsOn(publishAppP2Repo, rootProject.tasks.named("publishSdkP2Repo"))
   doLast {
-    val dest = runtimeDir.get().asFile
-    val pluginsDir = dest.resolve("plugins")
-    pluginsDir.mkdirs()
+    val pluginsDir = p2ResolvedRuntimeDir.get().asFile.resolve("plugins")
     if (pluginsDir.listFiles { f -> f.name.startsWith("${appBsn}_") && f.name.endsWith(".jar") }.isNullOrEmpty()) {
       throw org.gradle.api.GradleException("Runtime materialization failed: $appBsn missing from $pluginsDir")
     }
-    launcherJar.get().copyTo(pluginsDir.resolve(launcherJar.get().name), overwrite = true)
   }
 }
+
+val pinnedBundleCache = pinnedRuntimeBundleCacheDir()
+val lockFile = layout.projectDirectory.file("runtime-bundles.lock")
+
+registerRegeneratePinnedRuntimeBundles(
+  taskName = "regeneratePinnedRuntimeBundles",
+  p2ResolvedRuntimeDir = p2ResolvedRuntimeDir,
+  lockFile = provider { lockFile },
+  cacheDir = pinnedBundleCache,
+  excludeNamePrefixes = provider { listOf("${appBsn}_", "org.eclipse.equinox.launcher_") }
+).configure { dependsOn(resolveRuntimeViaP2Director) }
+
+val materializeRuntime = registerPinnedRuntimeMaterialize(
+  taskName = "materializeRuntime",
+  lockFile = provider { lockFile },
+  cacheDir = pinnedBundleCache,
+  appBundlePluginsDir = appBundleDir.map { it.dir("plugins") },
+  launcherJar = launcherJar,
+  destinationDir = runtimeDir
+)
+materializeRuntime { dependsOn(appBundleJar) }
 
 val runtimeZip by tasks.registering(Zip::class) {
   description = "Archive the materialized runtime for embedding in the launcher jar"

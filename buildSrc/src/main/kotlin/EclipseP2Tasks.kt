@@ -2,7 +2,9 @@ package eclipsep2
 
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.file.Directory
+import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.TaskProvider
@@ -99,5 +101,111 @@ fun Project.registerMaterializeRuntime(
       "-profile", "DefaultProfile",
       "-bundlepool", dest.absolutePath
     )
+  }
+}
+
+/**
+ * Shared, per-machine cache of pinned runtime bundle jars, keyed by filename. Lives under the
+ * Gradle user home (not inside any single worktree/checkout) so it survives `git worktree add`,
+ * branch switches, and `clean` -- see docs/pinned-runtime-bundles.md for why this exists.
+ */
+fun Project.pinnedRuntimeBundleCacheDir(): Provider<Directory> =
+  layout.dir(provider { gradle.gradleUserHomeDir.resolve("caches/pde-pinned-runtime-bundles") })
+
+/**
+ * Materializes an Equinox runtime by copying a pre-resolved, checked-in set of bundle jars
+ * (named in [lockFile], one filename per line) out of the shared [cacheDir], instead of running
+ * p2.director. This is the FAST default path used by `assemble`/`installDist` -- see
+ * docs/pinned-runtime-bundles.md for the full rationale and the regeneration procedure.
+ */
+fun Project.registerPinnedRuntimeMaterialize(
+  taskName: String,
+  lockFile: Provider<RegularFile>,
+  cacheDir: Provider<Directory>,
+  appBundlePluginsDir: Provider<Directory>,
+  launcherJar: Provider<File>,
+  destinationDir: Provider<Directory>
+): TaskProvider<Task> = tasks.register(taskName) {
+  description = "Materialize an Equinox runtime from the pinned bundle set (fast path, see docs/pinned-runtime-bundles.md)"
+  group = "build"
+
+  inputs.file(lockFile)
+  inputs.dir(appBundlePluginsDir)
+  inputs.file(launcherJar)
+  // cacheDir is deliberately NOT declared as a task input. It lives outside the project (shared
+  // Gradle user home cache, see pinnedRuntimeBundleCacheDir), so its mtime/content churns for
+  // reasons unrelated to this build (other worktrees regenerating it, cache eviction, etc.) --
+  // the lockFile listing is the actual dependency-relevant input.
+  outputs.dir(destinationDir)
+  outputs.cacheIf { true }
+
+  doLast {
+    val dest = destinationDir.get().asFile
+    dest.deleteRecursively()
+    val pluginsDir = dest.resolve("plugins")
+    pluginsDir.mkdirs()
+
+    val cache = cacheDir.get().asFile
+    val names = lockFile.get().asFile.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+    names.forEach { name ->
+      val source = cache.resolve(name)
+      if (!source.exists()) {
+        throw GradleException(
+          "Pinned runtime bundle '$name' is missing from the shared cache at $cache.\n" +
+            "Run './gradlew ${path.removeSuffix(":$taskName")}:regeneratePinnedRuntimeBundles' once " +
+            "(needs the local Eclipse SDK / p2Repositories fallback) to (re)populate it, then retry.\n" +
+            "See docs/pinned-runtime-bundles.md."
+        )
+      }
+      source.copyRecursively(pluginsDir.resolve(name), overwrite = true)
+    }
+
+    appBundlePluginsDir.get().asFile.listFiles()?.forEach { f ->
+      f.copyRecursively(pluginsDir.resolve(f.name), overwrite = true)
+    }
+
+    val launcher = launcherJar.get()
+    launcher.copyTo(pluginsDir.resolve(launcher.name), overwrite = true)
+  }
+}
+
+/**
+ * Regenerates the pinned bundle set for one tool: takes the plugins/ directory produced by a
+ * REAL p2.director resolution ([p2ResolvedRuntimeDir]), copies everything except the app's own
+ * bundle jar and the equinox launcher (both always freshly built/copied, never pinned) into the
+ * shared [cacheDir], and rewrites [lockFile] with the resulting sorted filename list.
+ *
+ * Manual/CI-only: NOT wired into `assemble`/`build`/`installDist`. Run this only when the local
+ * Eclipse SDK version changes (expected to be rare) -- see docs/pinned-runtime-bundles.md.
+ */
+fun Project.registerRegeneratePinnedRuntimeBundles(
+  taskName: String,
+  p2ResolvedRuntimeDir: Provider<Directory>,
+  lockFile: Provider<RegularFile>,
+  cacheDir: Provider<Directory>,
+  excludeNamePrefixes: Provider<List<String>>
+): TaskProvider<Task> = tasks.register(taskName) {
+  description = "Regenerate the pinned runtime bundle set from a real p2.director resolution (manual/CI only, see docs/pinned-runtime-bundles.md)"
+  group = "build"
+  outputs.upToDateWhen { false }
+
+  doLast {
+    val resolvedPlugins = p2ResolvedRuntimeDir.get().asFile.resolve("plugins")
+    val cache = cacheDir.get().asFile
+    cache.mkdirs()
+    val excludes = excludeNamePrefixes.get()
+
+    val pinned = resolvedPlugins.listFiles()
+      ?.filterNot { f -> excludes.any { prefix -> f.name.startsWith(prefix) } }
+      ?.sortedBy { it.name }
+      ?: emptyList()
+
+    pinned.forEach { f -> f.copyRecursively(cache.resolve(f.name), overwrite = true) }
+
+    val lock = lockFile.get().asFile
+    lock.parentFile.mkdirs()
+    lock.writeText(pinned.joinToString(System.lineSeparator()) { it.name } + System.lineSeparator())
+
+    logger.lifecycle("Pinned ${pinned.size} runtime bundles into $cache; lockfile written to $lock")
   }
 }

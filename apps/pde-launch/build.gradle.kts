@@ -5,6 +5,8 @@ plugins {
 
 evaluationDependsOn(":target-installer")
 evaluationDependsOn(":api-analyzer")
+evaluationDependsOn(":workspace-setup")
+evaluationDependsOn(":jdt-build")
 
 repositories {
   mavenCentral()
@@ -42,6 +44,14 @@ distributions {
       from(apiAnalyzerProject.layout.buildDirectory.file("libs/api-analyzer-runtime.zip")) {
         into("lib")
       }
+      val workspaceSetupProject = project(":workspace-setup")
+      from(workspaceSetupProject.layout.buildDirectory.file("libs/workspace-setup-runtime.zip")) {
+        into("lib")
+      }
+      val jdtBuildProject = project(":jdt-build")
+      from(jdtBuildProject.layout.buildDirectory.file("libs/jdt-build-runtime.zip")) {
+        into("lib")
+      }
     }
   }
 }
@@ -50,6 +60,8 @@ listOf("assembleDist", "distTar", "distZip", "installDist").forEach { taskName -
   tasks.named(taskName) {
     dependsOn(":target-installer:targetInstallerLauncherJar")
     dependsOn(":api-analyzer:apiAnalyzerRuntimeZip")
+    dependsOn(":workspace-setup:workspaceSetupRuntimeZip")
+    dependsOn(":jdt-build:jdtBuildRuntimeZip")
   }
 }
 
