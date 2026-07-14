@@ -130,7 +130,8 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
             public void kept() {}
           }
         """.trimIndent()
-      )
+      ),
+      exportPackage = "org.example.api;version=\"1.0.0\""
     )
 
     val currentDir = explodedBundleDir(
@@ -162,7 +163,8 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       bundleSymbolicName = bsn,
       version = "1.1.0",
       path = currentDir,
-      workspaceProjectName = projectName
+      workspaceProjectName = projectName,
+      sourcePath = currentDir
     )
 
     val report = analyzeBatchThroughEquinox(
@@ -229,7 +231,8 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
         java.util.Locale.ROOT,
         "{\"currentBundles\":[%s],\"dependencyArtifacts\":[%s],\"baselineArtifacts\":[%s]%s}",
         bundles.zip(outputReportPaths).joinToString(",") { (bundle, reportPath) ->
-          """{"currentBundle":{"bundleSymbolicName":"${bundle.bundleSymbolicName}","version":"${bundle.version}","path":"${bundle.path.toAbsolutePath().normalize()}"${if (bundle.workspaceProjectName != null) ""","workspaceProjectName":"${bundle.workspaceProjectName}"""" else ""}},"outputReportPath":"${reportPath.toAbsolutePath().normalize()}"}"""
+          val sp = bundle.sourcePath?.let { ""","sourcePath":"${it.toAbsolutePath().normalize()}"""" } ?: ""
+          """{"currentBundle":{"bundleSymbolicName":"${bundle.bundleSymbolicName}","version":"${bundle.version}","path":"${bundle.path.toAbsolutePath().normalize()}"${if (bundle.workspaceProjectName != null) ""","workspaceProjectName":"${bundle.workspaceProjectName}"""" else ""}$sp},"outputReportPath":"${reportPath.toAbsolutePath().normalize()}"}"""
         },
         dependencies.joinToString(",") { dep ->
           """{"bundleSymbolicName":"${dep.bundleSymbolicName}","version":"${dep.version}","path":"${dep.path.toAbsolutePath().normalize()}"}"""
@@ -326,11 +329,14 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       Files.createDirectories(file.parent)
       Files.writeString(file, content)
     }
-    // ProjectComponent reads API structure from compiled class output (bin/), not source --
-    // real workspace bundles already have this from a prior real build, but our synthetic
-    // fixture needs it compiled explicitly to be a valid test of the ProjectComponent path.
     compileJava(dir.resolve("src"), dir.resolve("bin").createDirectories(), emptyList())
     val manifestDir = dir.resolve("META-INF").createDirectories()
+    val exportedPackages = sources.keys
+      .map { it.removeSuffix(".java") }
+      .map { it.replace('/', '.') }
+      .map { it.substringBeforeLast('.') }
+      .distinct()
+      .joinToString(",") { "$it;version=\"$version\"" }
     manifestDir.resolve("MANIFEST.MF").writeText(
       listOf(
         "Manifest-Version: 1.0",
@@ -338,7 +344,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
         "Bundle-SymbolicName: $bsn",
         "Bundle-Version: $version",
         "Bundle-Name: $bsn",
-        "Export-Package: $bsn;version=\"$version\""
+        "Export-Package: $exportedPackages"
       ).joinToString(System.lineSeparator()) + System.lineSeparator(),
       StandardCharsets.UTF_8
     )
@@ -382,7 +388,8 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
     bsn: String,
     version: String,
     sources: Map<String, String>,
-    requireBundle: String? = null
+    requireBundle: String? = null,
+    exportPackage: String? = null
   ): AnalyzerBundleArtifact {
     val dir = Files.createTempDirectory(temp.root.toPath(), "${bsn.replace('.', '-')}-${version.replace('.', '-')}-")
     val classes = dir.resolve("classes")
@@ -393,6 +400,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       Files.writeString(file, content)
     }
     compileJava(dir.resolve("src"), classes, emptyList())
+    val effectiveExportPackage = exportPackage ?: "$bsn;version=\"$version\""
     val artifact = dir.resolve("$bsn-$version.jar").also { jar ->
       val mf = java.util.jar.Manifest().apply {
         mainAttributes[java.util.jar.Attributes.Name.MANIFEST_VERSION] = "1.0"
@@ -401,7 +409,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
         mainAttributes.putValue("Bundle-Version", version)
         mainAttributes.putValue("Bundle-Name", bsn)
         mainAttributes.putValue("Bundle-ClassPath", ".")
-        mainAttributes.putValue("Export-Package", "$bsn;version=\"$version\"")
+        mainAttributes.putValue("Export-Package", effectiveExportPackage)
         requireBundle?.let { mainAttributes.putValue("Require-Bundle", it) }
       }
       JarOutputStream(jar.outputStream(), mf).use { jarOut ->

@@ -40,13 +40,7 @@ class WorkspaceSetupService {
             }
         }
 
-        val saveStatus = workspace.save(true, monitor)
-        logger.info("DEBUG workspace.save() status: severity=${saveStatus.severity} isOK=${saveStatus.isOK} message=${saveStatus.message} children=${saveStatus.children.joinToString { it.message }}")
-        input.projects.forEach { spec ->
-            val name = invisibleProjectName(spec.bsn, spec.bundlePath)
-            val p = root.getProject(name)
-            logger.info("DEBUG post-save project=$name exists=${p.exists()} isOpen=${p.isOpen} location=${p.location}")
-        }
+        workspace.save(true, monitor)
         logger.info("Workspace setup complete: ${input.projects.size} projects")
     }
 
@@ -154,6 +148,28 @@ class WorkspaceSetupService {
         }
 
         javaProject.setRawClasspath(classpathEntries.toTypedArray(), monitor)
+
+        // PDE API Tools' ProjectComponent.createApiTypeContainers() discovers a project's API types
+        // for since-tag analysis by reading build.properties (via PluginRegistry.createBuildModel):
+        // each source.<jar> entry is resolved with project.findMember() and mapped to that source
+        // folder's compiled output folder. Our invisible-project layout nests the bundle under the
+        // "_" WORKSPACE_LINK folder (like eclipse.jdt.ls), so these paths must be "_"-prefixed to
+        // resolve. Without this file no type containers are built, the analyzed type is reported as
+        // REMOVED instead of ADDED, and the since-tag check (which only runs on ADDED elements) never
+        // fires. Bundle-ClassPath is assumed to be the default ".".
+        if (spec.sourceRoots.isNotEmpty()) {
+            val output = spec.outputDirectory.ifEmpty { "bin" }
+            val buildProps = buildString {
+                append("source.. = ")
+                append(spec.sourceRoots.joinToString(",") { "_/$it/" })
+                append("\n")
+                append("output.. = _/$output/\n")
+            }
+            val buildPropsFile = project.getFile("build.properties")
+            if (!buildPropsFile.exists()) {
+                buildPropsFile.create(buildProps.byteInputStream(), IResource.NONE, monitor)
+            }
+        }
 
         if (spec.compilerPrefs.isNotEmpty()) {
             val options = javaProject.getOptions(false)

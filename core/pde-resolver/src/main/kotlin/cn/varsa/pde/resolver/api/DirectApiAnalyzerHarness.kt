@@ -6,11 +6,15 @@ import org.eclipse.core.resources.IResource
 import org.eclipse.core.resources.IWorkspaceRoot
 import org.eclipse.core.resources.ResourcesPlugin
 import org.eclipse.core.runtime.NullProgressMonitor
+import org.eclipse.jdt.core.JavaCore
+import org.eclipse.pde.api.tools.internal.ApiDescriptionManager
+import org.eclipse.pde.api.tools.internal.ApiBaselineManager
 import org.eclipse.pde.api.tools.internal.builder.BaseApiAnalyzer
 import org.eclipse.pde.api.tools.internal.builder.BuildContext
 import org.eclipse.pde.api.tools.internal.model.ApiBaseline
 import org.eclipse.pde.api.tools.internal.model.BundleComponent
 import org.eclipse.pde.api.tools.internal.model.ProjectComponent
+import org.eclipse.pde.api.tools.internal.model.WorkspaceBaseline
 import org.eclipse.pde.api.tools.internal.provisional.ApiPlugin
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblem
@@ -26,7 +30,9 @@ import java.time.Instant
 import java.util.Dictionary
 import java.util.Hashtable
 import java.util.Properties
+import java.util.jar.JarEntry
 import java.util.jar.JarFile
+import java.util.jar.JarOutputStream
 import java.util.jar.Manifest
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -51,21 +57,50 @@ class DirectApiAnalyzerHarness(
 
     val workspaceRoot = if (input.workspaceDataDir != null) ResourcesPlugin.getWorkspace().root else null
 
-    val currentBaseline = ApiBaseline("current")
-    val referenceBaseline = ApiBaseline("baseline")
-    try {
-      val currentBundlePaths = input.currentBundles
-        .map { it.currentBundle.path.toAbsolutePath().normalize().toString() }
-        .toSet()
-      val sharedDependencyArtifacts = input.dependencyArtifacts.filterNot { artifact ->
-        artifact.path.toAbsolutePath().normalize().toString() in currentBundlePaths
+    val currentBundlePaths = input.currentBundles
+      .map { it.currentBundle.path.toAbsolutePath().normalize().toString() }
+      .toSet()
+    val sharedDependencyArtifacts = input.dependencyArtifacts.filterNot { artifact ->
+      artifact.path.toAbsolutePath().normalize().toString() in currentBundlePaths
+    }
+
+    val currentArtifacts = mergeWithSharedDependencyArtifacts(input.currentBundles.map { it.currentBundle }, sharedDependencyArtifacts)
+    val referenceArtifacts = mergeWithSharedDependencyArtifacts(input.baselineArtifacts, sharedDependencyArtifacts)
+
+    // The current/project side must reuse the shared PDE model state so that ProjectComponents,
+    // whose BundleDescriptions belong to that state, can be registered without the
+    // "bundle belongs to another state" conflict a fresh ApiBaseline state causes. WorkspaceBaseline
+    // is exactly the IDE's baseline for this: getState() returns PDECore's model-manager state and
+    // addApiComponents() registers components without re-adding/re-resolving their descriptions.
+    val currentBaseline: ApiBaseline = if (workspaceRoot != null) {
+      val wb = WorkspaceBaseline()
+      // Must register with ApiBaselineManager AFTER createComponents(),
+      // because createComponents() → PluginRegistry.findModel() triggers PDE
+      // workspace scanning which calls disposeWorkspaceBaseline() — if we set
+      // workspacebaseline before, our baseline gets disposed and addComponent
+      // silently does nothing (isDisposed() check).
+      val components = createComponents(wb, currentArtifacts, workspaceRoot)
+      val mgr = ApiBaselineManager.getManager()
+      mgr.javaClass.getDeclaredField("workspacebaseline").let { f ->
+        f.isAccessible = true
+        f.set(mgr, wb)
       }
-
-      val currentArtifacts = mergeWithSharedDependencyArtifacts(input.currentBundles.map { it.currentBundle }, sharedDependencyArtifacts)
-      val referenceArtifacts = mergeWithSharedDependencyArtifacts(input.baselineArtifacts, sharedDependencyArtifacts)
-      currentBaseline.addApiComponents(createComponents(currentBaseline, currentArtifacts, workspaceRoot).toTypedArray())
-      referenceBaseline.addApiComponents(createComponents(referenceBaseline, referenceArtifacts).toTypedArray())
-
+      // WorkspaceBaseline.addApiComponents() skips ProjectComponents (source)
+      // and only registers BundleComponents (binary). We must use the protected
+      // addComponent() directly for our ProjectComponents.
+      val addComp = ApiBaseline::class.java.getDeclaredMethod(
+        "addComponent", IApiComponent::class.java
+      ).also { it.isAccessible = true }
+      components.forEach { c -> addComp.invoke(wb, c) }
+      wb
+    } else {
+      val cb = ApiBaseline("current")
+      cb.addApiComponents(createComponents(cb, currentArtifacts).toTypedArray())
+      cb
+    }
+    val referenceBaseline = ApiBaseline("baseline")
+    referenceBaseline.addApiComponents(createComponents(referenceBaseline, referenceArtifacts).toTypedArray())
+    try {
       val outcomes = input.currentBundles.map { bundleInfo ->
         analyzeOneComponent(bundleInfo, input.preferences, currentBaseline, referenceBaseline)
       }
@@ -87,6 +122,17 @@ class DirectApiAnalyzerHarness(
     return try {
       val currentComponent = currentBaseline.getApiComponent(bsn)
         ?: error("Current bundle not found in analyzer baseline: $bsn")
+
+      // In PDE API Tools 1.3.600, ProjectApiDescription's constructor does not
+      // call refreshPackages(); without it fPackageMap stays empty and all
+      // workspace types are reported as REMOVED instead of ADDED, so since-tag
+      // checks never fire.
+      if (currentComponent is ProjectComponent) {
+        val ad = currentComponent.apiDescription
+        val m = ad.javaClass.getDeclaredMethod("refreshPackages")
+        m.isAccessible = true
+        m.invoke(ad)
+      }
 
       analyzer.setContinueOnResolverError(true)
       analyzer.analyzeComponent(
@@ -158,8 +204,25 @@ class DirectApiAnalyzerHarness(
           if (!project.isOpen) {
             project.open(IResource.NONE, NullProgressMonitor())
           }
-          val componentLocation = projectComponentLocation(artifact)
-          createWorkspaceProjectComponent(baseline, componentLocation, artifact.path, project, index)
+          try {
+            JavaCore.initializeAfterLoad(NullProgressMonitor())
+          } catch (_: Exception) {}
+          // ApiDescriptionManager only builds a real (export-aware) ProjectApiDescription when the
+          // project carries the API Tools nature; without it the description is a
+          // NonApiProjectDescription that treats every package as non-API, so the analyzed type is
+          // reported as "no longer an API" instead of yielding a since-tag delta. The API nature
+          // requires-nature the PDE Plugin nature, so add both. AVOID_NATURE_CONFIG keeps the natures'
+          // builders (PDE/API analysis builders) from being wired in and run -- we only need
+          // hasNature() to be true so Util.isApiProject() passes. Done here (analyzer runtime, which
+          // has org.eclipse.pde.api.tools) rather than at setup time, where that bundle may be absent.
+          val requiredNatures = listOf("org.eclipse.pde.PluginNature", ApiPlugin.NATURE_ID)
+          val missingNatures = requiredNatures.filterNot { project.hasNature(it) }
+          if (missingNatures.isNotEmpty()) {
+            val description = project.description
+            description.natureIds = description.natureIds + missingNatures
+            project.setDescription(description, IResource.AVOID_NATURE_CONFIG, NullProgressMonitor())
+          }
+          createWorkspaceProjectComponent(baseline, artifact, project, index)
         } else {
           BundleComponent(baseline, artifact.path.toAbsolutePath().normalize().toString(), index.toLong() + 1).also { component ->
             require(component.isValidBundle) {
@@ -169,59 +232,29 @@ class DirectApiAnalyzerHarness(
         }
       }
 
-  private fun projectComponentLocation(artifact: AnalyzerBundleArtifact): String {
-    val projectName = artifact.workspaceProjectName!!
-    val sourceDir = artifact.sourcePath
-    if (sourceDir != null) {
-      val locationsRoot = artifact.path.parent.resolve("project-locations")
-      val wrapper = locationsRoot.resolve(projectName)
-      if (!Files.exists(wrapper)) {
-        Files.createDirectories(wrapper)
-        val realManifest = sourceDir.resolve("META-INF")
-        if (Files.isDirectory(realManifest)) {
-          Files.createSymbolicLink(wrapper.resolve("META-INF"), realManifest)
-        }
-      }
-      return wrapper.toAbsolutePath().normalize().toString()
-    }
-    return artifact.path.toAbsolutePath().normalize().toString()
-  }
-
   private fun createWorkspaceProjectComponent(
     baseline: ApiBaseline,
-    componentLocation: String,
-    artifactPath: Path,
+    artifact: AnalyzerBundleArtifact,
     project: IProject,
     index: Int
   ): ProjectComponent {
     val model = org.eclipse.pde.core.plugin.PluginRegistry.findModel(project)
-    return object : ProjectComponent(baseline, componentLocation, model, index.toLong() + 1) {
-      override fun getBundleDescription(properties: MutableMap<String, String>?, location: String?, id: Long): BundleDescription? {
-        @Suppress("UsePropertyAccessSyntax")
-        val manifestFile = artifactPath.toFile().let { path ->
-          if (path.isDirectory) File(path, "META-INF/MANIFEST.MF")
-          else path
-        }
-        val manifest = if (manifestFile.isFile && !manifestFile.isDirectory) {
-          if (manifestFile.name.endsWith(".jar", ignoreCase = true)) {
-            JarFile(manifestFile).use { it.manifest }
-          } else {
-            manifestFile.inputStream().use { Manifest(it) }
-          }
-        } else {
-          throw BundleException("Cannot find META-INF/MANIFEST.MF at $artifactPath")
-        }
-        val dict: Dictionary<String, String> = Hashtable()
-        manifest.mainAttributes.entries.forEach { entry ->
-          dict.put(entry.key.toString(), entry.value?.toString() ?: "")
-        }
-        return try {
-          StateObjectFactory.defaultFactory.createBundleDescription(dict, location, id)
-        } catch (e: BundleException) {
-          throw e
-        } catch (e: Exception) {
-          throw BundleException("Failed to create bundle description for $artifactPath", e)
-        }
+    // BundleComponent.init() loads the manifest straight off the filesystem `location`, so location
+    // must physically contain META-INF/MANIFEST.MF -- that's the bundle artifact directory, not the
+    // invisible project's own (link-only) location dir. ProjectComponent's constructor ALSO derives
+    // its IJavaProject from location.lastSegment() treated as a project name, which won't match our
+    // hashed project name, so we correct fProject by reflection to the real workspace project.
+    // Combined with the build.properties WorkspaceSetupService writes, ProjectComponent then discovers
+    // API types from the JDT output folder, and the resolved PDE model supplies Export-Package info --
+    // so the wrapper jar and getBundleDescription override the previous approach relied on are gone.
+    val location = artifact.path.toAbsolutePath().normalize().toString()
+    return object : ProjectComponent(baseline, location, model, index.toLong() + 1) {
+      init {
+        try {
+          val f = ProjectComponent::class.java.getDeclaredField("fProject")
+          f.isAccessible = true
+          f.set(this, JavaCore.create(project))
+        } catch (_: Exception) {}
       }
     }
   }

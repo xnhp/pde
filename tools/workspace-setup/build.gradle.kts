@@ -111,7 +111,10 @@ registerRegeneratePinnedRuntimeBundles(
   p2ResolvedRuntimeDir = p2ResolvedRuntimeDir,
   lockFile = provider { lockFile },
   cacheDir = pinnedBundleCache,
-  excludeNamePrefixes = provider { listOf("$appBsn-", "org.eclipse.equinox.launcher_") }
+  // p2.director renames installed bundles to the BSN_version convention regardless of the
+  // source jar's own filename (appBundleJar names it "$appBsn-$appVersion.jar", dash-separated),
+  // so the exclude match must use the underscore form p2 actually produces on disk.
+  excludeNamePrefixes = provider { listOf("${appBsn}_", "org.eclipse.equinox.launcher_") }
 ).configure { dependsOn(resolveRuntimeViaP2Director) }
 
 val materializeWorkspaceSetupRuntime = registerPinnedRuntimeMaterialize(
