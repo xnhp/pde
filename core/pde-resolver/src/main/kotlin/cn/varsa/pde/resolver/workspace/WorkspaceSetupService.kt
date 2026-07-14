@@ -40,7 +40,13 @@ class WorkspaceSetupService {
             }
         }
 
-        workspace.save(true, monitor)
+        val saveStatus = workspace.save(true, monitor)
+        logger.info("DEBUG workspace.save() status: severity=${saveStatus.severity} isOK=${saveStatus.isOK} message=${saveStatus.message} children=${saveStatus.children.joinToString { it.message }}")
+        input.projects.forEach { spec ->
+            val name = invisibleProjectName(spec.bsn, spec.bundlePath)
+            val p = root.getProject(name)
+            logger.info("DEBUG post-save project=$name exists=${p.exists()} isOpen=${p.isOpen} location=${p.location}")
+        }
         logger.info("Workspace setup complete: ${input.projects.size} projects")
     }
 

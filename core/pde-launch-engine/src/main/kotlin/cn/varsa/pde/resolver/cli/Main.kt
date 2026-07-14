@@ -4129,7 +4129,7 @@ internal fun apiAnalyzeMain(
   val invocation = writeBatchApiAnalyzerLaunchPlan(
     launcherExecutable = launcherExecutable,
     configurationDir = configurationDirOverride,
-    dataDir = dataDirOverride,
+    dataDir = workspaceDataOpt ?: dataDirOverride,
     applicationId = DIRECT_API_ANALYZER_APPLICATION_ID,
     inputPath = outputRoot.resolve("inputs").resolve("batch.json"),
     input = BatchApiAnalyzerInput(

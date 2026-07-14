@@ -1,5 +1,9 @@
 package cn.varsa.pde.resolver.api
 
+import cn.varsa.pde.resolver.workspace.WorkspaceProjectSpec
+import cn.varsa.pde.resolver.workspace.WorkspaceSetupInput
+import cn.varsa.pde.resolver.workspace.WorkspaceSetupInputJson
+import cn.varsa.pde.resolver.workspace.WorkspaceSetupService
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -105,6 +109,75 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
   }
 
   @Test
+  fun `projectComponent reports missing since tag for newly added public method`() {
+    val setupArchive = workspaceSetupRuntimeArchive()
+    assumeTrue(
+      "Set PDE_WORKSPACE_SETUP_RUNTIME_ARCHIVE or -Dpde.workspaceSetup.runtime.archive to run this test",
+      setupArchive != null
+    )
+
+    val bsn = "org.example.sincetag"
+    val baseline = bundleJar(
+      bsn,
+      "1.0.0",
+      mapOf(
+        "org/example/api/Example.java" to """
+          package org.example.api;
+          public class Example {
+            /**
+             * @since 1.0
+             */
+            public void kept() {}
+          }
+        """.trimIndent()
+      )
+    )
+
+    val currentDir = explodedBundleDir(
+      bsn,
+      "1.1.0",
+      mapOf(
+        "org/example/api/Example.java" to """
+          package org.example.api;
+          public class Example {
+            /**
+             * @since 1.0
+             */
+            public void kept() {}
+
+            /**
+             * Deliberately missing an @since tag.
+             */
+            public void added() {}
+          }
+        """.trimIndent()
+      )
+    )
+
+    val dataDir = temp.root.toPath().resolve("ws-data").also { Files.createDirectories(it) }
+    runWorkspaceSetup(setupArchive!!, dataDir, bsn, "1.1.0", currentDir)
+    val projectName = WorkspaceSetupService.invisibleProjectName(bsn, currentDir.toAbsolutePath().normalize().toString())
+
+    val current = AnalyzerBundleArtifact(
+      bundleSymbolicName = bsn,
+      version = "1.1.0",
+      path = currentDir,
+      workspaceProjectName = projectName
+    )
+
+    val report = analyzeBatchThroughEquinox(
+      bundles = listOf(current),
+      baselines = listOf(baseline),
+      outputReportPaths = listOf(temp.root.toPath().resolve("report.json")),
+      workspaceDataDir = dataDir.toString()
+    ).single()
+
+    val sinceTagProblem = report.problems.singleOrNull { it.category == "since-tags" }
+      ?: error("Expected exactly one since-tags problem in ${report.problems}")
+    assertEquals(bsn, sinceTagProblem.bundleSymbolicName)
+  }
+
+  @Test
   fun `api baseline analysis succeeds with workspaceProjectName equals null`() {
     val sources = mapOf(
       "org/example/api/Example.java" to """
@@ -168,19 +241,19 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       )
     )
 
-    val output = runAnalyzerProcess(runtime, inputPath)
+    val output = runAnalyzerProcess(runtime, inputPath, workspaceDataDir)
     return outputReportPaths.map { reportPath ->
       assertTrue("Analyzer did not write report $reportPath. Output:\n$output", reportPath.exists())
       ApiAnalysisReportJson.read(reportPath)
     }
   }
 
-  private fun runAnalyzerProcess(runtime: RuntimePaths, inputPath: Path): String {
+  private fun runAnalyzerProcess(runtime: RuntimePaths, inputPath: Path, workspaceDataDir: String? = null): String {
     val process = ProcessBuilder(
       javaExecutable().toString(),
       "-jar", runtime.launcher.toString(),
       "-application", DirectApiAnalyzerApplication.APPLICATION_ID,
-      "-data", runtime.workspace.toString(),
+      "-data", workspaceDataDir ?: runtime.workspace.toString(),
       "-configuration", runtime.config.toString(),
       "-consoleLog",
       "--input", inputPath.toString()
@@ -207,8 +280,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
     assertEquals("$bsn:1.1.0", problem.currentComponentId)
   }
 
-  private fun assembleRuntime(): RuntimePaths {
-    val runtimeArchive = analyzerRuntimeArchive()
+  private fun assembleRuntime(runtimeArchive: Path? = analyzerRuntimeArchive()): RuntimePaths {
     assumeTrue(
       "Set PDE_API_ANALYZER_RUNTIME_ARCHIVE or -Dpde.apiAnalyzer.runtime.archive to run the Equinox analyzer harness test",
       runtimeArchive != null
@@ -232,6 +304,79 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       ?: System.getenv("PDE_API_ANALYZER_RUNTIME_ARCHIVE")
         ?.takeIf(String::isNotBlank)
         ?.let(Path::of)
+
+  private fun workspaceSetupRuntimeArchive(): Path? =
+    System.getProperty("pde.workspaceSetup.runtime.archive")
+      ?.takeIf(String::isNotBlank)
+      ?.let(Path::of)
+      ?: System.getenv("PDE_WORKSPACE_SETUP_RUNTIME_ARCHIVE")
+        ?.takeIf(String::isNotBlank)
+        ?.let(Path::of)
+
+  /**
+   * Materializes an on-disk (exploded, not jarred) bundle directory with a real
+   * META-INF/MANIFEST.MF and src/ sources, matching the shape of a real workspace bundle
+   * (as opposed to [bundleJar]'s in-memory jar, which invisible-project workspace setup
+   * can't link META-INF into).
+   */
+  private fun explodedBundleDir(bsn: String, version: String, sources: Map<String, String>): Path {
+    val dir = Files.createTempDirectory(temp.root.toPath(), "${bsn.replace('.', '-')}-${version.replace('.', '-')}-exploded-")
+    sources.forEach { (relative, content) ->
+      val file = dir.resolve("src").resolve(relative)
+      Files.createDirectories(file.parent)
+      Files.writeString(file, content)
+    }
+    // ProjectComponent reads API structure from compiled class output (bin/), not source --
+    // real workspace bundles already have this from a prior real build, but our synthetic
+    // fixture needs it compiled explicitly to be a valid test of the ProjectComponent path.
+    compileJava(dir.resolve("src"), dir.resolve("bin").createDirectories(), emptyList())
+    val manifestDir = dir.resolve("META-INF").createDirectories()
+    manifestDir.resolve("MANIFEST.MF").writeText(
+      listOf(
+        "Manifest-Version: 1.0",
+        "Bundle-ManifestVersion: 2",
+        "Bundle-SymbolicName: $bsn",
+        "Bundle-Version: $version",
+        "Bundle-Name: $bsn",
+        "Export-Package: $bsn;version=\"$version\""
+      ).joinToString(System.lineSeparator()) + System.lineSeparator(),
+      StandardCharsets.UTF_8
+    )
+    return dir
+  }
+
+  private fun runWorkspaceSetup(runtimeArchive: Path, dataDir: Path, bsn: String, version: String, bundleDir: Path) {
+    val runtime = assembleRuntime(runtimeArchive)
+    val input = WorkspaceSetupInput(
+      projects = listOf(
+        WorkspaceProjectSpec(
+          bsn = bsn,
+          version = version,
+          bundlePath = bundleDir.toAbsolutePath().normalize().toString(),
+          sourceRoots = listOf("src"),
+          outputDirectory = "bin"
+        )
+      ),
+      targetClasspath = emptyList()
+    )
+    val inputPath = temp.root.toPath().resolve("workspace-setup-input-$bsn.json")
+    inputPath.writeText(WorkspaceSetupInputJson.write(input))
+
+    val process = ProcessBuilder(
+      javaExecutable().toString(),
+      "-jar", runtime.launcher.toString(),
+      "-application", "cn.varsa.pde.workspace_setup.workspace_setup",
+      "-data", dataDir.toString(),
+      "-configuration", runtime.config.toString(),
+      "-consoleLog",
+      "--input", inputPath.toString()
+    )
+      .redirectErrorStream(true)
+      .start()
+    val output = process.inputStream.bufferedReader().readText()
+    assertTrue("Workspace setup process timed out. Output:\n$output", process.waitFor(60, TimeUnit.SECONDS))
+    assertEquals("Workspace setup process failed. Output:\n$output", 0, process.exitValue())
+  }
 
   private fun bundleJar(
     bsn: String,
