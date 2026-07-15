@@ -84,7 +84,7 @@ it can't resolve. In practice this means editing under JDT LS gives you real
 Java-level diagnostics (types, compile errors) but no OSGi/PDE-level diagnostics
 (unresolved `Require-Bundle`, singleton conflicts, `Import-Package` version-range
 mismatches, `plugin.xml` extension-point schema errors). Those stay the domain
-of `pde api-analyze`/`pde target health`/a real PDE build, run separately.
+of `pde api-baseline check`/`pde target health`/a real PDE build, run separately.
 
 This does **not** affect cross-bundle navigation (`textDocument/definition`,
 `references`, `implementation`, type hierarchy, `workspace/symbol`) — those are

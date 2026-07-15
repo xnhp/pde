@@ -8,7 +8,7 @@ class ApiAnalysisReportJsonTest {
   fun `writes stable schema v2 report contract for api filters`() {
     val report = ApiAnalysisReport(
       generatedAt = "2026-07-07T00:00:00Z",
-      tool = "pde api-analyze",
+      tool = "pde api-baseline check",
       problems = listOf(
         ApiAnalysisProblem(
           problemRef = "P000001",
@@ -40,7 +40,7 @@ class ApiAnalysisReportJsonTest {
       {
         "schemaVersion" : 2,
         "generatedAt" : "2026-07-07T00:00:00Z",
-        "tool" : "pde api-analyze",
+        "tool" : "pde api-baseline check",
         "problems" : [ {
           "problemRef" : "P000001",
           "problemId" : 643842064,

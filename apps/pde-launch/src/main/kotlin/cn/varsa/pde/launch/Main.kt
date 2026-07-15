@@ -62,7 +62,8 @@ private val testOptions = listOf(
 )
 
 private val targetInstallPositionals = listOf(
-  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1")
+  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1"),
+  CliPositionalArg(1, "modePos", "Install mode: pass 'api-baseline' to provision the API baseline profile instead of the primary target", "0..1")
 )
 
 private val targetInstallOptions = listOf(
@@ -72,7 +73,8 @@ private val targetInstallOptions = listOf(
   CliOption(listOf("--log"), "Write application stdout/stderr to log file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--copy-path"), "Copy installed profile path to the clipboard"),
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),
-  CliOption(listOf("--debug"), "Enable DEBUG logging")
+  CliOption(listOf("--debug"), "Enable DEBUG logging"),
+  CliOption(listOf("--baseline-root"), "Baseline source for 'api-baseline' install mode (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String")
 )
 
 private val targetMirrorPositionals = listOf(
@@ -152,11 +154,11 @@ private val compileOptions = listOf(
   CliOption(listOf("--runtime-out"), "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory", takesValue = true, valueLabel = "String")
 )
 
-private val apiAnalyzePositionals = listOf(
+private val apiBaselineCheckPositionals = listOf(
   CliPositionalArg(0, "configPos", "Launch config YAML (defaults to discovered pde.yaml)", "0..1")
 )
 
-private val apiAnalyzeOptions = listOf(
+private val apiBaselineCheckOptions = listOf(
   CliOption(listOf("--config"), "Path to launch config YAML (defaults to discovered pde.yaml)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log-level"), "Log level (trace, debug, info, warn, error)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log"), "Write the analyzer launcher output log (one shared log for the whole batch invocation)", takesValue = true, valueLabel = "String"),
@@ -164,16 +166,17 @@ private val apiAnalyzeOptions = listOf(
   CliOption(listOf("--debug"), "Enable debug logging"),
   CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundle"), "Analyze only the selected workspace bundle BSN (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--workspace-data"), "Path to workspace data directory (from pde jdt-workspace init) for since-tag analysis", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--workspace-data"), "Path to workspace data directory (from pde jdt-workspace init) for since-tag analysis; defaults to .jdtls/workspace/data if present", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--legacy"), "Run the legacy binary-only (BundleComponent) analysis path, skipping workspace-data / since-tag detection"),
   CliOption(listOf("--report"), "Write JSON problem report (schemaVersion/problemRef/problemId/messageArgs/...) for downstream tools", takesValue = true, valueLabel = "String")
 )
 
 private val apiFiltersAddFromReportPositionals = listOf(
-  CliPositionalArg(0, "reportPos", "Path to api-analyze --report JSON", "0..1")
+  CliPositionalArg(0, "reportPos", "Path to api-baseline check --report JSON", "0..1")
 )
 
 private val apiFiltersAddFromReportOptions = listOf(
-  CliOption(listOf("--report"), "Path to api-analyze --report JSON", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--report"), "Path to api-baseline check --report JSON", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--problem"), "Select a problemRef from the report (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--all"), "Select all report problems (can still be narrowed by filters)"),
   CliOption(listOf("--bundle"), "Keep only selected bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
@@ -398,14 +401,19 @@ internal val pdeCommand = CliCommandGroup(
       options = testOptions,
       positionalArgs = testPositionals
     ),
-    CliCommandLeaf(
-      name = "api-analyze",
-      description = "Run API analysis",
-      handler = forwardToLaunch("pde api-analyze", "api-analyze"),
-      aliases = listOf("api-analyzer"),
-      mixinStandardHelpOptions = true,
-      options = apiAnalyzeOptions,
-      positionalArgs = apiAnalyzePositionals
+    CliCommandGroup(
+      name = "api-baseline",
+      description = "API baseline analysis commands",
+      children = listOf(
+        CliCommandLeaf(
+          name = "check",
+          description = "Run API analysis against the baseline target",
+          handler = forwardToLaunch("pde api-baseline check", "api-baseline", "check"),
+          mixinStandardHelpOptions = true,
+          options = apiBaselineCheckOptions,
+          positionalArgs = apiBaselineCheckPositionals
+        )
+      )
     ),
     CliCommandGroup(
       name = "api-filters",
@@ -413,7 +421,7 @@ internal val pdeCommand = CliCommandGroup(
       children = listOf(
         CliCommandLeaf(
           name = "add-from-report",
-          description = "Add .api_filters entries from api-analyze report JSON",
+          description = "Add .api_filters entries from api-baseline check report JSON",
           handler = forwardToLaunch("pde api-filters add-from-report", "api-filters", "add-from-report"),
           mixinStandardHelpOptions = true,
           options = apiFiltersAddFromReportOptions,

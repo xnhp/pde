@@ -135,7 +135,7 @@ class DirectApiAnalyzerHarness(
       val baselineComponent = referenceBaseline.getApiComponent(bsn)
       val report = ApiAnalysisReport(
         generatedAt = Instant.now(clock).toString(),
-        tool = "pde api-analyze direct",
+        tool = "pde api-baseline check direct",
         problems = analyzer.getProblems().mapIndexed { index, problem ->
           problem.toReportProblem(index + 1, currentComponent, baselineComponent, bundleInfo.apiFilterPath)
         }

@@ -105,12 +105,13 @@ import org.osgi.framework.VersionRange
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 private const val CRAC_CHECKPOINT_EXIT_CODE = 137
 private const val CRAC_CHECKPOINT_ARG_PREFIX = "-XX:CRaCCheckpointTo="
-internal const val API_ANALYZER_BASELINE_PROFILE_ID = "api-analyzer-baseline"
+internal const val API_BASELINE_PROFILE_ID = "api-baseline-profile"
 internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
+internal const val DEFAULT_WORKSPACE_OUTPUT_ROOT = ".jdtls/workspace"
 private const val TARGET_INSTALLER_LAUNCHER_JAR = "target-installer-launcher.jar"
-private const val API_ANALYZER_RUNTIME_ARCHIVE = "api-analyzer-runtime.zip"
+private const val API_BASELINE_RUNTIME_ARCHIVE = "api-baseline-runtime.zip"
 private const val TARGET_INSTALLER_OVERRIDE_PROPERTY = "pde.targetInstaller"
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 private val logger: Logger = Logger.getLogger("pde-launch-engine")
@@ -232,7 +233,7 @@ internal val compileOptionsRequiringValue = setOf(
   "--bundles-info-out",
   "--runtime-out"
 )
-internal val apiAnalyzeOptionsRequiringValue = setOf(
+internal val apiBaselineOptionsRequiringValue = setOf(
   "--config",
   "--log",
   "--baseline-root",
@@ -396,7 +397,12 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
         return
       }
       subcommand == "install" -> {
-        val exit = targetMain(args.drop(2).toTypedArray())
+        val installArgs = args.drop(2)
+        val exit = if (installArgs.firstOrNull() == "api-baseline") {
+          targetInstallApiBaselineMain(installArgs.drop(1).toTypedArray())
+        } else {
+          targetMain(installArgs.toTypedArray())
+        }
         exitProcess(exit)
       }
       subcommand == "mirror" -> {
@@ -452,17 +458,16 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     val exit = apiFiltersMain(args.drop(1).toTypedArray())
     exitProcess(exit)
   }
-  if (args.isNotEmpty() && (args[0] == "api-analyze" || args[0] == "api-analyzer")) {
+  if (args.isNotEmpty() && args[0] == "api-baseline") {
     val subcommand = args.getOrNull(1)
     val exit = when (subcommand) {
-      null -> apiAnalyzeMain(emptyArray())
+      null -> apiBaselineCheckMain(emptyArray())
       "-h", "--help", "help" -> {
-        printApiAnalyzeHelp()
+        printApiBaselineHelp()
         0
       }
-      "install" -> apiAnalyzeInstallMain(args.drop(2).toTypedArray())
-      "run" -> apiAnalyzeMain(args.drop(2).toTypedArray())
-      else -> apiAnalyzeMain(args.drop(1).toTypedArray())
+      "check" -> apiBaselineCheckMain(args.drop(2).toTypedArray())
+      else -> apiBaselineCheckMain(args.drop(1).toTypedArray())
     }
     exitProcess(exit)
   }
@@ -1391,23 +1396,21 @@ private fun xmlEscape(value: String): String = value
   .replace("<", "&lt;")
   .replace(">", "&gt;")
 
-private fun printApiAnalyzeHelp() {
-  println("pde api-analyze ${maturityTag("WIP")} - API analysis commands")
+private fun printApiBaselineHelp() {
+  println("pde api-baseline ${maturityTag("WIP")} - API baseline analysis commands")
   println()
   println("Usage:")
-  println("  pde api-analyze [run] [options]")
-  println("  pde api-analyze install [options]")
+  println("  pde api-baseline check [options]")
   println()
   println("Subcommands:")
-  println("  run     ${maturityTag("WIP")} Run API analysis (default)")
-  println("  install ${maturityTag("WIP")} Provision/update baseline profile for API analysis")
+  println("  check ${maturityTag("WIP")} Run API analysis against the baseline (default)")
   println()
   println("Examples:")
-  println("  pde api-analyze --report build/api-report.json")
-  println("  pde api-analyze install --baseline-root target/p2")
+  println("  pde api-baseline check --report build/api-report.json")
+  println("  pde target install api-baseline --baseline-root target/p2")
   println()
   println("See also:")
-  println("  pde api-analyze run --help")
+  println("  pde api-baseline check --help")
   println("  pde api-filters add-from-report --help")
   println("  pde --help")
 }
@@ -2050,7 +2053,7 @@ private fun resolvePackagedEquinoxAppRuntime(outputRoot: Path, runtimeArchiveNam
 }
 
 private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRuntime? =
-  resolvePackagedEquinoxAppRuntime(outputRoot, API_ANALYZER_RUNTIME_ARCHIVE, DIRECT_API_ANALYZER_APPLICATION_ID)?.let {
+  resolvePackagedEquinoxAppRuntime(outputRoot, API_BASELINE_RUNTIME_ARCHIVE, DIRECT_API_ANALYZER_APPLICATION_ID)?.let {
     ApiAnalyzerRuntime(it.launcherExecutable, it.configurationDir, it.dataDir)
   }
 
@@ -2983,12 +2986,12 @@ private fun provisionBaselineTargetProfile(
 ): Path? {
   val targetConfig = context.config.target
   if (targetConfig == null) {
-    logger.severe("Missing target config; cannot provision baseline target definition for api-analyze.")
+    logger.severe("Missing target config; cannot provision baseline target definition for api-baseline check.")
     return null
   }
   val installerJar = resolveTargetInstallerJar(context)
   if (installerJar == null) {
-    logger.severe("target.installer is required to use a .target baseline in api-analyze unless the packaged target installer is available.")
+    logger.severe("target.installer is required to use a .target baseline in api-baseline check unless the packaged target installer is available.")
     return null
   }
   if (!validateTargetInstallerJar(installerJar, "target.installer does not exist: $installerJar")) {
@@ -2996,7 +2999,7 @@ private fun provisionBaselineTargetProfile(
   }
   val bundlePoolValue = targetConfig.bundlePool?.takeUnless { it.isBlank() }
     ?: run {
-      logger.severe("target.bundlePool is required to use a .target baseline in api-analyze.")
+      logger.severe("target.bundlePool is required to use a .target baseline in api-baseline check.")
       return null
     }
   val bundlePoolPath = context.baseDir.resolve(bundlePoolValue).normalize()
@@ -3005,7 +3008,7 @@ private fun provisionBaselineTargetProfile(
   val baselineInstallRoot = outputRoot.resolve("baseline-target")
   val baselineP2Path = baselineInstallRoot.resolve("p2")
   val baselineInstallPath = baselineInstallRoot.resolve("install")
-  val baselineProfileId = API_ANALYZER_BASELINE_PROFILE_ID
+  val baselineProfileId = API_BASELINE_PROFILE_ID
   val baselineTargetContents = runCatching { TargetFileParser.parseContents(baselineTargetDefinition) }
     .getOrElse { error ->
       logger.severe("Failed to parse baseline target definition $baselineTargetDefinition: ${error.message}")
@@ -3095,7 +3098,7 @@ private fun resolveApiAnalyzeProvisionedBaselineProfilePath(
   val baselineContext = context.copy(
     config = context.config.copy(
       target = targetConfig.copy(
-        profileId = API_ANALYZER_BASELINE_PROFILE_ID,
+        profileId = API_BASELINE_PROFILE_ID,
         p2Path = baselineP2Path.toString()
       )
     )
@@ -3103,9 +3106,9 @@ private fun resolveApiAnalyzeProvisionedBaselineProfilePath(
   return resolveProfilePath(baselineContext)
 }
 
-private fun apiAnalyzeInstallMain(args: Array<String>): Int {
-  val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
-  val parser = ArgParser("pde api-analyze install ${maturityTag("WIP")}")
+private fun targetInstallApiBaselineMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiBaselineOptionsRequiringValue)
+  val parser = ArgParser("pde target install api-baseline ${maturityTag("WIP")}")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -3156,7 +3159,7 @@ private fun apiAnalyzeInstallMain(args: Array<String>): Int {
   }
 
   val apiContext = LaunchConfigLoader.load(resolvedConfigFile)
-  val outputRoot = apiContext.file.parent?.resolve("api-analyzer") ?: Paths.get("api-analyzer")
+  val outputRoot = apiContext.file.parent?.resolve(".api-baseline") ?: Paths.get(".api-baseline")
   val profilePath = resolveProfilePath(apiContext)
   if (profilePath == null) {
     logger.severe("No target profile path resolved from config.")
@@ -3855,13 +3858,13 @@ private fun testMain(args: Array<String>): Int {
   return exitCode
 }
 
-internal fun apiAnalyzeMain(
+internal fun apiBaselineCheckMain(
   args: Array<String>,
   analyzerRuntimeResolver: (outputRoot: Path) -> ApiAnalyzerRuntime? = ::resolvePackagedApiAnalyzerRuntime,
   analyzerRunner: (ApiAnalyzerInvocation) -> Int = ::runApiAnalyzer
 ): Int {
-  val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiAnalyzeOptionsRequiringValue)
-  val parser = ArgParser("pde api-analyze ${maturityTag("WIP")}")
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiBaselineOptionsRequiringValue)
+  val parser = ArgParser("pde api-baseline check ${maturityTag("WIP")}")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -3908,6 +3911,11 @@ internal fun apiAnalyzeMain(
     fullName = "workspace-data",
     description = "Path to workspace data directory (from pde jdt-workspace init) for since-tag analysis"
   )
+  val legacyOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "legacy",
+    description = "Run the legacy binary-only (BundleComponent) analysis path, skipping workspace-data / since-tag detection"
+  ).default(false)
   val configPosOpt by parser.argument(
     ArgType.String,
     description = "Launch config YAML"
@@ -3932,7 +3940,7 @@ internal fun apiAnalyzeMain(
   }
 
   val baseContext = LaunchConfigLoader.load(resolvedConfigFile)
-  val outputRoot = baseContext.file.parent?.resolve("api-analyzer") ?: Paths.get("api-analyzer")
+  val outputRoot = baseContext.file.parent?.resolve(".api-baseline") ?: Paths.get(".api-baseline")
   val apiContext = baseContext.copy(
     runtime = baseContext.runtime.copy(
       application = DIRECT_API_ANALYZER_APPLICATION_ID,
@@ -3941,6 +3949,43 @@ internal fun apiAnalyzeMain(
       programArgs = emptyList()
     )
   )
+
+  // No-silent-fallback: --workspace-data is not simply optional. If it's missing, fall back to the
+  // default location `pde jdt-workspace init` writes to; if that's also absent, fail loudly instead of
+  // quietly degrading to the binary-only BundleComponent path (which reports since-tag/usage/version
+  // problems using the pre-EX-106 analysis that misses newly-added-API since-tag checks). The only
+  // way to intentionally run that legacy path is --legacy.
+  val explicitWorkspaceData = workspaceDataOpt?.let { Paths.get(it) }
+  if (explicitWorkspaceData != null && !Files.isDirectory(explicitWorkspaceData)) {
+    logger.severe("--workspace-data does not exist or is not a directory: ${explicitWorkspaceData.toAbsolutePath().normalize()}")
+    return 2
+  }
+  val defaultWorkspaceDataDir = Paths.get(DEFAULT_WORKSPACE_OUTPUT_ROOT, "data")
+  val workspaceDataPath: Path? = when {
+    legacyOpt -> {
+      if (explicitWorkspaceData != null) {
+        logger.warning("--legacy ignores --workspace-data; running the legacy binary-only (BundleComponent) analysis path.")
+      } else {
+        logger.info("--legacy: running the binary-only (BundleComponent) analysis path; since-tag detection disabled.")
+      }
+      null
+    }
+    explicitWorkspaceData != null -> explicitWorkspaceData
+    Files.isDirectory(defaultWorkspaceDataDir) -> {
+      logger.info("Using default workspace data directory: ${defaultWorkspaceDataDir.toAbsolutePath().normalize()}")
+      defaultWorkspaceDataDir
+    }
+    else -> null
+  }
+  if (workspaceDataPath == null && !legacyOpt) {
+    logger.severe(
+      "No workspace data found (looked for --workspace-data and ${defaultWorkspaceDataDir.toAbsolutePath().normalize()}). " +
+        "Run 'pde jdt-workspace init' first (writes workspace data to $DEFAULT_WORKSPACE_OUTPUT_ROOT/data by default), " +
+        "or pass --workspace-data <path>. Pass --legacy to run the binary-only (BundleComponent) analysis path " +
+        "without since-tag detection."
+    )
+    return 2
+  }
 
   val targetDefinition = resolveTargetDefinition(apiContext)
   if (targetDefinition != null) {
@@ -4000,8 +4045,8 @@ internal fun apiAnalyzeMain(
     val existingBaselineProfilePath = resolveApiAnalyzeProvisionedBaselineProfilePath(apiContext, outputRoot)
     if (existingBaselineProfilePath == null || !Files.exists(existingBaselineProfilePath)) {
       logger.severe(
-        "Baseline target is a .target file, but no provisioned api-analyze profile exists. " +
-          "Run 'pde api-analyze install' first."
+        "Baseline target is a .target file, but no provisioned api-baseline profile exists. " +
+          "Run 'pde target install api-baseline' first."
       )
       return 2
     }
@@ -4107,7 +4152,7 @@ internal fun apiAnalyzeMain(
       outputReportPath = reportPath,
       apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
     )
-    val workspaceProjectName: String? = if (workspaceDataOpt != null) {
+    val workspaceProjectName: String? = if (workspaceDataPath != null) {
       WorkspaceSetupService.invisibleProjectName(currentBsn, descriptor.path.toString())
     } else null
     currentBundleInfos += CurrentBundleInfo(
@@ -4135,22 +4180,29 @@ internal fun apiAnalyzeMain(
   val batchLogFile = logFileOpt?.let { Paths.get(it) }
     ?: reportOpt?.let { outputRoot.resolve("report-logs").resolve("batch.log") }
 
+  val workspaceDataDirString = workspaceDataPath?.toAbsolutePath()?.normalize()?.toString()
   val invocation = writeBatchApiAnalyzerLaunchPlan(
     launcherExecutable = launcherExecutable,
     configurationDir = configurationDirOverride,
-    dataDir = workspaceDataOpt ?: dataDirOverride,
+    dataDir = workspaceDataDirString ?: dataDirOverride,
     applicationId = DIRECT_API_ANALYZER_APPLICATION_ID,
     inputPath = outputRoot.resolve("inputs").resolve("batch.json"),
     input = BatchApiAnalyzerInput(
       currentBundles = currentBundleInfos,
       dependencyArtifacts = batchDependencyArtifacts,
       baselineArtifacts = batchBaselineArtifacts,
-      workspaceDataDir = workspaceDataOpt
+      workspaceDataDir = workspaceDataDirString
     ),
     logFile = batchLogFile
   ).invocation
   logger.info("Launching one analyzer JVM for ${currentBundleInfos.size} bundle(s): ${currentBsns.sorted().joinToString(", ")}")
-  return analyzerRunner(invocation)
+  val exitCode = analyzerRunner(invocation)
+  if (exitCode == 0) {
+    currentBundleInfos.forEach { info ->
+      println("Wrote API baseline report: ${info.outputReportPath.toAbsolutePath().normalize()}")
+    }
+  }
+  return exitCode
 }
 
 private fun resolvePackagedWorkspaceSetupRuntime(outputRoot: Path): EquinoxAppRuntime? =
@@ -4240,7 +4292,7 @@ fun workspaceSetupMain(
     .distinct()
   val input = WorkspaceSetupInput(projects = workspaceSpecs, targetClasspath = targetClasspath)
 
-  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".jdtls/workspace")
+  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(DEFAULT_WORKSPACE_OUTPUT_ROOT)
   val inputsDir = resolvedOutputRoot.resolve("inputs")
   Files.createDirectories(inputsDir)
   val inputPath = inputsDir.resolve("workspace-setup.json")
@@ -4280,7 +4332,7 @@ fun jdtBuildMain(args: Array<String>): Int {
     logger.severe("Run 'pde jdt-workspace init' first to create the JDT workspace.")
     return 2
   }
-  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".jdtls/workspace")
+  val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(DEFAULT_WORKSPACE_OUTPUT_ROOT)
 
   val input = JdtBuildInput(fullRebuild = fullRebuild)
   val inputsDir = resolvedOutputRoot.resolve("inputs")
