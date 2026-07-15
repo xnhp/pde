@@ -82,12 +82,16 @@ object VscodeInit {
       logger.info("VS Code workspace with ${folderCount} folder(s) written to ${workspaceFile}.")
 
       // Materialize .project/.classpath at each bundle's real directory via the same
-      // `pde workspace setup` Equinox app used by api-analyze/jdt-build, so VS Code's bundled
-      // JDT LS (via EclipseProjectImporter) can pick them up directly. VS Code always runs its
-      // own JDT LS with no way to point it at an external server, so this has to be filesystem
-      // artifacts, not a spawned process.
+      // `pde jdt-workspace init` Equinox app used by `pde api-baseline check`/`pde jdt-workspace
+      // build`, so VS Code's bundled JDT LS (via EclipseProjectImporter) can pick them up
+      // directly. VS Code always runs its own JDT LS with no way to point it at an external
+      // server, so this has to be filesystem artifacts, not a spawned process.
+      // Uses the same .jdtls/workspace default output root as those commands (anchored to
+      // issueRoot rather than relying on workspaceSetupMain's own CWD-relative default, so
+      // `--issue-dir` targeting a different directory than CWD still resolves correctly) so a
+      // later `pde api-baseline check` run from issueRoot finds this data without extra flags.
       val setupExit = workspaceSetupMain(
-        arrayOf("--config", configPath.toString(), "--output-root", issueRoot.resolve(".lsp").toString())
+        arrayOf("--config", configPath.toString(), "--output-root", issueRoot.resolve(".jdtls/workspace").toString())
       )
       if (setupExit != 0) return setupExit
 

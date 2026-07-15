@@ -46,7 +46,9 @@ class ApiBaselineCheckWorkspaceDataTest {
     val bundle = input.currentBundles.single()
     assertEquals("org.example.api", bundle.currentBundle.bundleSymbolicName)
     assertNotNull(bundle.currentBundle.workspaceProjectName)
-    assertTrue(bundle.currentBundle.workspaceProjectName!!.startsWith("workspace-wsdata_"))
+    // WorkspaceSetupService places visible-mode projects at their real bundle location, so the
+    // project name is the bsn itself -- no path-derived disambiguation needed.
+    assertEquals("org.example.api", bundle.currentBundle.workspaceProjectName)
     assertEquals(workspaceDataDir.toString(), input.workspaceDataDir)
   }
 
