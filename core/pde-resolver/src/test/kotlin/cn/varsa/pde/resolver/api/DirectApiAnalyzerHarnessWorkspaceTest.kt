@@ -54,7 +54,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       workspaceDataDir = null
     ).single()
 
-    assertEquals(emptyList<ApiAnalysisProblem>(), report.problems)
+    assertOnlyMinorVersionAdvice(report)
   }
 
   @Test
@@ -77,7 +77,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       workspaceDataDir = null
     ).single()
 
-    assertEquals(emptyList<ApiAnalysisProblem>(), report.problems)
+    assertOnlyMinorVersionAdvice(report)
   }
 
   @Test
@@ -105,7 +105,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
       workspaceDataDir = temp.root.toPath().resolve("ws-data").also { Files.createDirectories(it) }.toString()
     ).single()
 
-    assertEquals(emptyList<ApiAnalysisProblem>(), report.problems)
+    assertOnlyMinorVersionAdvice(report)
   }
 
   @Test
@@ -190,7 +190,10 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
         }
       """.trimIndent()
     )
-    val baseline = bundleJar("org.example.wsnullreg", "1.0.0", sources)
+    // Export the real code package so its members count as API; without this the removed method is
+    // never seen as an API change and no compatibility problem is produced (the default fixture
+    // Export-Package uses the BSN as a package name, which does not exist in the jar).
+    val baseline = bundleJar("org.example.wsnullreg", "1.0.0", sources, exportPackage = "org.example.api;version=\"1.0.0\"")
     val sourcesV2 = mapOf(
       "org/example/api/Example.java" to """
         package org.example.api;
@@ -202,7 +205,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
     val current = AnalyzerBundleArtifact(
       bundleSymbolicName = "org.example.wsnullreg",
       version = "1.1.0",
-      path = bundleJar("org.example.wsnullreg", "1.1.0", sourcesV2).path,
+      path = bundleJar("org.example.wsnullreg", "1.1.0", sourcesV2, exportPackage = "org.example.api;version=\"1.1.0\"").path,
       workspaceProjectName = null
     )
 
@@ -281,6 +284,24 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
     assertEquals(bsn, problem.bundleSymbolicName)
     assertEquals("$bsn:1.0.0", problem.baselineComponentId)
     assertEquals("$bsn:1.1.0", problem.currentComponentId)
+  }
+
+  // The three BundleComponent-fallback tests compare byte-identical baseline (1.0.0) and current
+  // (1.1.0) sources, so PDE API Tools' default (empty-preferences) version-management check correctly
+  // reports one "the minor version should be the same, no new APIs" advisory. That is real tool output
+  // for production too (apiAnalyzeMain also passes empty preferences), so the tests assert its presence
+  // rather than an empty list -- and assert positively (exactly one version problem, tied to this
+  // bundle's 1.0.0->1.1.0 comparison) so a silently empty analyzer can't make them pass vacuously.
+  private fun assertOnlyMinorVersionAdvice(report: ApiAnalysisReport) {
+    val problem = report.problems.singleOrNull()
+      ?: error("Expected exactly one (minor-version advice) problem but got ${report.problems}")
+    assertEquals("version", problem.category)
+    assertTrue(
+      "Expected minor-version-management advice, got: ${problem.message}",
+      problem.message?.contains("minor version", ignoreCase = true) == true
+    )
+    assertEquals("${problem.bundleSymbolicName}:1.0.0", problem.baselineComponentId)
+    assertEquals("${problem.bundleSymbolicName}:1.1.0", problem.currentComponentId)
   }
 
   private fun assembleRuntime(runtimeArchive: Path? = analyzerRuntimeArchive()): RuntimePaths {

@@ -53,6 +53,41 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
+  fun `api analyze points analyzer data dir at provided workspace-data for since-tag analysis`() {
+    val baseDir = tmp.newFolder("cfg").toPath()
+    val workspace = tmp.newFolder("workspace").toPath()
+    val workspaceData = tmp.newFolder("ws-data").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiAnalyzeMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
+        "--workspace-data", workspaceData.toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(0, exit)
+    val invocation = invocations.single()
+    // Regression guard: the analyzer JVM must use the workspace-setup -data dir, not the default
+    // (empty) runtime workspace, or projects created by `pde workspace setup` are invisible and
+    // ProjectComponent/since-tag analysis silently degrades to BundleComponent (the original bug).
+    assertEquals(workspaceData.toString(), invocation.dataDir)
+
+    val batchJson = baseDir.resolve("api-analyzer/inputs/batch.json")
+    val input = BatchApiAnalyzerInputJson.read(batchJson)
+    assertEquals(workspaceData.toString(), input.workspaceDataDir)
+  }
+
+  @Test
   fun `api analyze propagates injected analyzer runner failure`() {
     val baseDir = tmp.newFolder("cfg-failure").toPath()
     val workspace = tmp.newFolder("workspace-failure").toPath()

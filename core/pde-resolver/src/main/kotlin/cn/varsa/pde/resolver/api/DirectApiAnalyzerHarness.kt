@@ -1,13 +1,11 @@
 package cn.varsa.pde.resolver.api
 
-import cn.varsa.pde.resolver.manifest.BundleManifest
 import org.eclipse.core.resources.IProject
 import org.eclipse.core.resources.IResource
 import org.eclipse.core.resources.IWorkspaceRoot
 import org.eclipse.core.resources.ResourcesPlugin
 import org.eclipse.core.runtime.NullProgressMonitor
 import org.eclipse.jdt.core.JavaCore
-import org.eclipse.pde.api.tools.internal.ApiDescriptionManager
 import org.eclipse.pde.api.tools.internal.ApiBaselineManager
 import org.eclipse.pde.api.tools.internal.builder.BaseApiAnalyzer
 import org.eclipse.pde.api.tools.internal.builder.BuildContext
@@ -18,22 +16,11 @@ import org.eclipse.pde.api.tools.internal.model.WorkspaceBaseline
 import org.eclipse.pde.api.tools.internal.provisional.ApiPlugin
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblem
-import org.eclipse.osgi.service.resolver.BundleDescription
-import org.eclipse.osgi.service.resolver.StateObjectFactory
-import org.osgi.framework.BundleException
-import org.osgi.framework.Constants.SINGLETON_DIRECTIVE
-import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
-import java.util.Dictionary
-import java.util.Hashtable
 import java.util.Properties
-import java.util.jar.JarEntry
-import java.util.jar.JarFile
-import java.util.jar.JarOutputStream
-import java.util.jar.Manifest
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -175,20 +162,6 @@ class DirectApiAnalyzerHarness(
     return scopeOwnArtifacts + nonConflictingShared
   }
 
-  private fun AnalyzerBundleArtifact.isSingletonArtifact(): Boolean {
-    val manifest = readManifest(path) ?: return false
-    return manifest.bundleSymbolicName?.value?.directive?.get(SINGLETON_DIRECTIVE) == "true"
-  }
-
-  private fun readManifest(path: Path): BundleManifest? {
-    val file = path.toFile()
-    return if (file.isDirectory) {
-      File(file, "META-INF/MANIFEST.MF").takeIf { it.isFile }?.inputStream()?.use { BundleManifest.parse(Manifest(it)) }
-    } else {
-      JarFile(file).use { it.manifest?.let(BundleManifest::parse) }
-    }
-  }
-
   private fun createComponents(
     baseline: ApiBaseline,
     artifacts: List<AnalyzerBundleArtifact>,
@@ -206,7 +179,9 @@ class DirectApiAnalyzerHarness(
           }
           try {
             JavaCore.initializeAfterLoad(NullProgressMonitor())
-          } catch (_: Exception) {}
+          } catch (e: Exception) {
+            logger.log(Level.WARNING, "JavaCore.initializeAfterLoad failed for project ${project.name}", e)
+          }
           // ApiDescriptionManager only builds a real (export-aware) ProjectApiDescription when the
           // project carries the API Tools nature; without it the description is a
           // NonApiProjectDescription that treats every package as non-API, so the analyzed type is
@@ -248,15 +223,23 @@ class DirectApiAnalyzerHarness(
     // API types from the JDT output folder, and the resolved PDE model supplies Export-Package info --
     // so the wrapper jar and getBundleDescription override the previous approach relied on are gone.
     val location = artifact.path.toAbsolutePath().normalize().toString()
-    return object : ProjectComponent(baseline, location, model, index.toLong() + 1) {
-      init {
-        try {
-          val f = ProjectComponent::class.java.getDeclaredField("fProject")
-          f.isAccessible = true
-          f.set(this, JavaCore.create(project))
-        } catch (_: Exception) {}
-      }
+    val component = ProjectComponent(baseline, location, model, index.toLong() + 1)
+    // Correcting fProject is load-bearing for since-tag analysis: if it stays pointed at the wrong
+    // (location-derived) project name, the analysis silently produces no since-tag deltas. Fail loudly
+    // rather than swallow, so a future PDE API Tools version renaming the field can't reintroduce the
+    // exact silent-fallback class of bug this whole change set fixed.
+    try {
+      val f = ProjectComponent::class.java.getDeclaredField("fProject")
+      f.isAccessible = true
+      f.set(component, JavaCore.create(project))
+    } catch (e: Exception) {
+      throw IllegalStateException(
+        "Failed to bind ProjectComponent to workspace project ${project.name} via fProject reflection; " +
+          "since-tag analysis would silently produce wrong results.",
+        e
+      )
     }
+    return component
   }
 
   private fun Map<String, String>.toProperties(): Properties = Properties().also { properties ->
