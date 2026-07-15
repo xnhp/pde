@@ -3,7 +3,6 @@ package cn.varsa.pde.launch
 import cn.varsa.pde.resolver.cli.maturityTag
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
-import kotlinx.cli.optional
 import org.yaml.snakeyaml.DumperOptions
 import org.yaml.snakeyaml.Yaml
 import java.nio.file.Files
@@ -11,31 +10,6 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 private class AddTestException(message: String) : RuntimeException(message)
-private const val helperTestClass =
-  "org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests"
-
-object AddTestHelperCommand {
-  fun main(args: Array<String>): Int {
-    val parser = ArgParser("pde add-test-helper ${maturityTag("usable")}")
-    val testClass by parser.argument(
-      ArgType.String,
-      description = "Fully-qualified test class name"
-    )
-    val testMethods by parser.argument(
-      ArgType.String,
-      description = "Optional comma-separated test method names"
-    ).optional()
-    parser.parse(args)
-
-    return try {
-      addTestHelper(testClass, testMethods)
-      0
-    } catch (ex: AddTestException) {
-      System.err.println(ex.message)
-      1
-    }
-  }
-}
 
 object AddTestCommand {
   fun main(args: Array<String>): Int {
@@ -58,34 +32,6 @@ object AddTestCommand {
       1
     }
   }
-}
-
-private fun addTestHelper(testClass: String, testMethods: String?) {
-  val cwd = currentWorkingDir()
-  val configPath = findConfigPath(cwd)
-    ?: fail("No launch config found (pde.yaml/launch.yaml/pde-launch.yaml).")
-
-  val normalizedTestClass = requireNonBlank(testClass, "Test class must be non-empty")
-  val normalizedMethods = testMethods?.trim()?.takeIf { it.isNotBlank() }
-
-  val rootMap = loadConfigYaml(configPath)
-  val tests = ensureTestsList(rootMap)
-
-  val vmArgs = mutableListOf<String>()
-  vmArgs.add("-Dorg.knime.gateway.testing.helper.test_class=$normalizedTestClass")
-  if (normalizedMethods != null) {
-    vmArgs.add("-Dorg.knime.gateway.testing.helper.test_method=$normalizedMethods")
-  }
-
-  val entry = linkedMapOf<String, Any?>(
-    "testPluginName" to "org.knime.gateway.impl",
-    "className" to helperTestClass,
-    "vmArgs" to vmArgs
-  )
-  tests.add(entry)
-
-  writeConfigYaml(configPath, rootMap)
-  println("Added test helper entry to ${configPath.fileName}")
 }
 
 private fun addTest(pluginName: String, className: String) {

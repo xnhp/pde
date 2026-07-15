@@ -461,19 +461,4 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("pde add-test"))
   }
-
-  @Test
-  fun `add-test-helper subcommand is routed through pde launcher`() {
-    val out = ByteArrayOutputStream()
-    val savedOut = System.out
-    System.setOut(PrintStream(out))
-    try {
-      runPde(arrayOf("add-test-helper", "--help"))
-    } finally {
-      System.setOut(savedOut)
-    }
-
-    val output = out.toString()
-    assertTrue(output.contains("pde add-test-helper"))
-  }
 }

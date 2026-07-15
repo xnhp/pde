@@ -16,7 +16,6 @@ Commands:
   compile          Compile PDE Java bundles
   format           Format Java sources via Eclipse formatter
   add-test         Append a test entry to launch config
-  add-test-helper  Append a gateway helper test entry
   run, launch      Run a launch config
   target           Target platform commands (install, mirror)
   test             Run PDE test launch
@@ -28,13 +27,6 @@ Commands:
 ```text
 Usage: pde add-test
 Append a test entry to launch config
-```
-
-## `pde add-test-helper`
-
-```text
-Usage: pde add-test-helper
-Append a gateway helper test entry
 ```
 
 ## `pde api-analyze`

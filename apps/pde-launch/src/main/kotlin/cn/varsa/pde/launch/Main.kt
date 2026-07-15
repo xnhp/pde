@@ -269,11 +269,6 @@ internal val pdeCommand = CliCommandGroup(
       handler = { args -> AddTestCommand.main(args) }
     ),
     CliCommandLeaf(
-      name = "add-test-helper",
-      description = "Append a gateway helper test entry",
-      handler = { args -> AddTestHelperCommand.main(args) }
-    ),
-    CliCommandLeaf(
       name = "run",
       description = "Run a launch config (alias of launch)",
       handler = forwardToLaunch("pde run"),
