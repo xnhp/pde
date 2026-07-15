@@ -184,11 +184,11 @@ $defs:
           registry directory.
       p2Path:
         type: string
-        default: ./target/p2
+        default: ./.target/p2
         description: Path to p2 area (relative paths resolve from the config directory).
       install:
         type: string
-        default: ./target/install
+        default: ./.target/install
         description: Path to install root (relative paths resolve from the config directory).
       apiBaselineRoot:
         type: string
@@ -198,7 +198,7 @@ $defs:
           Relative paths resolve from the config directory.
       bundlePool:
         type: string
-        default: ./target/bundle-pool
+        default: ./.target/bundle-pool
         description: Path to bundle pool (relative paths resolve from the config directory).
       installer:
         type: string

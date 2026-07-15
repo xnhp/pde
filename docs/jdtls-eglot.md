@@ -36,7 +36,7 @@ Notes:
   for editor integrations that need explicit workspace roots.
 - `lsp init` requires a `target` section in `pde.yaml` with a resolved profile.
 - For issue-dir layouts the default profile path resolves from the issue root,
-  e.g. `<issue>/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile`.
+  e.g. `<issue>/.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/Profile.profile`.
 
 ## Running JDT LS: `pde lsp run`
 

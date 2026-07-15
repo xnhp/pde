@@ -124,7 +124,7 @@ class TargetInspectCliTest {
 
   private fun createProfileDir(baseDir: java.nio.file.Path): java.nio.file.Path {
     val profileDir = baseDir
-      .resolve("target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.Profile")
+      .resolve(".target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.Profile")
     Files.createDirectories(profileDir)
     return profileDir
   }
@@ -136,7 +136,7 @@ class TargetInspectCliTest {
       """
         target:
           profileId: profile
-          p2Path: ./target/p2
+          p2Path: ./.target/p2
       """.trimIndent()
     )
     return configFile

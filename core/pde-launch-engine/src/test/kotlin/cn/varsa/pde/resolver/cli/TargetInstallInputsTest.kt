@@ -52,10 +52,10 @@ class TargetInstallInputsTest {
     assertEquals(
       listOf(
         "-profileId", "profile",
-        "-p2Path", baseDir.resolve("target/p2").normalize().toString(),
+        "-p2Path", baseDir.resolve(".target/p2").normalize().toString(),
         "-targetDefinition", targetDefinition.toAbsolutePath().normalize().toString(),
-        "-install-folder", baseDir.resolve("target/install").normalize().toString(),
-        "-bundlePool", baseDir.resolve("target/bundle-pool").normalize().toString(),
+        "-install-folder", baseDir.resolve(".target/install").normalize().toString(),
+        "-bundlePool", baseDir.resolve(".target/bundle-pool").normalize().toString(),
         "-includeConfigurePhase", "true"
       ),
       invokedArgs

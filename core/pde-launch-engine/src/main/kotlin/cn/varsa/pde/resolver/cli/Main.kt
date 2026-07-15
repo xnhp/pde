@@ -800,7 +800,7 @@ private fun loadTargetConfigContext(configFileOpt: String?, configPos: String?):
 }
 
 private fun configuredBundlePool(context: LaunchConfigContext): Path {
-  val raw = context.config.target?.bundlePool?.takeIf { it.isNotBlank() } ?: "target/bundle-pool"
+  val raw = context.config.target?.bundlePool?.takeIf { it.isNotBlank() } ?: ".target/bundle-pool"
   val path = Paths.get(raw)
   return (if (path.isAbsolute) path else context.baseDir.resolve(path)).normalize()
 }
@@ -1407,7 +1407,7 @@ private fun printApiBaselineHelp() {
   println()
   println("Examples:")
   println("  pde api-baseline check --report build/api-report.json")
-  println("  pde target install api-baseline --baseline-root target/p2")
+  println("  pde target install api-baseline --baseline-root .target/p2")
   println()
   println("See also:")
   println("  pde api-baseline check --help")
@@ -2186,8 +2186,8 @@ private fun resolveP2DirectorLauncher(
   if (installPath != null) {
     candidates.add(installPath.resolve("eclipse"))
     candidates.add(installPath.resolve("launcher"))
-    candidates.add(installPath.resolve("target").resolve("install").resolve("eclipse"))
-    candidates.add(installPath.resolve("target").resolve("install").resolve("launcher"))
+    candidates.add(installPath.resolve(".target").resolve("install").resolve("eclipse"))
+    candidates.add(installPath.resolve(".target").resolve("install").resolve("launcher"))
   }
   val installerRoot = when {
     installerPath == null -> null
@@ -2198,8 +2198,8 @@ private fun resolveP2DirectorLauncher(
   if (installerRoot != null) {
     candidates.add(installerRoot.resolve("eclipse"))
     candidates.add(installerRoot.resolve("launcher"))
-    candidates.add(installerRoot.resolve("target").resolve("install").resolve("eclipse"))
-    candidates.add(installerRoot.resolve("target").resolve("install").resolve("launcher"))
+    candidates.add(installerRoot.resolve(".target").resolve("install").resolve("eclipse"))
+    candidates.add(installerRoot.resolve(".target").resolve("install").resolve("launcher"))
   }
   candidates.firstOrNull { Files.exists(it) }?.let { return it }
 
@@ -2207,7 +2207,7 @@ private fun resolveP2DirectorLauncher(
     if (installPath != null) add(installPath)
     if (installerRoot != null) {
       add(installerRoot)
-      add(installerRoot.resolve("target"))
+      add(installerRoot.resolve(".target"))
     }
     if (targetDefinition != null) {
       targetDefinition.parent?.let { add(it) }

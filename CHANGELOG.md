@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+- Default generated/output directory changed from `target/` to `.target/` (e.g. `target/p2`,
+  `target/install`, `target/bundle-pool` -> `.target/p2`, `.target/install`, `.target/bundle-pool`).
+  Projects relying on the previous default should either set `target.p2Path`, `target.install`,
+  and `target.bundlePool` explicitly in `pde.yaml` to keep using an existing `target/` directory,
+  or rename/regenerate the directory as `.target/`.
+
 ## v0.0.8 - 2026-07-01
 
 ### Bug Fixes

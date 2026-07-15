@@ -66,8 +66,8 @@ Launch with `pde run GatewayDevServer`.
 
 The following warnings seem not problematic and can be ignored for the time being
 ```
-[WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/master/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
-[WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/master/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
+[WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/master/.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
+[WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/master/.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
 [WARN] Launch plan has unresolved bundles/dependencies; continuing anyway.
 Launch Plan:
   - [MISSING_BUNDLE] org.eclipse.equinox.ds: startup-level

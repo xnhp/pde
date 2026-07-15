@@ -88,7 +88,7 @@ class IjInitTest {
       .resolve("profile.profile")
     Files.createDirectories(profileDir)
     val issueProfileDir = issueDir
-      .resolve("target")
+      .resolve(".target")
       .resolve("p2")
       .resolve("org.eclipse.equinox.p2.engine")
       .resolve("profileRegistry")
@@ -98,7 +98,7 @@ class IjInitTest {
     IjInit.initIjProjectFromConfig(configPath, issueDir)
 
     val eclipsePartial = Files.readString(issueDir.resolve("ij-project/.idea/eclipse-partial.xml"))
-    val expected = "\$PROJECT_DIR\$/../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile"
+    val expected = "\$PROJECT_DIR\$/../.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile"
     assertTrue(eclipsePartial.contains("location=\"${expected}\""))
   }
 
@@ -167,7 +167,7 @@ class IjInitTest {
 
     val projectDir = issueDir.resolve("ij-project")
     val eclipsePartial = Files.readString(projectDir.resolve(".idea/eclipse-partial.xml"))
-    assertTrue(eclipsePartial.contains("location=\"\$PROJECT_DIR\$/../target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile\""))
+    assertTrue(eclipsePartial.contains("location=\"\$PROJECT_DIR\$/../.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile\""))
     assertTrue(eclipsePartial.contains("launcherJar=\"\$PROJECT_DIR\$/../../bundle-pool/plugins/org.eclipse.equinox.launcher_1.0.0.jar\""))
 
     val formatter = Files.readString(projectDir.resolve(".idea/eclipseCodeFormatter.xml"))

@@ -35,7 +35,7 @@ class TargetInstallCopyPathTest {
     Files.writeString(targetFile, "<target></target>")
 
     val registryDir = baseDir
-      .resolve("target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.Profile")
+      .resolve(".target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.Profile")
     Files.createDirectories(registryDir)
 
     val logger = Logger.getLogger("pde-launch-engine")

@@ -433,7 +433,7 @@ private fun resolveTargetIndex(context: LaunchConfigContext): TargetPlatformInde
 private fun resolveProfilePath(context: LaunchConfigContext, targetConfig: cn.varsa.pde.resolver.cli.config.TargetConfig): Path {
   val baseDir = context.baseDir
   val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
-  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./target/p2"
+  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./.target/p2"
   val registryDir = baseDir.resolve(p2Path)
     .resolve("org.eclipse.equinox.p2.engine/profileRegistry")
     .normalize()
