@@ -24,6 +24,17 @@ class WorkspaceSetupService {
         val root = workspace.root
         val monitor = NullProgressMonitor()
 
+        // Disable auto-build so that creating .classpath files and linked folders does not
+        // trigger JDT compilation on a background thread — we already have compiled output on
+        // disk. Auto-build in Equinox headless also hits a NullPointerException in JDT's
+        // ReadManager.readAhead() → FileUtil.getCharset() because the preferences service
+        // (Platform.getPreferencesService()) is not initialized.
+        val desc = workspace.description
+        if (desc.isAutoBuilding) {
+            desc.isAutoBuilding = false
+            workspace.setDescription(desc)
+        }
+
         val bsnToProjectName = input.projects.associate { spec ->
             spec.bsn to invisibleProjectName(spec.bsn, spec.bundlePath)
         }
