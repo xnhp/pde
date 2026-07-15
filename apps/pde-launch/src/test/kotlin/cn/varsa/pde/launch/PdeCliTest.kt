@@ -20,9 +20,9 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("Usage: pde"))
-    assertTrue(output.contains("Commands:"))
+    assertTrue(output.contains("pde - PDE tooling CLI"))
     assertTrue(output.contains("compile"))
+    assertTrue(output.contains("Compile PDE Java bundles"))
   }
 
   @Test
@@ -37,11 +37,36 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("Usage:"))
+    assertTrue(output.contains("pde - PDE tooling CLI"))
     assertTrue(output.contains("run"))
     assertTrue(output.contains("target"))
     assertTrue(output.contains("validate-config"))
     assertTrue(output.contains("schema"))
+  }
+
+  @Test
+  fun `top-level help renders the full nested command tree`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    val lines = output.lines()
+
+    // Top-level groups/leaves are indented one level, nested children two (or more) levels.
+    assertTrue(lines.any { it == "  target             Target platform commands (install, mirror, inspect)" })
+    assertTrue(lines.any { it == "    install          Resolve/prepare target platform state" })
+    assertTrue(lines.any { it == "    repair           Repair reusable target bundle-pool state" })
+    assertTrue(lines.any { it == "      re-fetch       Re-run target install to fetch currently required artifacts" })
+    assertTrue(lines.any { it == "    inspect          Inspect target profile state and health" })
+    assertTrue(lines.any { it == "      profile        Show profile location and bundle-pool basics" })
+    assertTrue(lines.any { it == "  ide-init           Generate IDE project files" })
+    assertTrue(lines.any { it == "    idea             Generate IntelliJ project" })
   }
 
   @Test
@@ -56,7 +81,8 @@ class PdeCliTest {
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde mcp tools list"))
+    assertTrue(output.contains("Run MCP server over stdin/stdout exposing PDE workflow tools."))
+    assertFalse(output.contains("pde mcp tools list"))
     assertFalse(output.contains("MCP tools for pde"))
     assertFalse(output.contains("pde_compile_workspace"))
   }

@@ -489,7 +489,15 @@ private fun pdeMcpHelpText(): String = """
   }
 """.trimIndent()
 
-internal fun runPde(args: Array<String>): Int = CliMain.run(createPdeCommandLine(), args)
+private val topLevelHelpArgs = setOf("--help", "-h")
+
+internal fun runPde(args: Array<String>): Int {
+  if (args.isEmpty() || (args.size == 1 && args[0] in topLevelHelpArgs)) {
+    println(pdeCommandTreeHelpText(pdeCommand))
+    return 0
+  }
+  return CliMain.run(createPdeCommandLine(), args)
+}
 
 fun main(args: Array<String>) {
   exitProcess(runPde(args))
