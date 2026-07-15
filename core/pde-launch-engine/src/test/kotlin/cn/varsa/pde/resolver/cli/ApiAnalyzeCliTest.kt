@@ -78,7 +78,7 @@ class ApiAnalyzeCliTest {
     assertEquals(0, exit)
     val invocation = invocations.single()
     // Regression guard: the analyzer JVM must use the workspace-setup -data dir, not the default
-    // (empty) runtime workspace, or projects created by `pde workspace setup` are invisible and
+    // (empty) runtime workspace, or projects created by `pde jdt-workspace init` are invisible and
     // ProjectComponent/since-tag analysis silently degrades to BundleComponent (the original bug).
     assertEquals(workspaceData.toString(), invocation.dataDir)
 

@@ -3906,7 +3906,7 @@ internal fun apiAnalyzeMain(
   val workspaceDataOpt by parser.option(
     ArgType.String,
     fullName = "workspace-data",
-    description = "Path to workspace data directory (from pde workspace setup) for since-tag analysis"
+    description = "Path to workspace data directory (from pde jdt-workspace init) for since-tag analysis"
   )
   val configPosOpt by parser.argument(
     ArgType.String,
@@ -4162,7 +4162,7 @@ fun workspaceSetupMain(
   equinoxAppRunner: (EquinoxAppInvocation) -> Int = ::runEquinoxApp
 ): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, compileOptionsRequiringValue)
-  val parser = ArgParser("pde workspace setup ${maturityTag("WIP")}")
+  val parser = ArgParser("pde jdt-workspace init ${maturityTag("WIP")}")
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
@@ -4263,21 +4263,21 @@ fun workspaceSetupMain(
 }
 
 fun jdtBuildMain(args: Array<String>): Int {
-  val parser = ArgParser("pde jdt-build ${maturityTag("WIP")}")
-  val dataDir by parser.option(ArgType.String, fullName = "data", description = "Workspace data directory (from pde workspace setup)")
+  val parser = ArgParser("pde jdt-workspace build ${maturityTag("WIP")}")
+  val dataDir by parser.option(ArgType.String, fullName = "data", description = "Workspace data directory (from pde jdt-workspace init)")
   val fullRebuild by parser.option(ArgType.Boolean, fullName = "full", description = "Force full rebuild").default(false)
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .jdtls/workspace)")
   parser.parse(args)
   configureLogging(Level.INFO, shouldUseColor())
 
   if (dataDir == null) {
-    logger.severe("Missing --data. Run 'pde workspace setup' first to create the JDT workspace, then pass --data <path>.")
+    logger.severe("Missing --data. Run 'pde jdt-workspace init' first to create the JDT workspace, then pass --data <path>.")
     return 2
   }
   val resolvedDataDir = Paths.get(dataDir)
   if (!Files.exists(resolvedDataDir)) {
     logger.severe("Workspace data directory not found: $dataDir")
-    logger.severe("Run 'pde workspace setup' first to create the JDT workspace.")
+    logger.severe("Run 'pde jdt-workspace init' first to create the JDT workspace.")
     return 2
   }
   val resolvedOutputRoot = outputRoot?.let { Paths.get(it) } ?: Paths.get(".jdtls/workspace")

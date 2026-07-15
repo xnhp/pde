@@ -164,7 +164,7 @@ private val apiAnalyzeOptions = listOf(
   CliOption(listOf("--debug"), "Enable debug logging"),
   CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundle"), "Analyze only the selected workspace bundle BSN (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--workspace-data"), "Path to workspace data directory (from pde workspace setup) for since-tag analysis", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--workspace-data"), "Path to workspace data directory (from pde jdt-workspace init) for since-tag analysis", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--report"), "Write JSON problem report (schemaVersion/problemRef/problemId/messageArgs/...) for downstream tools", takesValue = true, valueLabel = "String")
 )
 
@@ -234,26 +234,26 @@ internal val pdeCommand = CliCommandGroup(
       positionalArgs = compilePositionals
     ),
     CliCommandGroup(
-      name = "workspace",
+      name = "jdt-workspace",
       description = "Eclipse workspace management",
       children = listOf(
         CliCommandLeaf(
-          name = "setup",
+          name = "init",
           description = "Create Eclipse IProject/IJavaProject from resolver output",
           handler = { args -> workspaceSetupMain(args) },
           mixinStandardHelpOptions = true,
           options = compileOptions,
           positionalArgs = compilePositionals
+        ),
+        CliCommandLeaf(
+          name = "build",
+          description = "Run incremental JDT compilation in an Equinox workspace",
+          handler = { args -> jdtBuildMain(args) },
+          mixinStandardHelpOptions = true,
+          options = compileOptions,
+          positionalArgs = compilePositionals
         )
       )
-    ),
-    CliCommandLeaf(
-      name = "jdt-build",
-      description = "Run incremental JDT compilation in an Equinox workspace",
-      handler = { args -> jdtBuildMain(args) },
-      mixinStandardHelpOptions = true,
-      options = compileOptions,
-      positionalArgs = compilePositionals
     ),
     CliCommandLeaf(
       name = "format",
