@@ -2744,9 +2744,18 @@ fun discoverConfigFile(baseDir: Path = Paths.get("").toAbsolutePath()): Path? {
     "pde-launch.yaml",
     "pde-launch.yml"
   )
-  return candidates
-    .map { baseDir.resolve(it) }
-    .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
+  var current = baseDir.toAbsolutePath().normalize()
+  while (true) {
+    for (candidate in candidates) {
+      val candidatePath = current.resolve(candidate)
+      if (Files.exists(candidatePath) && Files.isRegularFile(candidatePath)) {
+        return candidatePath
+      }
+    }
+    val parent = current.parent ?: break
+    current = parent
+  }
+  return null
 }
 
 private fun resolveTargetArgs(
