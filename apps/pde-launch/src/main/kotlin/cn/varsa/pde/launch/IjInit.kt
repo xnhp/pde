@@ -249,7 +249,7 @@ object IjInit {
     val p2Path = targetConfig?.p2Path
       ?.takeUnless { isDefaultP2Path(it) }
       ?.let { resolvePath(baseDir, it) }
-      ?: issueDir.resolve("target").resolve("p2")
+      ?: issueDir.resolve(".target").resolve("p2")
     val registry = p2Path.resolve("org.eclipse.equinox.p2.engine").resolve("profileRegistry")
     return registry.resolve("${profileId}.profile").toAbsolutePath().normalize()
   }
@@ -281,7 +281,7 @@ object IjInit {
   }
 
   private fun isDefaultP2Path(value: String): Boolean =
-    Paths.get(normalizeProfilePath(value)).normalize().toString().replace('\\', '/') == "target/p2"
+    Paths.get(normalizeProfilePath(value)).normalize().toString().replace('\\', '/') == ".target/p2"
 
   private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
     val candidate = configOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }

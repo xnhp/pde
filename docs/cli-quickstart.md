@@ -29,7 +29,7 @@ We have basic module-level change detection
 ```
 ➜ 15:39 ben todo_NXT-4622-executor-to-serve-web-resources-dire pde compile
 [INFO] Discovered launch config in /home/ben/Desktop/issues/todo_NXT-4622-executor-to-serve-web-resources-dire/pde.yaml and will use it.
-[WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/todo_NXT-4622-executor-to-serve-web-resources-dire/target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
+[WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/todo_NXT-4622-executor-to-serve-web-resources-dire/.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
 [INFO] skipped com.knime.gateway.executor: Up-to-date; compile skipped
 [INFO] skipped com.knime.gateway.executor.tests: Up-to-date; compile skipped
 ```
