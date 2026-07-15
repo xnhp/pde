@@ -18,11 +18,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class ApiAnalyzeCliTest {
+class ApiBaselineCheckCliTest {
   @Rule @JvmField val tmp = TemporaryFolder()
 
   @Test
-  fun `api analyze wires direct analyzer invocation through injectable runner`() {
+  fun `api baseline check wires direct analyzer invocation through injectable runner`() {
     val baseDir = tmp.newFolder("cfg").toPath()
     val workspace = tmp.newFolder("workspace").toPath()
     createProfileWithFramework(baseDir)
@@ -30,9 +30,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -46,14 +47,14 @@ class ApiAnalyzeCliTest {
     assertEquals(1, invocations.size)
     val invocation = invocations.single()
     assertEquals(Path.of("/fake/api-analyzer"), invocation.launcherExecutable)
-    assertEquals(baseDir.resolve("api-analyzer").resolve("configuration").toString(), invocation.configurationDir)
+    assertEquals(baseDir.resolve(".api-baseline").resolve("configuration").toString(), invocation.configurationDir)
     assertEquals(DIRECT_API_ANALYZER_APPLICATION_ID, invocation.applicationId)
-    assertEquals(baseDir.resolve("api-analyzer").resolve("workspace").toString(), invocation.dataDir)
-    assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/batch.json").toString()), invocation.args)
+    assertEquals(baseDir.resolve(".api-baseline").resolve("workspace").toString(), invocation.dataDir)
+    assertEquals(listOf("--input", baseDir.resolve(".api-baseline/inputs/batch.json").toString()), invocation.args)
   }
 
   @Test
-  fun `api analyze points analyzer data dir at provided workspace-data for since-tag analysis`() {
+  fun `api baseline check points analyzer data dir at provided workspace-data for since-tag analysis`() {
     val baseDir = tmp.newFolder("cfg").toPath()
     val workspace = tmp.newFolder("workspace").toPath()
     val workspaceData = tmp.newFolder("ws-data").toPath()
@@ -62,7 +63,7 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
@@ -82,13 +83,13 @@ class ApiAnalyzeCliTest {
     // ProjectComponent/since-tag analysis silently degrades to BundleComponent (the original bug).
     assertEquals(workspaceData.toString(), invocation.dataDir)
 
-    val batchJson = baseDir.resolve("api-analyzer/inputs/batch.json")
+    val batchJson = baseDir.resolve(".api-baseline/inputs/batch.json")
     val input = BatchApiAnalyzerInputJson.read(batchJson)
     assertEquals(workspaceData.toString(), input.workspaceDataDir)
   }
 
   @Test
-  fun `api analyze propagates injected analyzer runner failure`() {
+  fun `api baseline check propagates injected analyzer runner failure`() {
     val baseDir = tmp.newFolder("cfg-failure").toPath()
     val workspace = tmp.newFolder("workspace-failure").toPath()
     createProfileWithFramework(baseDir)
@@ -96,9 +97,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -113,7 +115,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze direct app writes input manifest for injected runner`() {
+  fun `api baseline check direct app writes input manifest for injected runner`() {
     val baseDir = tmp.newFolder("cfg-direct").toPath()
     val workspace = tmp.newFolder("workspace-direct").toPath()
     createProfileWithFramework(baseDir)
@@ -121,9 +123,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -137,16 +140,16 @@ class ApiAnalyzeCliTest {
     assertEquals(1, invocations.size)
     val invocation = invocations.single()
     assertEquals(DIRECT_API_ANALYZER_APPLICATION_ID, invocation.applicationId)
-    assertEquals(listOf("--input", baseDir.resolve("api-analyzer/inputs/batch.json").toString()), invocation.args)
+    assertEquals(listOf("--input", baseDir.resolve(".api-baseline/inputs/batch.json").toString()), invocation.args)
     val input = BatchApiAnalyzerInputJson.read(Path.of(invocation.valueAfter("--input")))
     val bundle = input.currentBundles.single()
     assertEquals("org.example.api", bundle.currentBundle.bundleSymbolicName)
     assertTrue(bundle.currentBundle.synthetic)
-    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.api"), bundle.outputReportPath)
+    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.api"), bundle.outputReportPath)
   }
 
   @Test
-  fun `api analyze direct app uses explicit report path for single bundle`() {
+  fun `api baseline check direct app uses explicit report path for single bundle`() {
     val baseDir = tmp.newFolder("cfg-direct-report").toPath()
     val workspace = tmp.newFolder("workspace-direct-report").toPath()
     val reportPath = baseDir.resolve("reports").resolve("api-report.json")
@@ -155,9 +158,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
         "--report", reportPath.toString()
       ),
@@ -175,7 +179,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze only invokes analyzer for selected workspace bundle`() {
+  fun `api baseline check only invokes analyzer for selected workspace bundle`() {
     val baseDir = tmp.newFolder("cfg-direct-bundle").toPath()
     val apiWorkspace = tmp.newFolder("workspace-direct-bundle-api").toPath()
     val otherWorkspace = tmp.newFolder("workspace-direct-bundle-other").toPath()
@@ -185,9 +189,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeMultiBundleConfigFile(baseDir, apiWorkspace, otherWorkspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
         "--bundle", "org.example.other"
       ),
@@ -205,7 +210,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze direct app keeps target and baseline directory artifacts and plans baseline once`() {
+  fun `api baseline check direct app keeps target and baseline directory artifacts and plans baseline once`() {
     val baseDir = tmp.newFolder("cfg-direct-directory-artifacts").toPath()
     val apiWorkspace = tmp.newFolder("workspace-direct-directory-artifacts-api").toPath()
     val otherWorkspace = tmp.newFolder("workspace-direct-directory-artifacts-other").toPath()
@@ -219,9 +224,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeMultiBundleConfigFile(baseDir, apiWorkspace, otherWorkspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -257,14 +263,14 @@ class ApiAnalyzeCliTest {
     })
     assertTrue(Files.isDirectory(targetDependency))
     assertTrue(Files.isDirectory(apiBaseline))
-    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.api"), bundles.first().outputReportPath)
-    assertEquals(baseDir.resolve("api-analyzer/reports/org.example.other"), bundles.last().outputReportPath)
-    assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.api")))
-    assertTrue(!Files.exists(baseDir.resolve("api-analyzer/synthetic-artifacts/baseline/org.example.other")))
+    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.api"), bundles.first().outputReportPath)
+    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.other"), bundles.last().outputReportPath)
+    assertTrue(!Files.exists(baseDir.resolve(".api-baseline/synthetic-artifacts/baseline/org.example.api")))
+    assertTrue(!Files.exists(baseDir.resolve(".api-baseline/synthetic-artifacts/baseline/org.example.other")))
   }
 
   @Test
-  fun `api analyze reduces baseline closure to what is actually needed`() {
+  fun `api baseline check reduces baseline closure to what is actually needed`() {
     // Regression test for the baseline-side analogue of the target-side closure fix: the baseline
     // used to be materialized as the ENTIRE baseline target platform (collectTargetBundles over the
     // whole index) regardless of what the analyzed workspace bundle actually needs. A baseline
@@ -281,9 +287,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -311,7 +318,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze seeds baseline counterpart even without any Require-Bundle relationship`() {
+  fun `api baseline check seeds baseline counterpart even without any Require-Bundle relationship`() {
     // The analyzed bundle's own baseline counterpart is never "required" by anything in the
     // workspace -- nothing Require-Bundle-declares it -- so it can only be picked up via the
     // explicit seed, never via the Require-Bundle closure walk alone.
@@ -324,9 +331,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -346,7 +354,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze includes every target version needed by disjoint Require-Bundle ranges`() {
+  fun `api baseline check includes every target version needed by disjoint Require-Bundle ranges`() {
     // Regression test for the single-version-per-BSN gap: LaunchPlanner-style selection (used by
     // pde run/pde compile) picks exactly ONE artifact per bundle-symbolic-name across the whole
     // workspace, which silently drops the version(s) needed by requirers with non-overlapping
@@ -379,9 +387,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -406,7 +415,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze does not add extra target versions when a single version satisfies every requirer`() {
+  fun `api baseline check does not add extra target versions when a single version satisfies every requirer`() {
     // Regression guard for the fix above: when there is no conflicting Require-Bundle range, the
     // augmentation must not blow up the dependency set with redundant/unneeded extra versions --
     // the common case (single version per BSN) must stay exactly as before.
@@ -424,9 +433,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -445,7 +455,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze pulls in target platform fragments of a selected host bundle`() {
+  fun `api baseline check pulls in target platform fragments of a selected host bundle`() {
     // Regression test for issue #150: augmentTargetBundlesForRequireBundleProviders only walked
     // Require-Bundle closures, never Fragment-Host. A fragment that attaches to a selected host at
     // runtime but that nothing Require-Bundles (the normal case for fragments) was silently dropped
@@ -461,9 +471,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -483,7 +494,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze does not falsely flag current bundle Require-Bundle satisfied by dependency scope`() {
+  fun `api baseline check does not falsely flag current bundle Require-Bundle satisfied by dependency scope`() {
     // Regression test for the "current" direction of the cross-scope diagnostic bug: the current
     // workspace bundle's own materialize() call only ever sees its own manifest, so before the fix
     // ANY Require-Bundle entry on the current bundle was unconditionally flagged as unresolved, even
@@ -497,9 +508,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val (exit, messages) = captureLogRecords {
-      apiAnalyzeMain(
+      apiBaselineCheckMain(
         args = arrayOf(
           "--config", configFile.toString(),
+        "--legacy",
           "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
         ),
         analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -515,7 +527,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze does not falsely flag dependency-scope Require-Bundle on the current bundle`() {
+  fun `api baseline check does not falsely flag dependency-scope Require-Bundle on the current bundle`() {
     // Regression test for the "dependencies" direction of the cross-scope diagnostic bug: a
     // dependency-scope sibling workspace bundle whose Require-Bundle points at the bundle currently
     // being analyzed was falsely flagged, because the "dependencies" materialize() call never sees
@@ -535,9 +547,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeMultiBundleConfigFile(baseDir, apiWorkspace, consumerWorkspace)
 
     val (exit, messages) = captureLogRecords {
-      apiAnalyzeMain(
+      apiBaselineCheckMain(
         args = arrayOf(
           "--config", configFile.toString(),
+        "--legacy",
           "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
           "--bundle", "org.example.api"
         ),
@@ -554,7 +567,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze still flags a Require-Bundle gap not satisfied by current or dependency scope`() {
+  fun `api baseline check still flags a Require-Bundle gap not satisfied by current or dependency scope`() {
     // Regression guard: the fix must not silence genuine gaps -- a Require-Bundle entry unsatisfied
     // by anything in current+dependency scope must still produce a diagnostic.
     val baseDir = tmp.newFolder("cfg-genuine-require-gap").toPath()
@@ -564,9 +577,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val (exit, messages) = captureLogRecords {
-      apiAnalyzeMain(
+      apiBaselineCheckMain(
         args = arrayOf(
           "--config", configFile.toString(),
+        "--legacy",
           "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
         ),
         analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -582,7 +596,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze fails before launch when selected workspace bundle is missing`() {
+  fun `api baseline check fails before launch when selected workspace bundle is missing`() {
     val baseDir = tmp.newFolder("cfg-direct-bundle-missing").toPath()
     val workspace = tmp.newFolder("workspace-direct-bundle-missing").toPath()
     createProfileWithFramework(baseDir)
@@ -591,9 +605,10 @@ class ApiAnalyzeCliTest {
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val runtimeResolutions = mutableListOf<Path>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
         "--bundle", "org.example.missing"
       ),
@@ -613,7 +628,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze direct app stops before launch when current bundle cannot be materialized`() {
+  fun `api baseline check direct app stops before launch when current bundle cannot be materialized`() {
     val baseDir = tmp.newFolder("cfg-direct-missing-output").toPath()
     val workspace = tmp.newFolder("workspace-direct-missing-output").toPath()
     createProfileWithFramework(baseDir)
@@ -621,9 +636,10 @@ class ApiAnalyzeCliTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -638,7 +654,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze fails before launch when packaged analyzer runtime is missing`() {
+  fun `api baseline check fails before launch when packaged analyzer runtime is missing`() {
     val baseDir = tmp.newFolder("cfg-missing-runtime").toPath()
     val workspace = tmp.newFolder("workspace-missing-runtime").toPath()
     createProfileWithFramework(baseDir)
@@ -647,9 +663,10 @@ class ApiAnalyzeCliTest {
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val runtimeResolutions = mutableListOf<Path>()
 
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot ->
@@ -663,16 +680,16 @@ class ApiAnalyzeCliTest {
     )
 
     assertEquals(2, exit)
-    assertEquals(listOf(baseDir.resolve("api-analyzer")), runtimeResolutions)
+    assertEquals(listOf(baseDir.resolve(".api-baseline")), runtimeResolutions)
     assertEquals(0, invocations.size)
   }
 
   @Test
-  fun `api analyze fails before launch when config is missing`() {
+  fun `api baseline check fails before launch when config is missing`() {
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val runtimeResolutions = mutableListOf<Path>()
 
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf("--config", tmp.root.toPath().resolve("missing.yaml").toString()),
       analyzerRuntimeResolver = { outputRoot ->
         runtimeResolutions.add(outputRoot)
@@ -690,7 +707,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze fails before launch when target profile is missing`() {
+  fun `api baseline check fails before launch when target profile is missing`() {
     val baseDir = tmp.newFolder("cfg-missing-profile").toPath()
     val workspace = tmp.newFolder("workspace-missing-profile").toPath()
     createWorkspaceBundle(workspace, compiledOutput = true)
@@ -698,7 +715,7 @@ class ApiAnalyzeCliTest {
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val runtimeResolutions = mutableListOf<Path>()
 
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf("--config", configFile.toString()),
       analyzerRuntimeResolver = { outputRoot ->
         runtimeResolutions.add(outputRoot)
@@ -716,7 +733,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze fails before launch when baseline root is missing`() {
+  fun `api baseline check fails before launch when baseline root is missing`() {
     val baseDir = tmp.newFolder("cfg-missing-baseline").toPath()
     val workspace = tmp.newFolder("workspace-missing-baseline").toPath()
     createProfileWithFramework(baseDir)
@@ -725,9 +742,10 @@ class ApiAnalyzeCliTest {
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val runtimeResolutions = mutableListOf<Path>()
 
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("missing-baseline").toString()
       ),
       analyzerRuntimeResolver = { outputRoot ->
@@ -746,7 +764,7 @@ class ApiAnalyzeCliTest {
   }
 
   @Test
-  fun `api analyze fails before launch when target baseline is not provisioned`() {
+  fun `api baseline check fails before launch when target baseline is not provisioned`() {
     val baseDir = tmp.newFolder("cfg-target-baseline").toPath()
     val workspace = tmp.newFolder("workspace-target-baseline").toPath()
     val baselineTarget = baseDir.resolve("API-Baseline.target")
@@ -757,9 +775,10 @@ class ApiAnalyzeCliTest {
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
     val runtimeResolutions = mutableListOf<Path>()
 
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baselineTarget.toString()
       ),
       analyzerRuntimeResolver = { outputRoot ->
@@ -786,13 +805,13 @@ class ApiAnalyzeCliTest {
     current.writeText("current")
     dependency.writeText("dependency")
     baseline.writeText("baseline")
-    val inputPath = baseDir.resolve("api-analyzer").resolve("input").resolve("batch.json")
-    val reportPath = baseDir.resolve("api-analyzer").resolve("reports").resolve("org.example.api.json")
+    val inputPath = baseDir.resolve(".api-baseline").resolve("input").resolve("batch.json")
+    val reportPath = baseDir.resolve(".api-baseline").resolve("reports").resolve("org.example.api.json")
 
     val plan = writeBatchApiAnalyzerLaunchPlan(
       launcherExecutable = Path.of("/fake/api-analyzer"),
-      configurationDir = baseDir.resolve("api-analyzer").resolve("configuration").toString(),
-      dataDir = baseDir.resolve("api-analyzer").resolve("workspace").toString(),
+      configurationDir = baseDir.resolve(".api-baseline").resolve("configuration").toString(),
+      dataDir = baseDir.resolve(".api-baseline").resolve("workspace").toString(),
       applicationId = "cn.varsa.pde.api_analyzer",
       inputPath = inputPath,
       input = BatchApiAnalyzerInput(

@@ -13,7 +13,7 @@ used by the public `pde` CLI.
 ## Notes
 
 - This module contains command implementation used by `pde run`, `pde target`,
-  `pde test`, and `pde api-analyze`.
+  `pde test`, and `pde api-baseline check`.
 - User-facing configuration and behavior are documented at:
   - `docs/config-yaml.md`
   - `pde --help` / `pde <command> --help`

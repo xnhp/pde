@@ -83,14 +83,15 @@ Invalid configuration may cause the run to not discover tests, in which the comm
 
 # API Analysis
 
-See `pde api-analysis --help`.
+See `pde api-baseline check --help`.
 
 Make sure the following prerequisites are met:
 - `pde target install`
-- `pde api-analyze install`
+- `pde target install api-baseline`
 - `pde compile`
+- `pde workspace setup` (writes workspace data to `.jdtls/workspace/data` by default; required for since-tag analysis unless `--legacy` is passed)
 Basic usage:
-- `pde api-analyze --bundle <bundle-id>` references a bundle in the config yaml, invokes api analysis for that bundle only.
+- `pde api-baseline check --bundle <bundle-id>` references a bundle in the config yaml, invokes api analysis for that bundle only.
 
 
 

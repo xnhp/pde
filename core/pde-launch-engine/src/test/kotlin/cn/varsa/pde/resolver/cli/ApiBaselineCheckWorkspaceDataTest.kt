@@ -13,11 +13,11 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class ApiAnalyzeWorkspaceDataTest {
+class ApiBaselineCheckWorkspaceDataTest {
   @Rule @JvmField val tmp = TemporaryFolder()
 
   @Test
-  fun `api-analyze --workspace-data sets workspaceProjectName on artifacts`() {
+  fun `api-baseline check --workspace-data sets workspaceProjectName on artifacts`() {
     val baseDir = tmp.newFolder("cfg-wsdata").toPath()
     val workspace = tmp.newFolder("workspace-wsdata").toPath()
     val workspaceDataDir = tmp.newFolder("ws-data").toPath()
@@ -26,7 +26,7 @@ class ApiAnalyzeWorkspaceDataTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString(),
@@ -51,7 +51,7 @@ class ApiAnalyzeWorkspaceDataTest {
   }
 
   @Test
-  fun `api-analyze without --workspace-data has null workspaceProjectName`() {
+  fun `api-baseline check --legacy has null workspaceProjectName`() {
     val baseDir = tmp.newFolder("cfg-no-wsdata").toPath()
     val workspace = tmp.newFolder("workspace-no-wsdata").toPath()
     createProfileWithFramework(baseDir)
@@ -59,9 +59,10 @@ class ApiAnalyzeWorkspaceDataTest {
     val configFile = writeConfigFile(baseDir, workspace)
 
     val invocations = mutableListOf<ApiAnalyzerInvocation>()
-    val exit = apiAnalyzeMain(
+    val exit = apiBaselineCheckMain(
       args = arrayOf(
         "--config", configFile.toString(),
+        "--legacy",
         "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
       ),
       analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
@@ -79,6 +80,36 @@ class ApiAnalyzeWorkspaceDataTest {
     assertEquals("org.example.api", bundle.currentBundle.bundleSymbolicName)
     assertNull(bundle.currentBundle.workspaceProjectName)
     assertNull(input.workspaceDataDir)
+  }
+
+  @Test
+  fun `api-baseline check fails fast without --workspace-data, default workspace data, or --legacy`() {
+    val baseDir = tmp.newFolder("cfg-no-fallback").toPath()
+    val workspace = tmp.newFolder("workspace-no-fallback").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val runtimeResolutions = mutableListOf<Path>()
+    val exit = apiBaselineCheckMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot ->
+        runtimeResolutions.add(outputRoot)
+        fakeAnalyzerRuntime(outputRoot)
+      },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      }
+    )
+
+    assertEquals(2, exit)
+    assertEquals(0, runtimeResolutions.size)
+    assertEquals(0, invocations.size)
   }
 
   private fun ApiAnalyzerInvocation.valueAfter(option: String): String {

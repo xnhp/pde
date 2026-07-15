@@ -135,7 +135,7 @@ val apiAnalyzerRuntimeZip by tasks.registering(Zip::class) {
   group = "build"
   dependsOn(materializeRuntime)
   from(runtimeDir)
-  archiveFileName = "api-analyzer-runtime.zip"
+  archiveFileName = "api-baseline-runtime.zip"
   destinationDirectory = layout.buildDirectory.dir("libs")
 }
 

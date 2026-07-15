@@ -41,7 +41,7 @@ distributions {
         into("lib")
       }
       val apiAnalyzerProject = project(":api-analyzer")
-      from(apiAnalyzerProject.layout.buildDirectory.file("libs/api-analyzer-runtime.zip")) {
+      from(apiAnalyzerProject.layout.buildDirectory.file("libs/api-baseline-runtime.zip")) {
         into("lib")
       }
       val workspaceSetupProject = project(":workspace-setup")
@@ -78,11 +78,11 @@ tasks.register("verifyTargetInstallerLauncherInDist") {
 
 tasks.register("verifyApiAnalyzerRuntimeInDist") {
   dependsOn(tasks.named("installDist"))
-  val runtimeArchive = layout.buildDirectory.file("install/pde/lib/api-analyzer-runtime.zip")
+  val runtimeArchive = layout.buildDirectory.file("install/pde/lib/api-baseline-runtime.zip")
   inputs.file(runtimeArchive)
   doLast {
     if (!runtimeArchive.get().asFile.isFile) {
-      throw org.gradle.api.GradleException("pde distribution is missing lib/api-analyzer-runtime.zip")
+      throw org.gradle.api.GradleException("pde distribution is missing lib/api-baseline-runtime.zip")
     }
   }
 }

@@ -20,7 +20,7 @@ Commands:
   run, launch      Run a launch config
   target           Target platform commands (install, mirror)
   test             Run PDE test launch
-  api-analyze      Run API analysis
+  api-baseline     API baseline analysis commands
 ```
 
 ## `pde add-test`
@@ -37,11 +37,28 @@ Usage: pde add-test-helper
 Append a gateway helper test entry
 ```
 
-## `pde api-analyze`
+## `pde api-baseline`
 
 ```text
-Usage: pde api-analyze
-Run API analysis
+Usage: pde api-baseline [-hV] [COMMAND]
+API baseline analysis commands
+  -h, --help      Show this help message and exit.
+  -V, --version   Print version information and exit.
+Commands:
+  check  Run API analysis against the baseline target
+```
+
+## `pde api-baseline check`
+
+```text
+Usage: pde api-baseline check
+Run API analysis against the baseline target
+
+Options:
+  --workspace-data   Path to workspace data directory (from pde workspace setup) for since-tag
+                      analysis; defaults to .jdtls/workspace/data if present
+  --legacy           Run the legacy binary-only (BundleComponent) analysis path, skipping
+                      workspace-data / since-tag detection
 ```
 
 ## `pde compile`
@@ -109,8 +126,14 @@ Commands:
 Usage: pde target install
 Resolve/prepare target platform state
 
+Positional arguments:
+  api-baseline  Pass 'api-baseline' as the second positional to provision the API baseline
+                profile instead of the primary target (see 'pde target install api-baseline')
+
 Options:
-  --copy-path   Copy target profile path to clipboard after successful install
+  --copy-path      Copy target profile path to clipboard after successful install
+  --baseline-root  Baseline source for 'api-baseline' install mode (target root, profile path,
+                    or .target file; defaults from target config)
 ```
 
 ## `pde target mirror`

@@ -1,6 +1,6 @@
 # pde YAML config
 
-The `pde` CLI (`run`, `compile`, `test`, `api-analyze`, `target`) reads a strict YAML config.
+The `pde` CLI (`run`, `compile`, `test`, `api-baseline check`, `target`) reads a strict YAML config.
 The schema is the single source of truth for property-level semantics, defaults, and descriptions.
 
 ## Schema-first reference
@@ -83,8 +83,8 @@ tests:
   bundle `build.properties` `output..`, then falls back to `bin`.
 - `pde compile` is the explicit ECJ-based compile step.
 - `pde jdtls-init` generates metadata only; it does not compile sources.
-- `pde api-analyze` reads workspace bundles from config and supports `--baseline-root` overrides.
-- `target.apiBaselineRoot` is used by `pde api-analyze` when `--baseline-root` is omitted.
+- `pde api-baseline check` reads workspace bundles from config and supports `--baseline-root` overrides.
+- `target.apiBaselineRoot` is used by `pde api-baseline check` when `--baseline-root` is omitted.
 
 ## Related docs
 

@@ -55,7 +55,7 @@ Example commands are:
 - `pde run` -- start a PDE application (with TP/workspace dependency resolution)
 - `pde test` -- run PDE JUnit-Plug-In tests
 - `pde format` -- (experimental) invoke the Eclipse JDT code formatter
-- `pde api-analyze` -- (experimental) run API analysis
+- `pde api-baseline check` -- (experimental) run API analysis
 
 The full CLI command reference is available directly in `--help` output
 (`pde --help` and `pde <command> --help`).

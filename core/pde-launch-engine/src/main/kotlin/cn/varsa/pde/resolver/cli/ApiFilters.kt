@@ -216,14 +216,14 @@ private fun printApiFiltersHelp() {
   println("  pde api-filters <subcommand> [options]")
   println()
   println("Subcommands:")
-  println("  add-from-report  Add .api_filters entries from api-analyze report JSON")
+  println("  add-from-report  Add .api_filters entries from api-baseline check report JSON")
   println()
   println("Example:")
   println("  pde api-filters add-from-report --report build/api-report.json --problem P000001 --apply")
   println()
   println("See also:")
   println("  pde api-filters add-from-report --help")
-  println("  pde api-analyze --report build/api-report.json")
+  println("  pde api-baseline check --report build/api-report.json")
   println("  pde --help")
 }
 
@@ -232,7 +232,7 @@ private fun apiFiltersAddFromReportMain(args: Array<String>): Int {
   val reportOpt by parser.option(
     ArgType.String,
     fullName = "report",
-    description = "Path to api-analyze report JSON"
+    description = "Path to api-baseline check report JSON"
   )
   val problemRefs by parser.option(
     ArgType.String,
@@ -281,7 +281,7 @@ private fun apiFiltersAddFromReportMain(args: Array<String>): Int {
   ).default(false)
   val reportPos by parser.argument(
     ArgType.String,
-    description = "Path to api-analyze report JSON"
+    description = "Path to api-baseline check report JSON"
   ).optional()
 
   parser.parse(args)
