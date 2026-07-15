@@ -435,7 +435,7 @@ internal val pdeCommand = CliCommandGroup(
     ),
     CliCommandLeaf(
       name = "schema",
-      description = "Print the active pde schema path",
+      description = "print the full path to the config file schema",
       handler = { args -> SchemaCommand.main(args) }
     ),
     CliCommandGroup(
