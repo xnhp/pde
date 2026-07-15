@@ -4286,9 +4286,17 @@ fun workspaceSetupMain(
     val deps = planResult.workspaceDependencies[bsn]?.toList() ?: emptyList()
     descriptor.toWorkspaceProjectSpec(version, deps)
   }
-  val targetClasspath = planResult.plan.bundles
+  // Bundle-ClassPath-aware: some target bundles (e.g. org.knime.core) declare their actual
+  // classes inside nested jars (Bundle-ClassPath: knime-core.jar,...) rather than at the bundle
+  // root. planResult.plan.bundles (BundleStartSpec.location) is scoped for launching an Equinox
+  // runtime, where the OSGi classloader resolves Bundle-ClassPath itself -- it deliberately only
+  // carries the bundle's raw install directory, which JDT can't see classes through. selectedBundles
+  // carries the same ResolvedBundle set with classPathEntries already expanded (the same field
+  // `pde compile`'s CompileClasspathResolver consumes), so use that instead.
+  val targetClasspath = planResult.selectedBundles
     .filter { !it.isWorkspace }
-    .map { it.location.toString() }
+    .flatMap { it.classPathEntries }
+    .map { it.toString() }
     .distinct()
   val input = WorkspaceSetupInput(projects = workspaceSpecs, targetClasspath = targetClasspath)
 
