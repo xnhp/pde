@@ -6,23 +6,21 @@ import kotlin.test.assertNotEquals
 
 class WorkspaceSetupServiceTest {
   @Test
-  fun `invisible project name is deterministic`() {
-    val name1 = WorkspaceSetupService.invisibleProjectName("com.example.bundle", "/path/to/bundle")
-    val name2 = WorkspaceSetupService.invisibleProjectName("com.example.bundle", "/path/to/bundle")
+  fun `project name is deterministic`() {
+    val name1 = WorkspaceSetupService.projectName("com.example.bundle")
+    val name2 = WorkspaceSetupService.projectName("com.example.bundle")
     assertEquals(name1, name2)
   }
 
   @Test
-  fun `different paths produce different names`() {
-    val name1 = WorkspaceSetupService.invisibleProjectName("com.example.bundle", "/path/to/a")
-    val name2 = WorkspaceSetupService.invisibleProjectName("com.example.bundle", "/path/to/b")
-    assertNotEquals(name1, name2)
+  fun `project name is the bsn itself`() {
+    assertEquals("com.example.bundle", WorkspaceSetupService.projectName("com.example.bundle"))
   }
 
   @Test
   fun `different bsns produce different names`() {
-    val name1 = WorkspaceSetupService.invisibleProjectName("a", "/path/to/a-bundle")
-    val name2 = WorkspaceSetupService.invisibleProjectName("b", "/path/to/b-bundle")
+    val name1 = WorkspaceSetupService.projectName("a")
+    val name2 = WorkspaceSetupService.projectName("b")
     assertNotEquals(name1, name2)
   }
 }

@@ -157,7 +157,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
 
     val dataDir = temp.root.toPath().resolve("ws-data").also { Files.createDirectories(it) }
     runWorkspaceSetup(setupArchive!!, dataDir, bsn, "1.1.0", currentDir)
-    val projectName = WorkspaceSetupService.invisibleProjectName(bsn, currentDir.toAbsolutePath().normalize().toString())
+    val projectName = WorkspaceSetupService.projectName(bsn)
 
     val current = AnalyzerBundleArtifact(
       bundleSymbolicName = bsn,
@@ -348,8 +348,8 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
   /**
    * Materializes an on-disk (exploded, not jarred) bundle directory with a real
    * META-INF/MANIFEST.MF and src/ sources, matching the shape of a real workspace bundle
-   * (as opposed to [bundleJar]'s in-memory jar, which invisible-project workspace setup
-   * can't link META-INF into).
+   * (as opposed to [bundleJar]'s in-memory jar — workspace setup needs a real directory to
+   * point the project's location at).
    */
   private fun explodedBundleDir(bsn: String, version: String, sources: Map<String, String>): Path {
     val dir = Files.createTempDirectory(temp.root.toPath(), "${bsn.replace('.', '-')}-${version.replace('.', '-')}-exploded-")

@@ -1,19 +1,16 @@
 package cn.varsa.pde.resolver.workspace
 
 import org.eclipse.core.resources.ICommand
-import org.eclipse.core.resources.IFolder
 import org.eclipse.core.resources.IProject
 import org.eclipse.core.resources.IProjectDescription
 import org.eclipse.core.resources.IResource
-import org.eclipse.core.resources.IWorkspaceRoot
 import org.eclipse.core.resources.ResourcesPlugin
 import org.eclipse.core.runtime.IProgressMonitor
 import org.eclipse.core.runtime.NullProgressMonitor
+import org.eclipse.core.runtime.Path as EclipsePath
 import org.eclipse.jdt.core.IClasspathEntry
-import org.eclipse.jdt.core.IJavaProject
 import org.eclipse.jdt.core.JavaCore
 import org.eclipse.jdt.launching.JavaRuntime
-import java.nio.file.Paths
 import java.util.logging.Logger
 
 class WorkspaceSetupService {
@@ -24,30 +21,28 @@ class WorkspaceSetupService {
         val root = workspace.root
         val monitor = NullProgressMonitor()
 
-        // Disable auto-build so that creating .classpath files and linked folders does not
-        // trigger JDT compilation on a background thread — we already have compiled output on
-        // disk. Auto-build in Equinox headless also hits a NullPointerException in JDT's
-        // ReadManager.readAhead() → FileUtil.getCharset() because the preferences service
-        // (Platform.getPreferencesService()) is not initialized.
+        // Disable auto-build so that creating .classpath files does not trigger JDT compilation
+        // on a background thread — we already have compiled output on disk. Auto-build in
+        // Equinox headless also hits a NullPointerException in JDT's ReadManager.readAhead() ->
+        // FileUtil.getCharset() because the preferences service (Platform.getPreferencesService())
+        // is not initialized.
         val desc = workspace.description
         if (desc.isAutoBuilding) {
             desc.isAutoBuilding = false
             workspace.setDescription(desc)
         }
 
-        val bsnToProjectName = input.projects.associate { spec ->
-            spec.bsn to invisibleProjectName(spec.bsn, spec.bundlePath)
-        }
+        val knownBsns = input.projects.map { it.bsn }.toSet()
 
         for (projectSpec in input.projects) {
-            val projectName = invisibleProjectName(projectSpec.bsn, projectSpec.bundlePath)
+            val projectName = projectName(projectSpec.bsn)
             logger.info("Setting up project $projectName for ${projectSpec.bsn} at ${projectSpec.bundlePath}")
 
             val project = root.getProject(projectName)
             if (project.exists()) {
                 project.open(IResource.NONE, monitor)
             } else {
-                createProject(root, project, projectSpec, input.targetClasspath, bsnToProjectName, monitor)
+                createProject(project, projectSpec, input.targetClasspath, knownBsns, monitor)
             }
         }
 
@@ -56,52 +51,36 @@ class WorkspaceSetupService {
     }
 
     private fun createProject(
-        root: IWorkspaceRoot,
         project: IProject,
         spec: WorkspaceProjectSpec,
         targetClasspath: List<String>,
-        bsnToProjectName: Map<String, String>,
+        knownBsns: Set<String>,
         monitor: IProgressMonitor
     ) {
         val desc = ResourcesPlugin.getWorkspace().newProjectDescription(project.name)
+        desc.setLocation(EclipsePath(spec.bundlePath))
         desc.natureIds = arrayOf(JavaCore.NATURE_ID)
         desc.buildSpec = arrayOf(createBuildCommand(desc, "org.eclipse.jdt.core.javabuilder"))
 
-        val referencedProjectNames = spec.dependencies.mapNotNull { depBsn ->
-            bsnToProjectName[depBsn]
-        }
+        // `dependencies` includes ALL of this bundle's dependency BSNs (workspace projects and
+        // target-platform bundles alike) for build-order purposes; only ones with a corresponding
+        // workspace project actually become referenced projects here.
+        val referencedProjectNames = spec.dependencies.filter { it in knownBsns }.map { depBsn -> projectName(depBsn) }
         if (referencedProjectNames.isNotEmpty()) {
-            desc.referencedProjects = referencedProjectNames.map { root.getProject(it) }.toTypedArray()
+            desc.referencedProjects = referencedProjectNames.map { ResourcesPlugin.getWorkspace().root.getProject(it) }.toTypedArray()
         }
 
         project.create(desc, monitor)
         project.open(IResource.NONE, monitor)
-
-        val bundlePath = Paths.get(spec.bundlePath)
-        val linkedFolder = project.getFolder("_")
-        linkedFolder.createLink(bundlePath.toUri(), IResource.NONE, monitor)
-
-        // PDE's WorkspaceModelManager (PluginRegistry.findModel) discovers a project's plugin
-        // model by looking for META-INF/MANIFEST.MF at the project-relative path, regardless of
-        // project nature. It won't find it nested inside the "_" linked folder, so link it a
-        // second time directly at the project root. This is a location "overlap" with the "_"
-        // link, but Eclipse only warns (IResourceStatus.OVERLAPPING_LOCATION), it doesn't block
-        // creation. Without this, ProjectComponent.getModel() aborts with a CoreException the
-        // first time it's needed (e.g. resolving the bundle description), which is exactly when
-        // since-tag analysis runs.
-        val manifestDir = bundlePath.resolve("META-INF")
-        if (java.nio.file.Files.isDirectory(manifestDir)) {
-            project.getFolder("META-INF").createLink(manifestDir.toUri(), IResource.NONE, monitor)
-        }
 
         val javaProject = JavaCore.create(project)
 
         val classpathEntries = mutableListOf<IClasspathEntry>()
 
         for (srcRoot in spec.sourceRoots) {
-            val sourceFolder = linkedFolder.getFolder(srcRoot)
+            val sourceFolder = project.getFolder(srcRoot)
             val outputPath = if (spec.outputDirectory.isNotEmpty()) {
-                linkedFolder.getFolder(spec.outputDirectory).fullPath
+                project.getFolder(spec.outputDirectory).fullPath
             } else {
                 null
             }
@@ -121,7 +100,7 @@ class WorkspaceSetupService {
         // excludes workspace bundles by design).
         for (depProjectName in referencedProjectNames) {
             classpathEntries += JavaCore.newProjectEntry(
-                org.eclipse.core.runtime.Path("/$depProjectName"),
+                EclipsePath("/$depProjectName"),
                 null, false,
                 null, false
             )
@@ -129,7 +108,7 @@ class WorkspaceSetupService {
 
         for (jar in targetClasspath) {
             classpathEntries += JavaCore.newLibraryEntry(
-                org.eclipse.core.runtime.Path(jar),
+                EclipsePath(jar),
                 null, null,
                 false
             )
@@ -138,16 +117,15 @@ class WorkspaceSetupService {
         for (entry in spec.classpath) {
             when (entry.kind) {
                 "lib" -> classpathEntries += JavaCore.newLibraryEntry(
-                    org.eclipse.core.runtime.Path(entry.path),
-                    entry.sourcePath?.let { org.eclipse.core.runtime.Path(it) },
+                    EclipsePath(entry.path),
+                    entry.sourcePath?.let { EclipsePath(it) },
                     null,
                     false
                 )
                 "src" -> {
-                    val depProjectName = bsnToProjectName[entry.path]
-                    if (depProjectName != null) {
+                    if (entry.path in knownBsns) {
                         classpathEntries += JavaCore.newProjectEntry(
-                            org.eclipse.core.runtime.Path("/$depProjectName"),
+                            EclipsePath("/${projectName(entry.path)}"),
                             null, false,
                             null, false
                         )
@@ -163,18 +141,16 @@ class WorkspaceSetupService {
         // PDE API Tools' ProjectComponent.createApiTypeContainers() discovers a project's API types
         // for since-tag analysis by reading build.properties (via PluginRegistry.createBuildModel):
         // each source.<jar> entry is resolved with project.findMember() and mapped to that source
-        // folder's compiled output folder. Our invisible-project layout nests the bundle under the
-        // "_" WORKSPACE_LINK folder (like eclipse.jdt.ls), so these paths must be "_"-prefixed to
-        // resolve. Without this file no type containers are built, the analyzed type is reported as
-        // REMOVED instead of ADDED, and the since-tag check (which only runs on ADDED elements) never
-        // fires. Bundle-ClassPath is assumed to be the default ".".
+        // folder's compiled output folder. Without this file no type containers are built, the
+        // analyzed type is reported as REMOVED instead of ADDED, and the since-tag check (which
+        // only runs on ADDED elements) never fires. Bundle-ClassPath is assumed to be the default ".".
         if (spec.sourceRoots.isNotEmpty()) {
             val output = spec.outputDirectory.ifEmpty { "bin" }
             val buildProps = buildString {
                 append("source.. = ")
-                append(spec.sourceRoots.joinToString(",") { "_/$it/" })
+                append(spec.sourceRoots.joinToString(",") { "$it/" })
                 append("\n")
-                append("output.. = _/$output/\n")
+                append("output.. = $output/\n")
             }
             val buildPropsFile = project.getFile("build.properties")
             if (!buildPropsFile.exists()) {
@@ -198,10 +174,11 @@ class WorkspaceSetupService {
     }
 
     companion object {
-        fun invisibleProjectName(bsn: String, bundlePath: String): String {
-            val basename = Paths.get(bundlePath).fileName?.toString() ?: bsn
-            val hash = Integer.toHexString(bundlePath.hashCode())
-            return "${basename}_${hash}"
-        }
+        /**
+         * Visible-mode projects are placed directly at their bundle's real filesystem location
+         * ([IProjectDescription.setLocation]), so the BSN alone is a stable, unique Eclipse
+         * project name — no path-derived disambiguation needed.
+         */
+        fun projectName(bsn: String): String = bsn
     }
 }

@@ -4153,7 +4153,7 @@ internal fun apiBaselineCheckMain(
       apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
     )
     val workspaceProjectName: String? = if (workspaceDataPath != null) {
-      WorkspaceSetupService.invisibleProjectName(currentBsn, descriptor.path.toString())
+      WorkspaceSetupService.projectName(currentBsn)
     } else null
     currentBundleInfos += CurrentBundleInfo(
       currentBundle = builtInput.currentBundle.copy(workspaceProjectName = workspaceProjectName),

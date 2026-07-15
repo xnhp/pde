@@ -1,5 +1,12 @@
 # JDT LS with Emacs (eglot)
 
+> **Stale**: `pde lsp init` referenced throughout this doc was removed as a CLI command
+> (its VS Code-focused replacement is `pde ide-init vscode`, which now also runs
+> `pde workspace setup` under the hood). This doc was not updated alongside that change
+> since the eglot integration is currently deprioritized/treated as a POC. If reviving
+> eglot support, port the `.project`/`.classpath`-generation instructions here onto
+> `pde workspace setup` (visible-mode) the same way `pde ide-init vscode` does.
+
 This repo can generate PDE-friendly `.project`/`.classpath` files for JDT LS via `pde lsp init`.
 Eglot can use those directly; no extra protocol integration is required.
 
