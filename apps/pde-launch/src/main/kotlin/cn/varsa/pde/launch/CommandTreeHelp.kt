@@ -13,16 +13,21 @@ internal fun pdeCommandTreeHelpText(root: CliCommandGroup): String {
 
   val rows = mutableListOf<Row>()
 
-  fun visit(node: CliCommandNode, depth: Int) {
-    val indent = "  ".repeat(depth)
+  fun visit(node: CliCommandNode, prefix: String, isLast: Boolean) {
+    val connector = if (isLast) "└── " else "├── "
     val summary = node.description.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
-    rows += Row("$indent${node.name}", summary)
+    rows += Row("$prefix$connector${node.name}", summary)
     if (node is CliCommandGroup) {
-      node.children.forEach { child -> visit(child, depth + 1) }
+      val childPrefix = prefix + if (isLast) "    " else "│   "
+      node.children.forEachIndexed { index, child ->
+        visit(child, childPrefix, index == node.children.lastIndex)
+      }
     }
   }
 
-  root.children.forEach { child -> visit(child, 1) }
+  root.children.forEachIndexed { index, child ->
+    visit(child, "", index == root.children.lastIndex)
+  }
 
   val labelWidth = (rows.maxOfOrNull { it.label.length } ?: 0) + 2
 

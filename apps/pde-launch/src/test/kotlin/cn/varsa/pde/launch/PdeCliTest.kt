@@ -58,15 +58,16 @@ class PdeCliTest {
     val output = out.toString()
     val lines = output.lines()
 
-    // Top-level groups/leaves are indented one level, nested children two (or more) levels.
-    assertTrue(lines.any { it == "  target             Target platform commands (install, mirror, inspect)" })
-    assertTrue(lines.any { it == "    install          Resolve/prepare target platform state" })
-    assertTrue(lines.any { it == "    repair           Repair reusable target bundle-pool state" })
-    assertTrue(lines.any { it == "      re-fetch       Re-run target install to fetch currently required artifacts" })
-    assertTrue(lines.any { it == "    inspect          Inspect target profile state and health" })
-    assertTrue(lines.any { it == "      profile        Show profile location and bundle-pool basics" })
-    assertTrue(lines.any { it == "  ide-init           Generate IDE project files" })
-    assertTrue(lines.any { it == "    idea             Generate IntelliJ project" })
+    // Nodes are prefixed with unicode box-drawing tree guides (├──/└──/│), indented under their
+    // parent's guide column rather than plain spaces.
+    assertTrue(lines.any { it == "├── target                 Target platform commands (install, mirror, inspect)" })
+    assertTrue(lines.any { it == "│   ├── install            Resolve/prepare target platform state" })
+    assertTrue(lines.any { it == "│   ├── repair             Repair reusable target bundle-pool state" })
+    assertTrue(lines.any { it == "│   │   ├── re-fetch       Re-run target install to fetch currently required artifacts" })
+    assertTrue(lines.any { it == "│   └── inspect            Inspect target profile state and health" })
+    assertTrue(lines.any { it == "│       ├── profile        Show profile location and bundle-pool basics" })
+    assertTrue(lines.any { it == "├── ide-init               Generate IDE project files" })
+    assertTrue(lines.any { it == "│   ├── idea               Generate IntelliJ project" })
   }
 
   @Test
