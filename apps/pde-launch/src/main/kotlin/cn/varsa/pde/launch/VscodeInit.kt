@@ -7,8 +7,6 @@ import cn.varsa.cli.core.CliStyle
 import cn.varsa.cli.core.ColorMode
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
-import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
-import cn.varsa.pde.resolver.cli.workspaceSetupMain
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.optional
@@ -40,11 +38,6 @@ object VscodeInit {
       fullName = "out",
       description = "Destination .code-workspace file (defaults to <issue-dir>/pde.code-workspace)"
     )
-    val projectConfigurationsOut by parser.option(
-      ArgType.String,
-      fullName = "project-configurations-out",
-      description = "Write JDT LS projectConfigurations JSON to file"
-    )
     val configPos by parser.argument(
       ArgType.String,
       description = "YAML launch configuration (positional)"
@@ -64,9 +57,6 @@ object VscodeInit {
       return 1
     }
 
-    val cwd = Paths.get("").toAbsolutePath().normalize()
-    val hasCwdConfig = Files.exists(cwd.resolve("pde.yaml")) && Files.isRegularFile(cwd.resolve("pde.yaml"))
-
     return try {
       val issueRoot = if (issueDirOpt != null) {
         issueDir
@@ -80,52 +70,7 @@ object VscodeInit {
       val workspaceFile = outOpt?.let { resolvePath(issueRoot, it) } ?: issueRoot.resolve("pde.code-workspace")
       val folderCount = writeCodeWorkspace(context, issueRoot, workspaceFile)
       logger.info("VS Code workspace with ${folderCount} folder(s) written to ${workspaceFile}.")
-
-      // Materialize .project/.classpath at each bundle's real directory via the same
-      // `pde jdt-workspace init` Equinox app used by `pde api-baseline check`/`pde jdt-workspace
-      // build`, so VS Code's bundled JDT LS (via EclipseProjectImporter) can pick them up
-      // directly. VS Code always runs its own JDT LS with no way to point it at an external
-      // server, so this has to be filesystem artifacts, not a spawned process.
-      // Uses the same .jdtls/workspace default output root as those commands (anchored to
-      // issueRoot rather than relying on workspaceSetupMain's own CWD-relative default, so
-      // `--issue-dir` targeting a different directory than CWD still resolves correctly) so a
-      // later `pde api-baseline check` run from issueRoot finds this data without extra flags.
-      val setupExit = workspaceSetupMain(
-        arrayOf("--config", configPath.toString(), "--output-root", issueRoot.resolve(".jdtls/workspace").toString())
-      )
-      if (setupExit != 0) return setupExit
-
-      touchProjectile(issueRoot)
-      writeVscodeSettings(issueRoot)
-
-      val moduleDefinitions = WorkspaceModuleResolver.resolveDefinitions(context)
-      val projectFiles = moduleDefinitions
-        .map { it.moduleDir.toAbsolutePath().normalize().resolve(".project") }
-        .filter { Files.exists(it) }
-      logger.info("Workspace setup wrote .project/.classpath for ${projectFiles.size} of ${moduleDefinitions.size} workspace bundles")
-
-      val projectConfigurationsOutValue = projectConfigurationsOut
-      val projectConfigurationsPath = when {
-        projectConfigurationsOutValue != null -> resolvePath(context.baseDir, projectConfigurationsOutValue)
-        issueDirOpt == null && hasCwdConfig -> issueDir.resolve(".lsp").resolve("projectConfigurations.json")
-        else -> null
-      }
-      if (projectConfigurationsPath != null) {
-        val workspaceRoot = resolveWorkspaceRoot(context)
-        val workspaceFolders = listOf(
-          WorkspaceFolder(
-            workspaceRoot.toUri().toString(),
-            workspaceRoot.fileName?.toString() ?: "workspace"
-          )
-        )
-        writeProjectConfigurationsOutput(
-          projectConfigurationsPath,
-          projectFiles,
-          listOf(workspaceRoot),
-          workspaceFolders
-        )
-        logger.info("Wrote projectConfigurations to ${projectConfigurationsPath.toAbsolutePath().normalize()}")
-      }
+      logger.info("Run 'pde lsp init' to generate JDT LS project files (.project/.classpath) for this workspace.")
       0
     } catch (ex: Exception) {
       logger.log(Level.SEVERE, ex.message ?: "vscode-init failed", ex)
@@ -209,79 +154,6 @@ object VscodeInit {
 
   private fun jsonEscape(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")
-
-  private fun touchProjectile(issueDir: Path) {
-    val projectile = issueDir.resolve(".projectile")
-    if (Files.notExists(projectile)) {
-      Files.createFile(projectile)
-    }
-  }
-
-  /**
-   * VS Code's redhat.java extension always runs its own bundled JDT LS and defaults to
-   * Maven/Gradle auto-import, which would hijack import for bundles that also carry a Tycho
-   * pom.xml. Disabling those importers falls the extension back to Eclipse project import,
-   * which picks up the .project/.classpath workspace setup just wrote. Only written if absent,
-   * so we never clobber a user's existing settings.json.
-   */
-  private fun writeVscodeSettings(issueDir: Path) {
-    val vscodeDir = issueDir.resolve(".vscode")
-    val settingsFile = vscodeDir.resolve("settings.json")
-    if (Files.exists(settingsFile)) return
-    Files.createDirectories(vscodeDir)
-    val json = """
-      {
-        "java.import.maven.enabled": false,
-        "java.import.gradle.enabled": false
-      }
-    """.trimIndent() + "\n"
-    Files.writeString(settingsFile, json, StandardCharsets.UTF_8)
-  }
-
-  private fun resolveWorkspaceRoot(context: LaunchConfigContext): Path {
-    return context.workingDir.toAbsolutePath().normalize()
-  }
-
-  private data class WorkspaceFolder(val uri: String, val name: String)
-
-  private fun writeProjectConfigurationsOutput(
-    outputPath: Path,
-    projectConfigurations: List<Path>,
-    rootPaths: List<Path>,
-    workspaceFolders: List<WorkspaceFolder>
-  ) {
-    if (outputPath.parent != null) {
-      Files.createDirectories(outputPath.parent)
-    }
-    val rootPathStrings = rootPaths.map { it.toAbsolutePath().normalize().toString() }.distinct()
-    val folderEntries = workspaceFolders.distinctBy { it.uri }
-    val uris = projectConfigurations.map { it.toAbsolutePath().normalize().toUri().toString() }.distinct()
-    val builder = StringBuilder()
-    builder.appendLine("{")
-    builder.appendLine("  \"rootPaths\": [")
-    rootPathStrings.forEachIndexed { index, path ->
-      val suffix = if (index == rootPathStrings.size - 1) "" else ","
-      builder.append("    \"").append(jsonEscape(path)).append("\"").append(suffix).appendLine()
-    }
-    builder.appendLine("  ],")
-    builder.appendLine("  \"workspaceFolders\": [")
-    folderEntries.forEachIndexed { index, folder ->
-      val suffix = if (index == folderEntries.size - 1) "" else ","
-      builder.appendLine("    {")
-      builder.append("      \"uri\": \"").append(jsonEscape(folder.uri)).append("\",").appendLine()
-      builder.append("      \"name\": \"").append(jsonEscape(folder.name)).append("\"").appendLine()
-      builder.append("    }").append(suffix).appendLine()
-    }
-    builder.appendLine("  ],")
-    builder.appendLine("  \"projectConfigurations\": [")
-    uris.forEachIndexed { index, uri ->
-      val suffix = if (index == uris.size - 1) "" else ","
-      builder.append("    \"").append(jsonEscape(uri)).append("\"").append(suffix).appendLine()
-    }
-    builder.appendLine("  ]")
-    builder.appendLine("}")
-    Files.writeString(outputPath, builder.toString(), StandardCharsets.UTF_8)
-  }
 
   private fun fail(message: String): Nothing = throw CliFailure(message)
 }

@@ -11,30 +11,32 @@ via Eclipse project import rather than trying Maven/Gradle import first.
 1. Install the `redhat.java` extension in VS Code.
 2. Build the `pde` CLI if needed (`./gradlew :pde-cli:installDist`).
 3. Run `pde ide-init vscode` from the issue root (or `--issue-dir`/`--config` as usual).
+   This writes a `.code-workspace` multi-root file only — it does not generate any JDT LS
+   project metadata.
+4. Run `pde lsp init` from the same root. This runs the same `pde jdt-workspace init`
+   Equinox app used by `pde api-baseline check`/`pde jdt-workspace build` to materialize
+   real `.project`/`.classpath` files directly at each bundle's own directory (visible-mode
+   project placement — VS Code's bundled JDT LS has no way to consume a shared,
+   invisible-project workspace the way `pde api-baseline check --workspace-data` does, so
+   it needs real files on disk). `pde lsp init` is shared with the Eglot flow (see
+   [jdtls-eglot.md](jdtls-eglot.md)) — nothing about project-file generation is VS
+   Code-specific. It also writes two more things:
 
-This writes a `.code-workspace` multi-root file, then runs the same `pde jdt-workspace
-init` Equinox app used by `pde api-baseline check`/`pde jdt-workspace build` to
-materialize real `.project`/`.classpath` files directly at each bundle's own directory
-(visible-mode project placement — VS Code's bundled JDT LS has no way to consume a
-shared, invisible-project workspace the way `pde api-baseline check --workspace-data`
-does, so it needs real files on disk). It also writes two more things relevant to
-VS Code:
+   - `.vscode/settings.json` (only if it doesn't already exist — never clobbers
+     your own settings) with:
+     ```json
+     {
+       "java.import.maven.enabled": false,
+       "java.import.gradle.enabled": false
+     }
+     ```
+     This is necessary because bundles with a Tycho `pom.xml` (common in PDE workspaces)
+     would otherwise be picked up by the Maven importer first, ignoring the
+     target-platform-resolved classpath `lsp init` wrote. Disabling both importers falls
+     the extension back to Eclipse project import, which scans for `.project` files.
+   - `.projectile` (same as the Eglot flow), harmless for VS Code.
 
-- `.vscode/settings.json` (only if it doesn't already exist — never clobbers
-  your own settings) with:
-  ```json
-  {
-    "java.import.maven.enabled": false,
-    "java.import.gradle.enabled": false
-  }
-  ```
-  This is necessary because bundles with a Tycho `pom.xml` (common in PDE workspaces)
-  would otherwise be picked up by the Maven importer first, ignoring the
-  target-platform-resolved classpath `ide-init vscode` wrote. Disabling both importers
-  falls the extension back to Eclipse project import, which scans for `.project` files.
-- `.projectile` (same as the Eglot flow), harmless for VS Code.
-
-4. Open the issue directory as a VS Code workspace folder (`code /path/to/issue-dir`).
+5. Open the issue directory as a VS Code workspace folder (`code /path/to/issue-dir`).
    The Java extension should pick up the generated projects automatically on open;
    if not, run **Java: Clean the Java language server workspace** or **Java: Import
    Java Projects** from the command palette.
@@ -50,9 +52,10 @@ VS Code:
 - Same gaps as documented in [jdtls-eglot.md](jdtls-eglot.md#what-jdt-ls-diagnostics-do-not-cover):
   no OSGi/PDE-level diagnostics, since the bundled JDT LS also ships without
   `org.eclipse.pde.core`.
-- Re-run `pde ide-init vscode` whenever workspace bundles change; VS Code's JDT LS has the
-  same `.project`/`.classpath`/`.settings/*.prefs` file watcher as documented for
-  Eglot, so it should reimport automatically once those files change.
+- Re-run `pde lsp init` whenever workspace bundles change (re-running `pde ide-init
+  vscode` is only needed if the set of bundles/workspace folders themselves changed).
+  VS Code's JDT LS has the same `.project`/`.classpath`/`.settings/*.prefs` file watcher
+  as documented for Eglot, so it should reimport automatically once those files change.
 - **VS Code's JDT LS and `pde jdt-workspace build` share compiled output, but not build
   state.** Because projects are visible-mode (`.classpath`'s output entry is a real path
   under the bundle directory, e.g. `<bundleDir>/bin`), both VS Code's bundled JDT LS and

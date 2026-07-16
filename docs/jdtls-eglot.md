@@ -1,14 +1,13 @@
 # JDT LS with Emacs (eglot)
 
-> **Stale**: `pde lsp init` referenced throughout this doc was removed as a CLI command
-> (its VS Code-focused replacement is `pde ide-init vscode`, which now also runs
-> `pde workspace setup` under the hood). This doc was not updated alongside that change
-> since the eglot integration is currently deprioritized/treated as a POC. If reviving
-> eglot support, port the `.project`/`.classpath`-generation instructions here onto
-> `pde workspace setup` (visible-mode) the same way `pde ide-init vscode` does.
-
 This repo can generate PDE-friendly `.project`/`.classpath` files for JDT LS via `pde lsp init`.
 Eglot can use those directly; no extra protocol integration is required.
+
+`pde lsp init` is shared with the VS Code flow (see [jdtls-vscode.md](jdtls-vscode.md)) —
+it writes real `.project`/`.classpath` files in place at each bundle's own directory
+(visible-mode placement, via the same `pde jdt-workspace init` Equinox app used by `pde
+api-baseline check`/`pde jdt-workspace build`), rather than the older invisible-project
+layout under `.lsp/projects/` this doc previously described.
 
 ## Generate workspace metadata
 
@@ -38,7 +37,8 @@ Notes:
 - When you run from an issue root that contains `pde.yaml`, `lsp init` defaults
   `--issue-dir` to the current directory and writes
   `./.lsp/projectConfigurations.json` if you omit `--project-configurations-out`.
-- Files are written per bundle directory and always overwrite existing metadata.
+- `.project`/`.classpath` are written directly at each bundle's own directory and always
+  overwrite existing metadata there.
 - `--project-configurations-out` emits `rootPaths` and `workspaceFolders` alongside project configurations
   for editor integrations that need explicit workspace roots.
 - `lsp init` requires a `target` section in `pde.yaml` with a resolved profile.

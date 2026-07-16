@@ -5,16 +5,12 @@ import cn.varsa.cli.core.CliLogLevel
 import cn.varsa.cli.core.CliLogging
 import cn.varsa.cli.core.CliStyle
 import cn.varsa.cli.core.ColorMode
-import cn.varsa.pde.resolver.algo.ResolveOptions
-import cn.varsa.pde.resolver.algo.Resolver
-import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
+import cn.varsa.pde.resolver.cli.EquinoxAppInvocation
+import cn.varsa.pde.resolver.cli.EquinoxAppRuntime
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
 import cn.varsa.pde.resolver.cli.config.WorkspaceModuleResolver
-import cn.varsa.pde.resolver.index.TargetPlatformCache
-import cn.varsa.pde.resolver.index.TargetPlatformIndex
-import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
-import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
+import cn.varsa.pde.resolver.cli.workspaceSetupMain
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.optional
@@ -28,7 +24,21 @@ import java.util.logging.Logger
 object JdtlsInitCommand {
   private val logger = Logger.getLogger(JdtlsInitCommand::class.java.name)
 
-  fun main(args: Array<String>): Int {
+  fun main(args: Array<String>): Int = run(args)
+
+  /**
+   * Testable entry point: `equinoxRuntimeResolver`/`equinoxAppRunner` mirror
+   * `workspaceSetupMain`'s own DI seam (see WorkspaceSetupCliTest), letting tests fake out the
+   * Equinox subprocess that actually writes `.project`/`.classpath` (covered separately by
+   * WorkspaceSetupServiceTest) while still exercising this command's own orchestration:
+   * touchProjectile/.vscode settings, project-file discovery, and projectConfigurations output.
+   * Left null, `main` runs the real Equinox app exactly as before.
+   */
+  internal fun run(
+    args: Array<String>,
+    equinoxRuntimeResolver: ((outputRoot: Path) -> EquinoxAppRuntime?)? = null,
+    equinoxAppRunner: ((EquinoxAppInvocation) -> Int)? = null
+  ): Int {
     CliLogging.configure(CliLogLevel.INFO, CliStyle.useColor(ColorMode.AUTO))
     val parser = ArgParser("pde lsp init")
     val configOpt by parser.option(
@@ -52,12 +62,8 @@ object JdtlsInitCommand {
     ).optional()
     parser.parse(args)
 
-    val cwd = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
-    val cwdConfig = cwd.resolve("pde.yaml")
-    val hasCwdConfig = Files.exists(cwdConfig) && Files.isRegularFile(cwdConfig)
-    val issueDir = issueDirOpt
-      ?.let { Paths.get(it).toAbsolutePath().normalize() }
-      ?: cwd
+    val issueDir = (issueDirOpt?.let { Paths.get(it) } ?: Paths.get("").toAbsolutePath())
+      .toAbsolutePath().normalize()
     val explicitConfig = resolveConfigPath(issueDir, configOpt, configPos)
     val configPath = explicitConfig ?: findConfigPath(issueDir)
     if (explicitConfig != null && (configPath == null || !Files.exists(configPath))) {
@@ -69,20 +75,48 @@ object JdtlsInitCommand {
       return 1
     }
 
+    val cwd = Paths.get("").toAbsolutePath().normalize()
+    val hasCwdConfig = Files.exists(cwd.resolve("pde.yaml")) && Files.isRegularFile(cwd.resolve("pde.yaml"))
+
     return try {
-      val workingDir = if (issueDirOpt != null) {
+      val issueRoot = if (issueDirOpt != null) {
         issueDir
       } else {
         configPath.parent?.toAbsolutePath()?.normalize() ?: issueDir
       }
-      val context = LaunchConfigLoader.load(configPath, workingDir)
-      val workspaceInputs = WorkspaceModuleResolver.resolve(context, allowMissingClasses = true)
-      val targetIndex = resolveTargetIndex(context)
-      val projectsDir = workingDir.resolve(".lsp").resolve("projects")
-      val result = writeWorkspaceConfigs(context, workspaceInputs.descriptors, targetIndex, projectsDir)
-      touchProjectile(workingDir)
-      writeVscodeSettings(workingDir)
-      logger.info("Generated .project/.classpath for ${result.written} workspace bundles in ${projectsDir.toAbsolutePath().normalize()}")
+      val context = LaunchConfigLoader.load(configPath, issueRoot)
+      if (context.config.bundles.isEmpty()) {
+        fail("No bundle entries found in config; add bundles to generate project files.")
+      }
+
+      // Writes real .project/.classpath files in place at each bundle's own directory
+      // (visible-mode placement) via the same `pde jdt-workspace init` Equinox app used by
+      // `pde api-baseline check`/`pde jdt-workspace build`, so any JDT LS consumer (VS Code's
+      // bundled LS via EclipseProjectImporter, or a standalone LS pointed at projectConfigurations)
+      // can pick them up from real filesystem artifacts. Uses the same .jdtls/workspace default
+      // output root as those commands (anchored to issueRoot rather than relying on
+      // workspaceSetupMain's own CWD-relative default) so other `pde jdt-workspace`/`pde
+      // api-baseline check` runs from issueRoot find this data without extra flags.
+      val setupArgs = arrayOf(
+        "--config", configPath.toString(),
+        "--output-root", issueRoot.resolve(".jdtls/workspace").toString()
+      )
+      val setupExit = if (equinoxRuntimeResolver != null && equinoxAppRunner != null) {
+        workspaceSetupMain(setupArgs, equinoxRuntimeResolver, equinoxAppRunner)
+      } else {
+        workspaceSetupMain(setupArgs)
+      }
+      if (setupExit != 0) return setupExit
+
+      touchProjectile(issueRoot)
+      writeVscodeSettings(issueRoot)
+
+      val moduleDefinitions = WorkspaceModuleResolver.resolveDefinitions(context)
+      val projectFiles = moduleDefinitions
+        .map { it.moduleDir.toAbsolutePath().normalize().resolve(".project") }
+        .filter { Files.exists(it) }
+      logger.info("Generated .project/.classpath for ${projectFiles.size} of ${moduleDefinitions.size} workspace bundles")
+
       val projectConfigurationsOutValue = projectConfigurationsOut
       val projectConfigurationsPath = when {
         projectConfigurationsOutValue != null -> resolvePath(context.baseDir, projectConfigurationsOutValue)
@@ -99,7 +133,7 @@ object JdtlsInitCommand {
         )
         writeProjectConfigurationsOutput(
           projectConfigurationsPath,
-          result.projectConfigurations,
+          projectFiles,
           listOf(workspaceRoot),
           workspaceFolders
         )
@@ -107,356 +141,113 @@ object JdtlsInitCommand {
       }
       0
     } catch (ex: Exception) {
-      logger.log(Level.SEVERE, ex.message ?: "jdtls-init failed", ex)
+      logger.log(Level.SEVERE, ex.message ?: "lsp-init failed", ex)
       1
     }
   }
-}
 
-private data class WorkspaceConfigResult(
-  val written: Int,
-  val projectConfigurations: List<Path>
-)
-
-private data class WorkspaceFolder(
-  val uri: String,
-  val name: String
-)
-
-private fun touchProjectile(issueDir: Path) {
-  val projectile = issueDir.resolve(".projectile")
-  if (Files.notExists(projectile)) {
-    Files.createFile(projectile)
+  private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
+    val candidate = configOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
+    return candidate?.let { resolvePath(baseDir, it) }
   }
-}
 
-/**
- * VS Code's redhat.java extension always runs its own bundled JDT LS (no way to point it
- * at `pde lsp run`) and defaults to Maven/Gradle auto-import, which would hijack import for
- * bundles that also carry a Tycho pom.xml. Disabling those importers falls the extension back
- * to Eclipse project import, which picks up the .project/.classpath lsp init just wrote.
- * Only written if absent, so we never clobber a user's existing settings.json.
- */
-private fun writeVscodeSettings(issueDir: Path) {
-  val vscodeDir = issueDir.resolve(".vscode")
-  val settingsFile = vscodeDir.resolve("settings.json")
-  if (Files.exists(settingsFile)) return
-  Files.createDirectories(vscodeDir)
-  val json = """
-    {
-      "java.import.maven.enabled": false,
-      "java.import.gradle.enabled": false
-    }
-  """.trimIndent() + "\n"
-  Files.writeString(settingsFile, json, StandardCharsets.UTF_8)
-}
+  private fun resolvePath(baseDir: Path, raw: String): Path {
+    val path = Paths.get(raw)
+    return if (path.isAbsolute) path else baseDir.resolve(path).normalize()
+  }
 
-private fun writeWorkspaceConfigs(
-  context: LaunchConfigContext,
-  workspaceDescriptors: List<WorkspaceBundleDescriptor>,
-  targetIndex: TargetPlatformIndex,
-  projectsDir: Path
-): WorkspaceConfigResult {
-  val moduleDefinitions = WorkspaceModuleResolver.resolveDefinitions(context)
-  if (moduleDefinitions.isEmpty()) {
-    fail("No workspace bundles resolved from config; add bundles.")
-  }
-  Files.createDirectories(projectsDir)
-  val descriptorByPath = workspaceDescriptors.associateBy { it.path.toAbsolutePath().normalize() }
-  val projectNameByBsn = workspaceDescriptors.associate {
-    val bsn = it.manifest.bundleSymbolicName?.key ?: it.path.fileName.toString()
-    bsn to bsn
-  }
-  var written = 0
-  val projectConfigurations = LinkedHashSet<Path>()
-  moduleDefinitions.forEach { definition ->
-    val moduleDir = definition.moduleDir.toAbsolutePath().normalize()
-    if (!Files.exists(moduleDir) || !Files.isDirectory(moduleDir)) {
-      fail("Workspace bundle directory does not exist: ${moduleDir}")
-    }
-    val descriptor = descriptorByPath[moduleDir.toAbsolutePath().normalize()] ?: WorkspaceBundleLoader.load(moduleDir)
-    val bundleName = descriptor.manifest.bundleSymbolicName?.key ?: moduleDir.fileName.toString()
-    val isTestBundle = isTestBundle(bundleName, moduleDir, descriptor.fragmentHost != null)
-    val sourceRoots = determineSourceRoots(moduleDir, descriptor.sourceRoots)
-    if (sourceRoots.isEmpty()) {
-      return@forEach
-    }
-    val outputDir = descriptor.outputDirectory ?: moduleDir.resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR)
-    val outputDirAbs = outputDir.toAbsolutePath().normalize()
-    val compliance = resolveJavaCompliance(descriptor.compilerPrefs)
-    val resolved = Resolver.resolve(
-      targetIndex,
-      workspaceDescriptors,
-      descriptor,
-      ResolveOptions(preferWorkspace = true, includeHostsForFragments = true)
-    )
-    val resolvedEntries = buildResolvedClasspathEntries(
-      bundleName,
-      resolved.bundles,
-      projectNameByBsn
-    )
+  private fun looksLikeYamlFile(value: String): Boolean =
+    value.endsWith(".yaml", ignoreCase = true) || value.endsWith(".yml", ignoreCase = true)
 
-    val projectConfigDir = projectsDir.resolve(bundleName)
-    val projectFile = projectConfigDir.resolve(".project")
-    val projectWritten = writeProjectFile(projectConfigDir, bundleName)
-    val classpathWritten = writeClasspathFile(
-      projectConfigDir,
-      sourceRoots,
-      resolvedEntries,
-      outputDirAbs.toString(),
-      isTestBundle,
-      compliance
-    )
-    if (projectWritten || classpathWritten) {
-      written += 1
-    }
-    if (Files.exists(projectFile)) {
-      projectConfigurations.add(projectFile.toAbsolutePath().normalize())
-    }
-  }
-  return WorkspaceConfigResult(written, projectConfigurations.toList())
-}
-
-private fun writeProjectFile(projectConfigDir: Path, projectName: String): Boolean {
-  Files.createDirectories(projectConfigDir)
-  val projectFile = projectConfigDir.resolve(".project")
-  val builder = StringBuilder()
-  builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-  builder.appendLine("<projectDescription>")
-  builder.appendLine("  <name>${xmlEscape(projectName)}</name>")
-  builder.appendLine("  <comment></comment>")
-  builder.appendLine("  <projects></projects>")
-  builder.appendLine("  <buildSpec>")
-  builder.appendLine("    <buildCommand>")
-  builder.appendLine("      <name>org.eclipse.jdt.core.javabuilder</name>")
-  builder.appendLine("      <arguments></arguments>")
-  builder.appendLine("    </buildCommand>")
-  builder.appendLine("    <buildCommand>")
-  builder.appendLine("      <name>org.eclipse.pde.ManifestBuilder</name>")
-  builder.appendLine("      <arguments></arguments>")
-  builder.appendLine("    </buildCommand>")
-  builder.appendLine("    <buildCommand>")
-  builder.appendLine("      <name>org.eclipse.pde.SchemaBuilder</name>")
-  builder.appendLine("      <arguments></arguments>")
-  builder.appendLine("    </buildCommand>")
-  builder.appendLine("  </buildSpec>")
-  builder.appendLine("  <natures>")
-  builder.appendLine("    <nature>org.eclipse.pde.PluginNature</nature>")
-  builder.appendLine("    <nature>org.eclipse.jdt.core.javanature</nature>")
-  builder.appendLine("  </natures>")
-  builder.appendLine("</projectDescription>")
-  Files.writeString(projectFile, builder.toString(), StandardCharsets.UTF_8)
-  return true
-}
-
-private fun writeClasspathFile(
-  projectConfigDir: Path,
-  sourceRoots: List<Path>,
-  resolvedEntries: List<ClasspathEntry>,
-  outputPath: String,
-  isTestBundle: Boolean,
-  compliance: String
-): Boolean {
-  Files.createDirectories(projectConfigDir)
-  val classpathFile = projectConfigDir.resolve(".classpath")
-  val builder = StringBuilder()
-  builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-  builder.appendLine("<classpath>")
-  sourceRoots.forEach { root ->
-    val absPath = root.toAbsolutePath().normalize().toString()
-    builder.appendLine("  <classpathentry kind=\"src\" path=\"${xmlEscape(absPath)}\">")
-    if (isTestBundle) {
-      builder.appendLine("    <attributes>")
-      builder.appendLine("      <attribute name=\"test\" value=\"true\"/>")
-      builder.appendLine("    </attributes>")
-    }
-    builder.appendLine("  </classpathentry>")
-  }
-  val jreContainer = "org.eclipse.jdt.launching.JRE_CONTAINER/" +
-    "org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-${compliance}"
-  builder.appendLine("  <classpathentry kind=\"con\" path=\"${jreContainer}\"/>")
-  resolvedEntries.forEach { entry ->
-    val sourceAttr = entry.sourcePath?.let { " sourcepath=\"${xmlEscape(it)}\"" } ?: ""
-    builder.appendLine("  <classpathentry kind=\"${entry.kind}\" path=\"${xmlEscape(entry.path)}\"${sourceAttr}/>")
-  }
-  builder.appendLine("  <classpathentry kind=\"output\" path=\"${xmlEscape(outputPath)}\"/>")
-  builder.appendLine("</classpath>")
-  Files.writeString(classpathFile, builder.toString(), StandardCharsets.UTF_8)
-  return true
-}
-
-private fun writeProjectConfigurationsOutput(
-  outputPath: Path,
-  projectConfigurations: List<Path>,
-  rootPaths: List<Path>,
-  workspaceFolders: List<WorkspaceFolder>
-) {
-  if (outputPath.parent != null) {
-    Files.createDirectories(outputPath.parent)
-  }
-  val rootPathStrings = rootPaths.map { it.toAbsolutePath().normalize().toString() }.distinct()
-  val folderEntries = workspaceFolders.distinctBy { it.uri }
-  val uris = projectConfigurations.map { it.toAbsolutePath().normalize().toUri().toString() }.distinct()
-  val builder = StringBuilder()
-  builder.appendLine("{")
-  builder.appendLine("  \"rootPaths\": [")
-  rootPathStrings.forEachIndexed { index, path ->
-    val suffix = if (index == rootPathStrings.size - 1) "" else ","
-    builder.append("    \"").append(jsonEscape(path)).append("\"").append(suffix).appendLine()
-  }
-  builder.appendLine("  ],")
-  builder.appendLine("  \"workspaceFolders\": [")
-  folderEntries.forEachIndexed { index, folder ->
-    val suffix = if (index == folderEntries.size - 1) "" else ","
-    builder.appendLine("    {")
-    builder.append("      \"uri\": \"").append(jsonEscape(folder.uri)).append("\",").appendLine()
-    builder.append("      \"name\": \"").append(jsonEscape(folder.name)).append("\"").appendLine()
-    builder.append("    }").append(suffix).appendLine()
-  }
-  builder.appendLine("  ],")
-  builder.appendLine("  \"projectConfigurations\": [")
-  uris.forEachIndexed { index, uri ->
-    val suffix = if (index == uris.size - 1) "" else ","
-    builder.append("    \"").append(jsonEscape(uri)).append("\"").append(suffix).appendLine()
-  }
-  builder.appendLine("  ]")
-  builder.appendLine("}")
-  Files.writeString(outputPath, builder.toString(), StandardCharsets.UTF_8)
-}
-
-private fun resolveWorkspaceRoot(context: LaunchConfigContext): Path {
-  return context.workingDir.toAbsolutePath().normalize()
-}
-
-private data class ClasspathEntry(val kind: String, val path: String, val sourcePath: String? = null)
-
-private fun buildResolvedClasspathEntries(
-  bundleName: String,
-  resolvedBundles: List<cn.varsa.pde.resolver.algo.ResolvedBundle>,
-  projectNameByBsn: Map<String, String>
-): List<ClasspathEntry> {
-  val entries = LinkedHashMap<String, ClasspathEntry>()
-  resolvedBundles.forEach { bundle ->
-    if (bundle.bsn == bundleName) return@forEach
-    when (bundle.origin) {
-      cn.varsa.pde.resolver.algo.BundleOrigin.WORKSPACE -> {
-        val projectName = projectNameByBsn[bundle.bsn] ?: bundle.bsn
-        val path = "/${projectName}"
-        entries.putIfAbsent(path, ClasspathEntry("src", path))
+  private fun findConfigPath(startDir: Path): Path? {
+    val candidates = listOf("pde.yaml", "launch.yaml", "launch.yml", "pde-launch.yaml", "pde-launch.yml")
+    var current = startDir.toAbsolutePath().normalize()
+    while (true) {
+      candidates.forEach { name ->
+        val path = current.resolve(name)
+        if (Files.exists(path) && Files.isRegularFile(path)) return path
       }
-      cn.varsa.pde.resolver.algo.BundleOrigin.TARGET -> {
-        bundle.classPathEntries.forEach { classPathEntry ->
-          val path = classPathEntry.toAbsolutePath().normalize().toString()
-        val sourcePath = bundle.sourceEntries.firstOrNull()?.toAbsolutePath()?.normalize()?.toString()
-        entries.putIfAbsent(path, ClasspathEntry("lib", path, sourcePath))
-        }
+      val parent = current.parent ?: return null
+      if (parent == current) return null
+      current = parent
+    }
+  }
+
+  private fun touchProjectile(issueDir: Path) {
+    val projectile = issueDir.resolve(".projectile")
+    if (Files.notExists(projectile)) {
+      Files.createFile(projectile)
+    }
+  }
+
+  /**
+   * VS Code's redhat.java extension always runs its own bundled JDT LS and defaults to
+   * Maven/Gradle auto-import, which would hijack import for bundles that also carry a Tycho
+   * pom.xml. Disabling those importers falls the extension back to Eclipse project import,
+   * which picks up the .project/.classpath this command just wrote. Harmless for non-VS Code
+   * consumers (Eglot etc). Only written if absent, so we never clobber a user's own settings.json.
+   */
+  private fun writeVscodeSettings(issueDir: Path) {
+    val vscodeDir = issueDir.resolve(".vscode")
+    val settingsFile = vscodeDir.resolve("settings.json")
+    if (Files.exists(settingsFile)) return
+    Files.createDirectories(vscodeDir)
+    val json = """
+      {
+        "java.import.maven.enabled": false,
+        "java.import.gradle.enabled": false
       }
+    """.trimIndent() + "\n"
+    Files.writeString(settingsFile, json, StandardCharsets.UTF_8)
+  }
+
+  private fun resolveWorkspaceRoot(context: LaunchConfigContext): Path {
+    return context.workingDir.toAbsolutePath().normalize()
+  }
+
+  private data class WorkspaceFolder(val uri: String, val name: String)
+
+  private fun writeProjectConfigurationsOutput(
+    outputPath: Path,
+    projectConfigurations: List<Path>,
+    rootPaths: List<Path>,
+    workspaceFolders: List<WorkspaceFolder>
+  ) {
+    if (outputPath.parent != null) {
+      Files.createDirectories(outputPath.parent)
     }
-  }
-  return entries.values.toList()
-}
-
-private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
-  val candidate = configOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
-  return candidate?.let { resolvePath(baseDir, it) }
-}
-
-private fun resolvePath(baseDir: Path, raw: String): Path {
-  val path = Paths.get(raw)
-  return if (path.isAbsolute) path else baseDir.resolve(path).normalize()
-}
-
-private fun findConfigPath(startDir: Path): Path? {
-  val candidates = listOf(
-    "pde.yaml",
-    "launch.yaml",
-    "launch.yml",
-    "pde-launch.yaml",
-    "pde-launch.yml"
-  )
-  var current = startDir.toAbsolutePath().normalize()
-  while (true) {
-    candidates.forEach { name ->
-      val path = current.resolve(name)
-      if (Files.exists(path) && Files.isRegularFile(path)) return path
+    val rootPathStrings = rootPaths.map { it.toAbsolutePath().normalize().toString() }.distinct()
+    val folderEntries = workspaceFolders.distinctBy { it.uri }
+    val uris = projectConfigurations.map { it.toAbsolutePath().normalize().toUri().toString() }.distinct()
+    val builder = StringBuilder()
+    builder.appendLine("{")
+    builder.appendLine("  \"rootPaths\": [")
+    rootPathStrings.forEachIndexed { index, path ->
+      val suffix = if (index == rootPathStrings.size - 1) "" else ","
+      builder.append("    \"").append(jsonEscape(path)).append("\"").append(suffix).appendLine()
     }
-    val parent = current.parent ?: return null
-    if (parent == current) return null
-    current = parent
+    builder.appendLine("  ],")
+    builder.appendLine("  \"workspaceFolders\": [")
+    folderEntries.forEachIndexed { index, folder ->
+      val suffix = if (index == folderEntries.size - 1) "" else ","
+      builder.appendLine("    {")
+      builder.append("      \"uri\": \"").append(jsonEscape(folder.uri)).append("\",").appendLine()
+      builder.append("      \"name\": \"").append(jsonEscape(folder.name)).append("\"").appendLine()
+      builder.append("    }").append(suffix).appendLine()
+    }
+    builder.appendLine("  ],")
+    builder.appendLine("  \"projectConfigurations\": [")
+    uris.forEachIndexed { index, uri ->
+      val suffix = if (index == uris.size - 1) "" else ","
+      builder.append("    \"").append(jsonEscape(uri)).append("\"").append(suffix).appendLine()
+    }
+    builder.appendLine("  ]")
+    builder.appendLine("}")
+    Files.writeString(outputPath, builder.toString(), StandardCharsets.UTF_8)
   }
+
+  private fun jsonEscape(value: String): String =
+    value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+  private fun fail(message: String): Nothing = throw CliFailure(message)
 }
-
-private fun looksLikeYamlFile(value: String): Boolean =
-  value.endsWith(".yaml", ignoreCase = true) || value.endsWith(".yml", ignoreCase = true)
-
-private fun determineSourceRoots(moduleDir: Path, configured: List<Path>): List<Path> {
-  val existingConfigured = configured.filter { Files.exists(it) && Files.isDirectory(it) }
-  if (existingConfigured.isNotEmpty()) return existingConfigured
-  val srcDir = moduleDir.resolve("src")
-  if (!Files.isDirectory(srcDir)) return emptyList()
-  val roots = mutableListOf<Path>()
-  val eclipseDir = srcDir.resolve("eclipse")
-  if (Files.isDirectory(eclipseDir)) roots.add(eclipseDir)
-  val generatedDir = srcDir.resolve("generated")
-  if (Files.isDirectory(generatedDir)) roots.add(generatedDir)
-  if (roots.isEmpty()) roots.add(srcDir)
-  return roots
-}
-
-private fun resolveJavaCompliance(prefs: Map<String, String>): String {
-  val target = prefs["org.eclipse.jdt.core.compiler.codegen.targetPlatform"]?.trim().orEmpty()
-  if (target.isNotEmpty()) return target
-  val compliance = prefs["org.eclipse.jdt.core.compiler.compliance"]?.trim().orEmpty()
-  if (compliance.isNotEmpty()) return compliance
-  return "21"
-}
-
-private fun isTestBundle(symbolicName: String, moduleDir: Path, hasFragmentHost: Boolean): Boolean {
-  val name = symbolicName.lowercase()
-  val dirName = moduleDir.fileName.toString().lowercase()
-  val testHint = name.contains(".test") || name.contains(".tests") || name.contains(".testing") ||
-    dirName.contains("test") || dirName.contains("tests")
-  return testHint
-}
-
-private fun resolveTargetIndex(context: LaunchConfigContext): TargetPlatformIndex {
-  val targetConfig = context.config.target
-    ?: fail("Target configuration is required for jdtls-init. Add a target section to pde.yaml.")
-  val profilePath = resolveProfilePath(context, targetConfig)
-  if (!Files.exists(profilePath)) {
-    fail("Target profile not found at ${profilePath.toAbsolutePath().normalize()}. " +
-      "Update target.profileId/target.p2Path or run target installer.")
-  }
-  return TargetPlatformCache.buildWithCache(listOf(profilePath))
-}
-
-private fun resolveProfilePath(context: LaunchConfigContext, targetConfig: cn.varsa.pde.resolver.cli.config.TargetConfig): Path {
-  val baseDir = context.baseDir
-  val profileId = targetConfig.profileId?.takeUnless { it.isBlank() } ?: "profile"
-  val p2Path = targetConfig.p2Path?.takeUnless { it.isBlank() } ?: "./.target/p2"
-  val registryDir = baseDir.resolve(p2Path)
-    .resolve("org.eclipse.equinox.p2.engine/profileRegistry")
-    .normalize()
-  val preferred = registryDir.resolve("$profileId.Profile").normalize()
-  if (Files.exists(preferred)) return preferred
-  val lowercase = registryDir.resolve("$profileId.profile").normalize()
-  if (Files.exists(lowercase)) return lowercase
-  return preferred
-}
-
-private fun xmlEscape(value: String): String {
-  return value
-    .replace("&", "&amp;")
-    .replace("<", "&lt;")
-    .replace(">", "&gt;")
-    .replace("\"", "&quot;")
-    .replace("'", "&apos;")
-}
-
-private fun jsonEscape(value: String): String {
-  return value
-    .replace("\\", "\\\\")
-    .replace("\"", "\\\"")
-}
-
-private fun fail(message: String): Nothing = throw CliFailure(message)

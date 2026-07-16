@@ -1,621 +1,260 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.pde.resolver.cli.EquinoxAppRuntime
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.logging.Handler
-import java.util.logging.LogRecord
+import java.util.jar.Attributes
+import java.util.jar.JarOutputStream
+import java.util.jar.Manifest
+import java.util.logging.Level
 import java.util.logging.Logger
+import java.util.logging.StreamHandler
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+/**
+ * `pde lsp init` generates project files via the same Equinox-based `pde jdt-workspace init`
+ * app used by `pde api-baseline check`/`pde jdt-workspace build`. That app's actual
+ * `.project`/`.classpath` content generation is covered separately by
+ * `WorkspaceSetupServiceTest` (core/pde-resolver), and its own CLI wiring by
+ * `WorkspaceSetupCliTest` (core/pde-launch-engine). What's specific to this command —
+ * touchProjectile/.vscode settings, discovering the resulting `.project` files, and
+ * projectConfigurations output — is exercised below via `JdtlsInitCommand.run`'s DI seam
+ * (mirroring `workspaceSetupMain`'s own), which fakes out the Equinox subprocess. The
+ * remaining tests below it cover the validation/config-discovery logic that runs *before*
+ * the Equinox app would be invoked, which needs no faking at all.
+ */
 class JdtlsInitTest {
   @Test
-  fun `jdtls-init writes project and classpath`() {
-    val baseDir = Files.createTempDirectory("jdtls-init")
-    val repoDir = baseDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.api.tests")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
-    Files.createDirectories(bundleDir.resolve(".settings"))
+  fun `lsp init writes projectile, vscode settings, and projectConfigurations output`() {
+    val baseDir = Files.createTempDirectory("lsp-init-happy-path")
+    val bundleDir = baseDir.resolve("workspace").resolve("org.example.api")
+    writeBundle(bundleDir, "org.example.api")
+    createProfileWithFramework(baseDir)
+    val configPath = writeTargetConfig(baseDir, listOf(bundleDir))
+    val projectConfigFile = baseDir.resolve(".lsp/projectConfigurations.json")
 
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.api.tests
-        Bundle-Version: 1.0.0
-        Fragment-Host: org.knime.gateway.api
-      """.trimIndent()
-    )
-    Files.writeString(
-      bundleDir.resolve("build.properties"),
-      """
-        source..=src/
-        output..=bin/
-      """.trimIndent()
-    )
-    Files.writeString(
-      bundleDir.resolve(".settings/org.eclipse.jdt.core.prefs"),
-      """
-        org.eclipse.jdt.core.compiler.codegen.targetPlatform=17
-        org.eclipse.jdt.core.compiler.compliance=17
-      """.trimIndent()
-    )
-
-    val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(baseDir),
-        listOf(
-          "bundles:",
-          "  - path: knime-gateway/org.knime.gateway.api.tests"
-        )
-      )
-    )
-
-    val exitCode = JdtlsInitCommand.main(
-      arrayOf("--config", configPath.toString(), "--issue-dir", baseDir.toString())
-    )
-    assertEquals(0, exitCode)
-
-    val projectDir = baseDir.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api.tests")
-    val projectFile = projectDir.resolve(".project")
-    val classpathFile = projectDir.resolve(".classpath")
-    assertTrue(Files.exists(projectFile))
-    assertTrue(Files.exists(classpathFile))
-    assertTrue(Files.exists(baseDir.resolve(".projectile")))
-
-    val projectContents = Files.readString(projectFile)
-    assertTrue(projectContents.contains("org.eclipse.pde.PluginNature"))
-
-    val classpathContents = Files.readString(classpathFile)
-    assertFalse(classpathContents.contains("org.eclipse.pde.core.requiredPlugins"))
-    assertTrue(classpathContents.contains("JavaSE-17"))
-    assertTrue(classpathContents.contains("attribute name=\"test\""))
-  }
-
-  @Test
-  fun `jdtls-init respects build properties source and output`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-buildprops")
-    val repoDir = baseDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.impl")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src").resolve("eclipse"))
-    Files.createDirectories(bundleDir.resolve("src").resolve("generated"))
-
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.impl
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-    Files.writeString(
-      bundleDir.resolve("build.properties"),
-      """
-        source..=src/eclipse/,src/generated/
-        output..=bin/
-      """.trimIndent()
-    )
-
-    val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(baseDir),
-        listOf(
-          "bundles:",
-          "  - path: knime-gateway/org.knime.gateway.impl"
-        )
-      )
-    )
-
-    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
-    assertEquals(0, exitCode)
-
-    val projectDir = configPath.parent.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.impl")
-    val classpathContents = Files.readString(projectDir.resolve(".classpath"))
-    val absEclipse = bundleDir.resolve("src/eclipse").toAbsolutePath().normalize().toString()
-    val absGenerated = bundleDir.resolve("src/generated").toAbsolutePath().normalize().toString()
-    val absBin = bundleDir.resolve("bin").toAbsolutePath().normalize().toString()
-    assertTrue(classpathContents.contains("path=\"${absEclipse}\""))
-    assertTrue(classpathContents.contains("path=\"${absGenerated}\""))
-    assertTrue(classpathContents.contains("output\" path=\"${absBin}\""))
-  }
-
-  @Test
-  fun `jdtls-init resolves bundle paths from issue dir when includes come from shared config`() {
-    val rootDir = Files.createTempDirectory("jdtls-init-issue-dir")
-    val issueDir = rootDir.resolve("issue-123")
-    val sharedDir = rootDir.resolve("shared")
-    Files.createDirectories(issueDir)
-    Files.createDirectories(sharedDir)
-
-    val repoDir = issueDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.api")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
-
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.api
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-
-    val includePath = sharedDir.resolve("include.yaml")
-    Files.writeString(
-      includePath,
-      """
-        bundles:
-          - path: knime-gateway/org.knime.gateway.api
-      """.trimIndent()
-    )
-
-    val configPath = issueDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(issueDir),
-        listOf(
-          "includes:",
-          "  - ../shared/include.yaml"
-        )
-      )
-    )
-
-    val exitCode = JdtlsInitCommand.main(
-      arrayOf(
-        "--issue-dir",
-        issueDir.toString(),
-        "--config",
-        configPath.toString()
-      )
-    )
-    assertEquals(0, exitCode)
-
-    val projectDir = issueDir.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api")
-    val projectFile = projectDir.resolve(".project")
-    val classpathFile = projectDir.resolve(".classpath")
-    assertTrue(Files.exists(projectFile))
-    assertTrue(Files.exists(classpathFile))
-  }
-
-  @Test
-  fun `jdtls-init overwrites existing files in projects dir`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-force")
-    val repoDir = baseDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.api")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
-
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.api
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-
-    val projectConfigDir = baseDir.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api")
-    Files.createDirectories(projectConfigDir)
-    val projectFile = projectConfigDir.resolve(".project")
-    val classpathFile = projectConfigDir.resolve(".classpath")
-    Files.writeString(projectFile, "<projectDescription>custom</projectDescription>")
-    Files.writeString(classpathFile, "<classpath>custom</classpath>")
-
-    val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(baseDir),
-        listOf(
-          "bundles:",
-          "  - path: knime-gateway/org.knime.gateway.api"
-        )
-      )
-    )
-
-    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
-    assertEquals(0, exitCode)
-
-    val projectContents = Files.readString(projectFile)
-    val classpathContents = Files.readString(classpathFile)
-    assertTrue(projectContents.contains("org.eclipse.jdt.core.javanature"))
-    assertTrue(classpathContents.contains("JavaSE-21"))
-  }
-
-  @Test
-  fun `jdtls-init defaults to Java 21 when prefs missing`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-default-jre")
-    val repoDir = baseDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.json")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
-
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.json
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-
-    val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(baseDir),
-        listOf(
-          "bundles:",
-          "  - path: knime-gateway/org.knime.gateway.json"
-        )
-      )
-    )
-
-    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
-    assertEquals(0, exitCode)
-
-    val projectDir = configPath.parent.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.json")
-    val classpathContents = Files.readString(projectDir.resolve(".classpath"))
-    assertTrue(classpathContents.contains("JavaSE-21"))
-  }
-
-  @Test
-  fun `jdtls-init uses target profile bundles`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-bundle-pool")
-    val bundleDir = baseDir.resolve("workspace").resolve("org.example.client")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
-
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.example.client
-        Bundle-Version: 1.0.0
-        Require-Bundle: org.example.dep
-      """.trimIndent() + "\n"
-    )
-
-    val bundlePool = baseDir.resolve("target").resolve("bundle-pool")
-    val targetBundle = bundlePool.resolve("plugins").resolve("org.example.dep_1.0.0")
-    Files.createDirectories(targetBundle.resolve("META-INF"))
-    Files.writeString(
-      targetBundle.resolve("META-INF/MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.example.dep
-        Bundle-Version: 1.0.0
-      """.trimIndent() + "\n"
-    )
-
-    val configPath = baseDir.resolve("pde.yaml")
-    val targetConfig = writeTargetConfig(
-      baseDir,
-      profileId = "jdtls-test",
-      artifacts = listOf("org.example.dep" to "1.0.0")
-    )
-    Files.writeString(
-      configPath,
-      configText(
-        targetConfig,
-        listOf(
-          "bundles:",
-          "  - path: ${bundleDir.toAbsolutePath()}"
-        )
-      )
-    )
-
-    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
-    assertEquals(0, exitCode)
-
-    val projectDir = configPath.parent.resolve(".lsp").resolve("projects").resolve("org.example.client")
-    val classpathContents = Files.readString(projectDir.resolve(".classpath"))
-    assertTrue(
-      classpathContents.contains(targetBundle.toAbsolutePath().toString()),
-      "Expected target bundle path in classpath: $classpathContents"
-    )
-  }
-
-  @Test
-  fun `jdtls-init writes projectConfigurations output`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-project-config")
-    val repoDir = baseDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.api")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
-
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.api
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-
-    val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(baseDir),
-        listOf(
-          "bundles:",
-          "  - path: knime-gateway/org.knime.gateway.api"
-        )
-      )
-    )
-
-    val outputPath = baseDir.resolve("project-configurations.json")
-    val exitCode = JdtlsInitCommand.main(
+    val exitCode = JdtlsInitCommand.run(
       arrayOf(
         "--config", configPath.toString(),
-        "--project-configurations-out", outputPath.toString()
-      )
+        "--project-configurations-out", projectConfigFile.toString()
+      ),
+      equinoxRuntimeResolver = { outputRoot -> fakeEquinoxRuntime(outputRoot) },
+      equinoxAppRunner = { _ ->
+        // Stands in for the real Equinox app (WorkspaceSetupApplication/WorkspaceSetupService,
+        // covered by WorkspaceSetupServiceTest): materializes the same real filesystem artifact
+        // this command's own downstream logic (project-file discovery, projectConfigurations
+        // output) depends on finding, without actually running Eclipse headless.
+        Files.writeString(bundleDir.resolve(".project"), "<projectDescription/>")
+        Files.writeString(bundleDir.resolve(".classpath"), "<classpath/>")
+        0
+      }
     )
-    assertEquals(0, exitCode)
-    assertTrue(Files.exists(outputPath))
 
-    val contents = Files.readString(outputPath)
-    val expectedRoot = baseDir.toAbsolutePath().normalize()
-    val expectedRootUri = expectedRoot.toUri().toString()
-    val projectFile = expectedRoot.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api").resolve(".project")
-    val expectedUri = projectFile.toAbsolutePath().normalize().toUri().toString()
-    assertTrue(contents.contains("\"rootPaths\""))
-    assertTrue(contents.contains(expectedRoot.toString()))
-    assertTrue(contents.contains("\"workspaceFolders\""))
-    assertTrue(contents.contains(expectedRootUri))
-    assertTrue(contents.contains("\"projectConfigurations\""))
-    assertTrue(contents.contains(expectedUri))
+    assertEquals(0, exitCode)
+    assertTrue(Files.exists(baseDir.resolve(".projectile")), "Expected .projectile to be created")
+    val settingsFile = baseDir.resolve(".vscode/settings.json")
+    assertTrue(Files.exists(settingsFile), "Expected .vscode/settings.json to be created")
+    assertTrue(Files.readString(settingsFile).contains("java.import.maven.enabled"))
+
+    assertTrue(Files.exists(projectConfigFile), "Expected projectConfigurations.json output")
+    val projectConfigContents = Files.readString(projectConfigFile)
+    val expectedProjectUri = bundleDir.resolve(".project").toAbsolutePath().normalize().toUri().toString()
+    assertTrue(
+      projectConfigContents.contains(expectedProjectUri),
+      "Expected projectConfigurations to reference $expectedProjectUri, got: $projectConfigContents"
+    )
   }
 
   @Test
-  fun `jdtls-init defaults projectConfigurations output when run from issue root`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-default-project-config")
-    val repoDir = baseDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.api")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
+  fun `lsp init does not overwrite existing vscode settings`() {
+    val baseDir = Files.createTempDirectory("lsp-init-existing-settings")
+    val bundleDir = baseDir.resolve("workspace").resolve("org.example.api")
+    writeBundle(bundleDir, "org.example.api")
+    createProfileWithFramework(baseDir)
+    val configPath = writeTargetConfig(baseDir, listOf(bundleDir))
 
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.api
-        Bundle-Version: 1.0.0
-      """.trimIndent()
+    val settingsFile = baseDir.resolve(".vscode/settings.json")
+    Files.createDirectories(settingsFile.parent)
+    Files.writeString(settingsFile, "{\"custom\":true}")
+
+    val exitCode = JdtlsInitCommand.run(
+      arrayOf("--config", configPath.toString()),
+      equinoxRuntimeResolver = { outputRoot -> fakeEquinoxRuntime(outputRoot) },
+      equinoxAppRunner = { 0 }
     )
 
-    val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(baseDir),
-        listOf(
-          "bundles:",
-          "  - path: knime-gateway/org.knime.gateway.api"
-        )
-      )
-    )
-
-    val exitCode = withWorkingDirectory(baseDir) {
-      JdtlsInitCommand.main(emptyArray())
-    }
     assertEquals(0, exitCode)
-
-    val outputPath = baseDir.resolve(".lsp").resolve("projectConfigurations.json")
-    assertTrue(Files.exists(outputPath))
-    assertTrue(Files.exists(baseDir.resolve(".projectile")))
-
-    val contents = Files.readString(outputPath)
-    val expectedRoot = baseDir.toAbsolutePath().normalize()
-    val expectedRootUri = expectedRoot.toUri().toString()
-    val projectFile = expectedRoot.resolve(".lsp").resolve("projects").resolve("org.knime.gateway.api").resolve(".project")
-    val expectedUri = projectFile.toAbsolutePath().normalize().toUri().toString()
-    assertTrue(contents.contains(expectedRoot.toString()))
-    assertTrue(contents.contains(expectedRootUri))
-    assertTrue(contents.contains(expectedUri))
+    assertTrue(Files.readString(settingsFile).contains("custom"), "Expected existing settings.json to survive")
   }
 
   @Test
-  fun `jdtls-init skips bundles with no source roots`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-no-src")
-    val repoDir = baseDir.resolve("knime-gateway")
-
-    val javaBundleDir = repoDir.resolve("org.knime.gateway.api")
-    val javaMetaInf = javaBundleDir.resolve("META-INF")
-    Files.createDirectories(javaMetaInf)
-    Files.createDirectories(javaBundleDir.resolve("src"))
-    Files.writeString(
-      javaMetaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.api
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-
-    val resourceBundleDir = repoDir.resolve("org.knime.gateway.resources")
-    val resourceMetaInf = resourceBundleDir.resolve("META-INF")
-    Files.createDirectories(resourceMetaInf)
-    Files.writeString(
-      resourceMetaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.resources
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-
+  fun `lsp init fails without bundle entries`() {
+    val baseDir = Files.createTempDirectory("lsp-init-no-bundles")
     val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      configText(
-        writeTargetConfig(baseDir),
-        listOf(
-          "bundles:",
-          "  - path: knime-gateway/org.knime.gateway.api",
-          "  - path: knime-gateway/org.knime.gateway.resources"
-        )
-      )
-    )
-
-    val exitCode = JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
-    assertEquals(0, exitCode)
-
-    val projectsDir = configPath.parent.resolve(".lsp").resolve("projects")
-    val javaProjectDir = projectsDir.resolve("org.knime.gateway.api")
-    assertTrue(Files.exists(javaProjectDir.resolve(".project")))
-    assertTrue(Files.exists(javaProjectDir.resolve(".classpath")))
-
-    val resourceProjectDir = projectsDir.resolve("org.knime.gateway.resources")
-    assertFalse(Files.exists(resourceProjectDir.resolve(".project")))
-    assertFalse(Files.exists(resourceProjectDir.resolve(".classpath")))
-    assertFalse(Files.exists(resourceProjectDir))
-  }
-
-  @Test
-  fun `jdtls-init fails without target config`() {
-    val baseDir = Files.createTempDirectory("jdtls-init-missing-target")
-    val repoDir = baseDir.resolve("knime-gateway")
-    val bundleDir = repoDir.resolve("org.knime.gateway.api")
-    val metaInf = bundleDir.resolve("META-INF")
-    Files.createDirectories(metaInf)
-    Files.createDirectories(bundleDir.resolve("src"))
-
-    Files.writeString(
-      metaInf.resolve("MANIFEST.MF"),
-      """
-        Manifest-Version: 1.0
-        Bundle-ManifestVersion: 2
-        Bundle-SymbolicName: org.knime.gateway.api
-        Bundle-Version: 1.0.0
-      """.trimIndent()
-    )
-
-    val configPath = baseDir.resolve("pde.yaml")
-    Files.writeString(
-      configPath,
-      listOf(
-        "bundles:",
-        "  - path: knime-gateway/org.knime.gateway.api"
-      ).joinToString("\n")
-    )
+    Files.writeString(configPath, "bundles: []\n")
 
     val (exitCode, stderr) = captureStderr {
       JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
     }
     assertEquals(1, exitCode)
     assertTrue(
-      stderr.contains("Target configuration is required"),
-      "Expected missing target error, got: $stderr"
+      stderr.contains("No bundle entries found"),
+      "Expected missing-bundles error, got: $stderr"
     )
   }
 
-  private fun writeTargetConfig(
-    baseDir: Path,
-    profileId: String = "profile",
-    artifacts: List<Pair<String, String>> = emptyList()
-  ): String {
-    val p2Path = baseDir.resolve("target").resolve("p2")
-    val registryDir = p2Path.resolve("org.eclipse.equinox.p2.engine/profileRegistry")
-    val profileDir = registryDir.resolve("$profileId.profile")
-    Files.createDirectories(profileDir)
+  @Test
+  fun `lsp init fails without target config`() {
+    val baseDir = Files.createTempDirectory("lsp-init-missing-target")
+    val configPath = baseDir.resolve("pde.yaml")
+    Files.writeString(
+      configPath,
+      listOf(
+        "bundles:",
+        "  - path: some-bundle"
+      ).joinToString("\n")
+    )
 
-    val bundlePool = baseDir.resolve("target").resolve("bundle-pool")
-    Files.createDirectories(bundlePool.resolve("plugins"))
-
-    val profileFile = profileDir.resolve("1.profile")
-    val artifactsXml = artifacts.joinToString("\n") { (id, version) ->
-      "        <artifact classifier=\"osgi.bundle\" id=\"$id\" version=\"$version\"/>"
+    val (exitCode, stderr) = captureStderr {
+      JdtlsInitCommand.main(arrayOf("--config", configPath.toString()))
     }
-    val profileXml = buildString {
-      appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
-      appendLine("<profile>")
-      appendLine("  <properties>")
-      appendLine("    <property name=\"org.eclipse.equinox.p2.cache\" value=\"${bundlePool.toAbsolutePath().toUri()}\"/>")
-      appendLine("  </properties>")
-      appendLine("  <installableUnits>")
-      appendLine("    <unit id=\"$profileId\">")
-      appendLine("      <artifacts>")
-      if (artifactsXml.isNotBlank()) {
-        appendLine(artifactsXml)
-      }
-      appendLine("      </artifacts>")
-      appendLine("    </unit>")
-      appendLine("  </installableUnits>")
-      appendLine("</profile>")
-    }
-    Files.writeString(profileFile, profileXml)
-    return listOf(
-      "target:",
-      "  profileId: $profileId",
-      "  p2Path: target/p2"
-    ).joinToString("\n")
+    assertEquals(2, exitCode)
+    assertTrue(
+      stderr.contains("target profile path missing"),
+      "Expected missing target-profile error, got: $stderr"
+    )
   }
 
-  private fun configText(targetConfig: String, bodyLines: List<String>): String {
-    val lines = mutableListOf<String>()
-    lines.addAll(targetConfig.trimEnd().lines())
-    lines.addAll(bodyLines)
-    return lines.joinToString("\n")
+  @Test
+  fun `lsp init fails when explicit config is missing`() {
+    val baseDir = Files.createTempDirectory("lsp-init-missing-config")
+    val missingConfig = baseDir.resolve("nope.yaml")
+
+    val (exitCode, stderr) = captureStderr {
+      JdtlsInitCommand.main(arrayOf("--config", missingConfig.toString()))
+    }
+    assertEquals(1, exitCode)
+    assertTrue(
+      stderr.contains("Config file not found"),
+      "Expected config-not-found error, got: $stderr"
+    )
   }
 
+  @Test
+  fun `lsp init fails when no config is discovered`() {
+    val baseDir = Files.createTempDirectory("lsp-init-no-config")
+
+    val (exitCode, stderr) = captureStderr {
+      JdtlsInitCommand.main(arrayOf("--issue-dir", baseDir.toString()))
+    }
+    assertEquals(1, exitCode)
+    assertTrue(
+      stderr.contains("No launch config found"),
+      "Expected no-config-found error, got: $stderr"
+    )
+  }
+
+  private fun fakeEquinoxRuntime(outputRoot: Path): EquinoxAppRuntime = EquinoxAppRuntime(
+    launcherExecutable = Path.of("/fake/equinox-launcher"),
+    configurationDir = outputRoot.resolve("configuration"),
+    dataDir = outputRoot.resolve("data")
+  )
+
+  private fun writeBundle(bundleDir: Path, bsn: String) {
+    val metaInf = bundleDir.resolve("META-INF")
+    Files.createDirectories(metaInf)
+    Files.createDirectories(bundleDir.resolve("src"))
+    Files.writeString(
+      metaInf.resolve("MANIFEST.MF"),
+      """
+        Manifest-Version: 1.0
+        Bundle-ManifestVersion: 2
+        Bundle-SymbolicName: $bsn
+        Bundle-Version: 1.0.0
+      """.trimIndent()
+    )
+  }
+
+  private fun createProfileWithFramework(baseDir: Path, profileId: String = "profile") {
+    val registry = baseDir.resolve("target/p2/org.eclipse.equinox.p2.engine/profileRegistry/$profileId.Profile")
+    Files.createDirectories(registry)
+    val pool = baseDir.resolve("target/p2/bundle-pool")
+    val plugins = pool.resolve("plugins")
+    Files.createDirectories(plugins)
+    val mf = Manifest().apply {
+      mainAttributes[Attributes.Name.MANIFEST_VERSION] = "1.0"
+      mainAttributes.putValue("Bundle-ManifestVersion", "2")
+      mainAttributes.putValue("Bundle-SymbolicName", "org.eclipse.osgi")
+      mainAttributes.putValue("Bundle-Version", "1.0.0")
+    }
+    JarOutputStream(Files.newOutputStream(plugins.resolve("org.eclipse.osgi_1.0.0.jar")), mf).use { /* empty */ }
+    Files.writeString(
+      registry.resolve("1.profile"),
+      """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <profile id="$profileId" timestamp="1" version="1.0.0">
+          <properties>
+            <property name="org.eclipse.equinox.p2.cache" value="${pool.toUri()}"/>
+          </properties>
+        </profile>
+      """.trimIndent()
+    )
+  }
+
+  private fun writeTargetConfig(baseDir: Path, bundleDirs: List<Path>, profileId: String = "profile"): Path {
+    val configPath = baseDir.resolve("pde.yaml")
+    val bundlesYaml = bundleDirs.joinToString("\n") { dir -> "  - path: ${dir.toAbsolutePath()}" }
+    Files.writeString(
+      configPath,
+      listOf(
+        "target:",
+        "  profileId: $profileId",
+        "  p2Path: target/p2",
+        "bundles:",
+        bundlesYaml
+      ).joinToString("\n")
+    )
+    return configPath
+  }
+
+  /**
+   * `CliLogging.configure()` only tweaks the root logger's *existing* handlers, while
+   * `workspaceSetupMain`'s own internal logging setup unconditionally tears down and replaces
+   * them with a fresh one bound to whatever `System.err` is at that moment. To capture output
+   * reliably regardless of which path a given command run takes (and regardless of whatever
+   * stale handler state earlier tests left on the JVM-global root logger), both redirect
+   * System.err *and* pre-install a handler bound to the same buffer before invoking the command.
+   */
   private fun captureStderr(block: () -> Int): Pair<Int, String> {
+    val originalErr = System.err
     val rootLogger = Logger.getLogger("")
-    val messages = StringBuilder()
-    val handler = object : Handler() {
-      override fun publish(record: LogRecord) {
-        messages.append(record.message).append('\n')
+    val originalHandlers = rootLogger.handlers.toList()
+    originalHandlers.forEach { rootLogger.removeHandler(it) }
+
+    val buffer = ByteArrayOutputStream()
+    val printStream = PrintStream(buffer, true, StandardCharsets.UTF_8)
+    val handler = object : StreamHandler(printStream, java.util.logging.SimpleFormatter()) {
+      override fun publish(record: java.util.logging.LogRecord) {
+        super.publish(record)
+        flush()
       }
-
-      override fun flush() {}
-      override fun close() {}
     }
+    handler.level = Level.ALL
     rootLogger.addHandler(handler)
-    return try {
-      val exitCode = block()
-      exitCode to messages.toString()
-    } finally {
-      rootLogger.removeHandler(handler)
-    }
-  }
 
-  private fun <T> withWorkingDirectory(dir: Path, block: () -> T): T {
-    val original = System.getProperty("user.dir")
-    System.setProperty("user.dir", dir.toAbsolutePath().normalize().toString())
     return try {
-      block()
+      System.setErr(printStream)
+      val exitCode = block()
+      exitCode to buffer.toString(StandardCharsets.UTF_8)
     } finally {
-      System.setProperty("user.dir", original)
+      System.setErr(originalErr)
+      rootLogger.removeHandler(handler)
+      originalHandlers.forEach { rootLogger.addHandler(it) }
     }
   }
 }
