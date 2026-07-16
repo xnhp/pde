@@ -12,12 +12,13 @@ via Eclipse project import rather than trying Maven/Gradle import first.
 2. Build the `pde` CLI if needed (`./gradlew :pde-cli:installDist`).
 3. Run `pde ide-init vscode` from the issue root (or `--issue-dir`/`--config` as usual).
 
-This writes a `.code-workspace` multi-root file, then runs the same `pde workspace
-setup` Equinox app used by `api-analyze`/`jdt-build` to materialize real
-`.project`/`.classpath` files directly at each bundle's own directory (visible-mode
-project placement — VS Code's bundled JDT LS has no way to consume a shared,
-invisible-project workspace the way `pde api-analyze --workspace-data` does, so it
-needs real files on disk). It also writes two more things relevant to VS Code:
+This writes a `.code-workspace` multi-root file, then runs the same `pde jdt-workspace
+init` Equinox app used by `pde api-baseline check`/`pde jdt-workspace build` to
+materialize real `.project`/`.classpath` files directly at each bundle's own directory
+(visible-mode project placement — VS Code's bundled JDT LS has no way to consume a
+shared, invisible-project workspace the way `pde api-baseline check --workspace-data`
+does, so it needs real files on disk). It also writes two more things relevant to
+VS Code:
 
 - `.vscode/settings.json` (only if it doesn't already exist — never clobbers
   your own settings) with:
@@ -52,3 +53,28 @@ needs real files on disk). It also writes two more things relevant to VS Code:
 - Re-run `pde ide-init vscode` whenever workspace bundles change; VS Code's JDT LS has the
   same `.project`/`.classpath`/`.settings/*.prefs` file watcher as documented for
   Eglot, so it should reimport automatically once those files change.
+- **VS Code's JDT LS and `pde jdt-workspace build` share compiled output, but not build
+  state.** Because projects are visible-mode (`.classpath`'s output entry is a real path
+  under the bundle directory, e.g. `<bundleDir>/bin`), both VS Code's bundled JDT LS and
+  `pde jdt-workspace build` write `.class` files to the *same physical directory* when
+  building the same bundle. But each tracks its own incremental-build state separately,
+  inside its own Eclipse workspace (`-data` directory) — VS Code's bundled JDT LS keeps
+  its own internal workspace storage, entirely separate from `pde jdt-workspace build`'s
+  `.jdtls/workspace/data`, and JDT's incremental builder decides what to recompile from
+  that persisted state, not from inspecting whether matching `.class` files already exist
+  on disk. So the first time *either* one builds a given project, it does a real build
+  regardless of whether the other already compiled that exact code — it will just
+  overwrite whatever's already in the output folder, not recognize it as current. There is
+  currently no way to point VS Code's bundled JDT LS at a different `-data` directory
+  (checked the full `redhat.java` settings surface — nothing exposes it), so this isn't
+  fixable by configuration; sharing build state would require a version-pinned fork of the
+  `vscode-java` extension, which was evaluated and not pursued (narrow benefit — only
+  skips the *first* full build after a cold open — against the ongoing cost of keeping a
+  forked extension's bundled JDT LS version in lockstep with `pde`'s pinned one).
+- **`pde compile` can also write to that same output directory**, and unlike the two JDT
+  builders above, it can actively *delete* files there: on a full rebuild it clears the
+  output directory first, based on its own separate `BundleCompileCache` fingerprint
+  tracking, which has no awareness of VS Code's or `pde jdt-workspace build`'s state
+  either. Interleaving `pde compile` with either JDT builder against the same bundle isn't
+  destructive (everything is regenerable from source), but each can invalidate the
+  other's just-finished output with no coordination between them.
