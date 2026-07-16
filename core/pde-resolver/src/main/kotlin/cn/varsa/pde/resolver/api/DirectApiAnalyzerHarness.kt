@@ -114,11 +114,27 @@ class DirectApiAnalyzerHarness(
       // call refreshPackages(); without it fPackageMap stays empty and all
       // workspace types are reported as REMOVED instead of ADDED, so since-tag
       // checks never fire.
+      // In PDE 1.4+, ProjectComponent.apiDescription wraps ProjectApiDescription
+      // in a CompositeApiDescription — extract through fDescriptions.
       if (currentComponent is ProjectComponent) {
         val ad = currentComponent.apiDescription
-        val m = ad.javaClass.getDeclaredMethod("refreshPackages")
-        m.isAccessible = true
-        m.invoke(ad)
+        try {
+          val m = ad.javaClass.getDeclaredMethod("refreshPackages")
+          m.isAccessible = true
+          m.invoke(ad)
+        } catch (_: NoSuchMethodException) {
+          val fDescriptions = ad.javaClass.getDeclaredField("fDescriptions").also {
+            it.isAccessible = true
+          }
+          val descs = fDescriptions.get(ad) as Array<*>
+          for (desc in descs) {
+            try {
+              val m = desc!!.javaClass.getDeclaredMethod("refreshPackages")
+              m.isAccessible = true
+              m.invoke(desc)
+            } catch (_: NoSuchMethodException) { /* skip descriptions without refreshPackages */ }
+          }
+        }
       }
 
       analyzer.setContinueOnResolverError(true)
