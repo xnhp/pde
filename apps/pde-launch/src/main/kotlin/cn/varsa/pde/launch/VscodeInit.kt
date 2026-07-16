@@ -70,6 +70,10 @@ object VscodeInit {
       val workspaceFile = outOpt?.let { resolvePath(issueRoot, it) } ?: issueRoot.resolve("pde.code-workspace")
       val folderCount = writeCodeWorkspace(context, issueRoot, workspaceFile)
       logger.info("VS Code workspace with ${folderCount} folder(s) written to ${workspaceFile}.")
+      val wroteTasksAndLaunch = writeVscodeTasksAndLaunch(context, issueRoot, configPath)
+      if (wroteTasksAndLaunch) {
+        logger.info("VS Code tasks.json/launch.json written to ${issueRoot.resolve(".vscode")}.")
+      }
       logger.info("Run 'pde lsp init' to generate JDT LS project files (.project/.classpath) for this workspace.")
       0
     } catch (ex: Exception) {
@@ -154,6 +158,127 @@ object VscodeInit {
 
   private fun jsonEscape(value: String): String =
     value.replace("\\", "\\\\").replace("\"", "\\\"")
+
+  private data class VscodeTask(
+    val label: String,
+    val args: List<String>,
+    val background: Boolean
+  )
+
+  private data class VscodeDebugConfig(val name: String, val preLaunchTask: String)
+
+  /**
+   * Generates `.vscode/tasks.json` (one task per launches/tests entry, plus a
+   * `(debug)` background-task variant for JDWP-debuggable entries) and
+   * `.vscode/launch.json` (one `attach` config per debuggable entry, wired to its
+   * background task via preLaunchTask). Only written if absent, matching the
+   * settings.json non-clobber convention above. `--debug` on `pde run` opens real
+   * JDWP; `--debug` on `pde test` is just log verbosity, so a test entry is only
+   * debuggable when its own `debug: true` is set in the YAML, which the launch
+   * engine reads to decide whether to wait for a debugger to attach.
+   */
+  internal fun writeVscodeTasksAndLaunch(context: LaunchConfigContext, issueDir: Path, configPath: Path): Boolean {
+    val vscodeDir = issueDir.resolve(".vscode")
+    val tasksFile = vscodeDir.resolve("tasks.json")
+    val launchFile = vscodeDir.resolve("launch.json")
+    val configPathString = configPath.toAbsolutePath().normalize().toString()
+
+    val tasks = mutableListOf<VscodeTask>()
+    val debugConfigs = mutableListOf<VscodeDebugConfig>()
+
+    context.config.launches.forEach { entry ->
+      tasks += VscodeTask(entry.name, listOf("run", configPathString, entry.name), background = false)
+      val debugLabel = "${entry.name} (debug)"
+      tasks += VscodeTask(debugLabel, listOf("run", configPathString, entry.name, "--debug"), background = true)
+      debugConfigs += VscodeDebugConfig(debugLabel, debugLabel)
+    }
+
+    context.config.tests.forEachIndexed { index, entry ->
+      val display = entry.name ?: (index + 1).toString()
+      val label = "test: $display"
+      tasks += VscodeTask(label, listOf("test", configPathString, display), background = false)
+      if (entry.debug) {
+        val debugLabel = "test: $display (debug)"
+        tasks += VscodeTask(debugLabel, listOf("test", configPathString, display), background = true)
+        debugConfigs += VscodeDebugConfig(debugLabel, debugLabel)
+      }
+    }
+
+    var wrote = false
+    if (Files.notExists(tasksFile)) {
+      Files.createDirectories(vscodeDir)
+      Files.writeString(tasksFile, renderTasksJson(tasks), StandardCharsets.UTF_8)
+      wrote = true
+    }
+    if (Files.notExists(launchFile)) {
+      Files.createDirectories(vscodeDir)
+      Files.writeString(launchFile, renderLaunchJson(debugConfigs), StandardCharsets.UTF_8)
+      wrote = true
+    }
+    return wrote
+  }
+
+  private fun renderTasksJson(tasks: List<VscodeTask>): String {
+    val builder = StringBuilder()
+    builder.appendLine("{")
+    builder.appendLine("  \"version\": \"2.0.0\",")
+    builder.appendLine("  \"tasks\": [")
+    tasks.forEachIndexed { index, task ->
+      val comma = if (index < tasks.size - 1) "," else ""
+      builder.appendLine("    {")
+      builder.appendLine("      \"label\": \"${jsonEscape(task.label)}\",")
+      builder.appendLine("      \"type\": \"shell\",")
+      builder.appendLine("      \"command\": \"pde\",")
+      builder.append("      \"args\": [")
+      builder.append(task.args.joinToString(", ") { "\"${jsonEscape(it)}\"" })
+      builder.appendLine("],")
+      if (task.background) {
+        builder.appendLine("      \"isBackground\": true,")
+        builder.appendLine("      \"problemMatcher\": {")
+        builder.appendLine("        \"pattern\": {")
+        builder.appendLine("          \"regexp\": \"^(x)(x)(x)$\",")
+        builder.appendLine("          \"file\": 1,")
+        builder.appendLine("          \"location\": 2,")
+        builder.appendLine("          \"message\": 3")
+        builder.appendLine("        },")
+        builder.appendLine("        \"background\": {")
+        builder.appendLine("          \"activeOnStart\": true,")
+        builder.appendLine("          \"beginsPattern\": \"^(x)(x)(x)$\",")
+        builder.appendLine(
+          "          \"endsPattern\": \"Waiting for debugger to attach on port 5005\\\\.\\\\.\\\\.\""
+        )
+        builder.appendLine("        }")
+        builder.appendLine("      }")
+      } else {
+        builder.appendLine("      \"problemMatcher\": []")
+      }
+      builder.appendLine("    }${comma}")
+    }
+    builder.appendLine("  ]")
+    builder.appendLine("}")
+    return builder.toString()
+  }
+
+  private fun renderLaunchJson(debugConfigs: List<VscodeDebugConfig>): String {
+    val builder = StringBuilder()
+    builder.appendLine("{")
+    builder.appendLine("  \"version\": \"0.2.0\",")
+    builder.appendLine("  \"configurations\": [")
+    debugConfigs.forEachIndexed { index, config ->
+      val comma = if (index < debugConfigs.size - 1) "," else ""
+      builder.appendLine("    {")
+      builder.appendLine("      \"type\": \"java\",")
+      builder.appendLine("      \"request\": \"attach\",")
+      builder.appendLine("      \"name\": \"${jsonEscape(config.name)}\",")
+      builder.appendLine("      \"hostName\": \"localhost\",")
+      builder.appendLine("      \"port\": 5005,")
+      builder.appendLine("      \"preLaunchTask\": \"${jsonEscape(config.preLaunchTask)}\"")
+      builder.appendLine("    }${comma}")
+    }
+    builder.appendLine("  ]")
+    builder.appendLine("}")
+    return builder.toString()
+  }
 
   private fun fail(message: String): Nothing = throw CliFailure(message)
 }

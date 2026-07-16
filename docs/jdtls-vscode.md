@@ -11,8 +11,10 @@ via Eclipse project import rather than trying Maven/Gradle import first.
 1. Install the `redhat.java` extension in VS Code.
 2. Build the `pde` CLI if needed (`./gradlew :pde-cli:installDist`).
 3. Run `pde ide-init vscode` from the issue root (or `--issue-dir`/`--config` as usual).
-   This writes a `.code-workspace` multi-root file only — it does not generate any JDT LS
-   project metadata.
+   This writes a `.code-workspace` multi-root file, plus `.vscode/tasks.json` and
+   `.vscode/launch.json` (only if absent — never clobbers your own) for the
+   `launches:`/`tests:` entries in `pde.yaml`, covered in detail below. It does not
+   generate any JDT LS project metadata.
 4. Run `pde lsp init` from the same root. This runs the same `pde jdt-workspace init`
    Equinox app used by `pde api-baseline check`/`pde jdt-workspace build` to materialize
    real `.project`/`.classpath` files directly at each bundle's own directory (visible-mode
@@ -40,6 +42,55 @@ via Eclipse project import rather than trying Maven/Gradle import first.
    The Java extension should pick up the generated projects automatically on open;
    if not, run **Java: Clean the Java language server workspace** or **Java: Import
    Java Projects** from the command palette.
+
+## Running and debugging launches/tests from VS Code
+
+There is no custom VS Code extension for `pde` — everything below is generated
+into standard `tasks.json`/`launch.json` so the built-in Run/Debug UI (backed by
+the `redhat.java`/`vscode-java-debug` extensions) can drive it.
+
+For each `launches:` entry in `pde.yaml`, `ide-init vscode` writes:
+
+- A plain task (label = the entry's `name`) that runs `pde run <config> <name>`.
+- A `<name> (debug)` task that runs `pde run <config> <name> --debug`. This opens
+  real JDWP on port 5005 and blocks with `Waiting for debugger to attach on port
+  5005...` until a debugger attaches; the task is marked `isBackground: true` with
+  a problem matcher whose `endsPattern` matches that exact line, so VS Code knows
+  once the process is ready to attach to.
+- A matching `attach` configuration in `launch.json` (`hostName: localhost`, `port:
+  5005`) whose `preLaunchTask` points at the `(debug)` task above by label.
+
+For each `tests:` entry, it writes a `test: <name>` task running `pde test <config>
+<name>` (nameless entries fall back to their 1-based index, the same
+index-or-name resolution `pde test` itself accepts). **Only entries with `debug:
+true` set in their `pde.yaml` test entry** get a `test: <name> (debug)` task and
+matching `launch.json` attach configuration — `pde test --debug` is a log
+verbosity flag, not JDWP, so the debug-task variant runs the exact same plain
+`pde test <config> <name>` command; it is `debug: true` on the YAML entry itself
+that makes the launch engine wait for a debugger on port 5005 before running the
+test.
+
+To use these:
+
+- **Debugging** (either a launch or a `debug: true` test entry): open the Run and
+  Debug panel and pick the corresponding `... (debug)` configuration. VS Code runs
+  the background task first, waits for the `Waiting for debugger...` line, then
+  attaches automatically.
+- **Running a plain launch or test without debugging**: run its (non-`(debug)`)
+  task via **Tasks: Run Task** from the command palette. There's no way to give an
+  arbitrary shell command its own button in the Run and Debug panel outside of a
+  debug attach target, so non-debug launches/tests are only reachable through the
+  Tasks UI, not the Debug dropdown.
+
+Limitations:
+
+- The debug port (5005) is fixed; there's no `pde` flag to change it, so only one
+  JDWP debug session (one launch or debuggable test) can run at a time. This is an
+  accepted v1 limitation, not a bug.
+- `tasks.json`/`launch.json` are only written the first time (same non-clobber
+  rule as `settings.json`): if `launches:`/`tests:` entries change afterward,
+  re-running `pde ide-init vscode` will *not* pick up the change automatically —
+  delete the generated file(s) (or edit them by hand) and re-run.
 
 ## Caveats
 
