@@ -11,22 +11,37 @@ import cn.varsa.cli.core.CliCommandNode
 internal fun pdeCommandTreeHelpText(root: CliCommandGroup): String {
   data class Row(val label: String, val summary: String)
 
+  // Some leaves accept a mode positional (e.g. `pde target install api-baseline`) instead of
+  // being modeled as a real subcommand. List them here so the tree documents them as if they
+  // were child leaves, without changing actual CLI dispatch.
+  val virtualChildren: Map<List<String>, List<Pair<String, String>>> = mapOf(
+    listOf("target", "install") to listOf(
+      "api-baseline" to "Provision the API baseline profile instead of the primary target"
+    )
+  )
+
   val rows = mutableListOf<Row>()
 
-  fun visit(node: CliCommandNode, prefix: String, isLast: Boolean) {
+  fun visit(node: CliCommandNode, path: List<String>, prefix: String, isLast: Boolean) {
     val connector = if (isLast) "└── " else "├── "
     val summary = node.description.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
     rows += Row("$prefix$connector${node.name}", summary)
-    if (node is CliCommandGroup) {
-      val childPrefix = prefix + if (isLast) "    " else "│   "
-      node.children.forEachIndexed { index, child ->
-        visit(child, childPrefix, index == node.children.lastIndex)
-      }
+
+    val nodePath = path + node.name
+    val childPrefix = prefix + if (isLast) "    " else "│   "
+    val groupChildren = if (node is CliCommandGroup) node.children else emptyList()
+    val extra = virtualChildren[nodePath].orEmpty()
+    groupChildren.forEachIndexed { index, child ->
+      visit(child, nodePath, childPrefix, index == groupChildren.lastIndex && extra.isEmpty())
+    }
+    extra.forEachIndexed { index, (name, summaryText) ->
+      val extraConnector = if (index == extra.lastIndex) "└── " else "├── "
+      rows += Row("$childPrefix$extraConnector$name", summaryText)
     }
   }
 
   root.children.forEachIndexed { index, child ->
-    visit(child, "", index == root.children.lastIndex)
+    visit(child, emptyList(), "", index == root.children.lastIndex)
   }
 
   val labelWidth = (rows.maxOfOrNull { it.label.length } ?: 0) + 2
