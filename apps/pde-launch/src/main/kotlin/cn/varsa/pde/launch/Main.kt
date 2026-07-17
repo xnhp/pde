@@ -155,37 +155,46 @@ private val compileOptions = listOf(
 )
 
 private val apiBaselineCheckPositionals = listOf(
-  CliPositionalArg(0, "configPos", "Launch config YAML (defaults to discovered pde.yaml)", "0..1")
+  CliPositionalArg(0, "configPos", "Launch config YAML (auto-discovered if absent)", "0..1")
 )
 
 private val apiBaselineCheckOptions = listOf(
-  CliOption(listOf("--config"), "Path to launch config YAML (defaults to discovered pde.yaml)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--config"), "Path to launch config YAML (auto-discovered from current directory if absent)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log-level"), "Log level (trace, debug, info, warn, error)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log"), "Write the analyzer launcher output log (one shared log for the whole batch invocation)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable verbose logging"),
   CliOption(listOf("--debug"), "Enable debug logging"),
   CliOption(listOf("--baseline-root"), "Baseline source (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--bundle"), "Analyze only the selected workspace bundle BSN (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--workspace-data"), "Path to workspace data directory (from pde jdt-workspace init) for since-tag analysis; defaults to .jdtls/workspace/data if present", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--legacy"), "Run the legacy binary-only (BundleComponent) analysis path, skipping workspace-data / since-tag detection"),
-  CliOption(listOf("--report"), "Write JSON problem report (schemaVersion/problemRef/problemId/messageArgs/...) for downstream tools", takesValue = true, valueLabel = "String")
+  CliOption(listOf("--bundle"), "Analyze only the named workspace bundle BSN (repeatable; default: all workspace bundles)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--workspace-data"), "Path to workspace data directory from 'pde jdt-workspace init'; auto-detected at .jdtls/workspace/data, fails if absent (use --legacy to skip)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--legacy"), "Skip workspace-data / @since-tag detection; run the legacy binary-only analysis path"),
+  CliOption(listOf("--report"), "Write JSON problem report; with multiple bundles, written per-bundle to .api-baseline/reports/ (consumed by add-all-from-report / add-filter)", takesValue = true, valueLabel = "String")
 )
 
-private val apiFiltersAddFromReportPositionals = listOf(
-  CliPositionalArg(0, "reportPos", "Path to api-baseline check --report JSON", "0..1")
+private val apiBaselineAddAllFromReportPositionals = listOf(
+  CliPositionalArg(0, "reportPos", "Path to a report JSON; auto-inferred from .api-baseline/reports/ when absent", "0..1")
 )
 
-private val apiFiltersAddFromReportOptions = listOf(
-  CliOption(listOf("--report"), "Path to api-baseline check --report JSON", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--problem"), "Select a problemRef from the report (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--all"), "Select all report problems (can still be narrowed by filters)"),
-  CliOption(listOf("--bundle"), "Keep only selected bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--category"), "Keep only selected categories (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--severity"), "Keep only selected severities (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--comment-template"), "Set filter comment with {problemRef},{bundleBsn},{timestamp}", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--dry-run"), "Preview .api_filters changes without writing files (default mode)"),
-  CliOption(listOf("--apply"), "Write .settings/.api_filters changes to disk"),
-  CliOption(listOf("--allow-empty-selection"), "Return success when selection yields no problems")
+private val apiBaselineAddAllFromReportOptions = listOf(
+  CliOption(listOf("--report"), "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--problem"), "Select a specific problemRef (repeatable; use --all to select everything)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--all"), "Select all problems; can still be narrowed with --bundle, --category, --severity"),
+  CliOption(listOf("--bundle"), "Narrow selection to specific bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--category"), "Narrow selection to specific problem categories (repeatable, case-insensitive)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--severity"), "Narrow selection to specific severities (repeatable, case-insensitive)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--comment-template"), "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--dry-run"), "Preview .api_filters changes without writing files (default)"),
+  CliOption(listOf("--apply"), "Write .settings/.api_filters changes to disk (default: dry-run preview only)"),
+  CliOption(listOf("--allow-empty-selection"), "Exit 0 when selection yields no problems (default: exit 3)")
+)
+
+private val apiBaselineAddFilterPositionals = listOf(
+  CliPositionalArg(0, "id", "problemRef from the report (e.g. P000001); always writes the filter", "1")
+)
+
+private val apiBaselineAddFilterOptions = listOf(
+  CliOption(listOf("--report"), "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--comment-template"), "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders", takesValue = true, valueLabel = "String")
 )
 
 private val validateConfigPositionals = listOf(
@@ -403,29 +412,31 @@ internal val pdeCommand = CliCommandGroup(
     ),
     CliCommandGroup(
       name = "api-baseline",
-      description = "API baseline analysis commands",
+      description = "API baseline compatibility analysis and filter management",
       children = listOf(
         CliCommandLeaf(
           name = "check",
-          description = "Run API analysis against the baseline target",
+          description = "Run API compatibility analysis against the baseline target",
           handler = forwardToLaunch("pde api-baseline check", "api-baseline", "check"),
           mixinStandardHelpOptions = true,
           options = apiBaselineCheckOptions,
           positionalArgs = apiBaselineCheckPositionals
-        )
-      )
-    ),
-    CliCommandGroup(
-      name = "api-filters",
-      description = "Manage API filters from analyzer reports",
-      children = listOf(
+        ),
         CliCommandLeaf(
-          name = "add-from-report",
-          description = "Add .api_filters entries from api-baseline check report JSON",
-          handler = forwardToLaunch("pde api-filters add-from-report", "api-filters", "add-from-report"),
+          name = "add-all-from-report",
+          description = "Add .api_filters entries for problems in api-baseline check report(s) (--apply to write)",
+          handler = forwardToLaunch("pde api-baseline add-all-from-report", "api-baseline", "add-all-from-report"),
           mixinStandardHelpOptions = true,
-          options = apiFiltersAddFromReportOptions,
-          positionalArgs = apiFiltersAddFromReportPositionals
+          options = apiBaselineAddAllFromReportOptions,
+          positionalArgs = apiBaselineAddAllFromReportPositionals
+        ),
+        CliCommandLeaf(
+          name = "add-filter",
+          description = "Add a .api_filters entry for a specific problem reference (always writes)",
+          handler = forwardToLaunch("pde api-baseline add-filter", "api-baseline", "add-filter"),
+          mixinStandardHelpOptions = true,
+          options = apiBaselineAddFilterOptions,
+          positionalArgs = apiBaselineAddFilterPositionals
         )
       )
     ),

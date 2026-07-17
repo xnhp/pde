@@ -195,100 +195,82 @@ private class ApiFiltersFile(
   }
 }
 
-internal fun apiFiltersMain(args: Array<String>): Int {
-  if (args.isEmpty() || args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
-    printApiFiltersHelp()
-    return 0
-  }
-  return when (args[0]) {
-    "add-from-report" -> apiFiltersAddFromReportMain(args.drop(1).toTypedArray())
-    else -> {
-      apiFiltersLogger.severe("Unknown api-filters subcommand '${args[0]}'. Use 'pde api-filters --help'.")
-      2
-    }
-  }
+internal fun inferReportPaths(reportOpt: String?): List<Path> {
+  if (!reportOpt.isNullOrBlank()) return listOf(Paths.get(reportOpt))
+  val reportsDir = discoverConfigFile()
+    ?.parent
+    ?.resolve(".api-baseline")
+    ?.resolve("reports")
+    ?: Paths.get(".api-baseline/reports")
+  if (!Files.isDirectory(reportsDir)) return emptyList()
+  return Files.list(reportsDir)
+    .filter { it.toString().endsWith(".json") }
+    .sorted()
+    .toList()
 }
 
-private fun printApiFiltersHelp() {
-  println("pde api-filters - API filter commands")
-  println()
-  println("Usage:")
-  println("  pde api-filters <subcommand> [options]")
-  println()
-  println("Subcommands:")
-  println("  add-from-report  Add .api_filters entries from api-baseline check report JSON")
-  println()
-  println("Example:")
-  println("  pde api-filters add-from-report --report build/api-report.json --problem P000001 --apply")
-  println()
-  println("See also:")
-  println("  pde api-filters add-from-report --help")
-  println("  pde api-baseline check --report build/api-report.json")
-  println("  pde --help")
-}
-
-private fun apiFiltersAddFromReportMain(args: Array<String>): Int {
-  val parser = ArgParser("pde api-filters add-from-report")
+internal fun apiBaselineAddAllFromReportMain(args: Array<String>): Int {
+  val parser = ArgParser("pde api-baseline add-all-from-report")
   val reportOpt by parser.option(
     ArgType.String,
     fullName = "report",
-    description = "Path to api-baseline check report JSON"
+    description = "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent"
   )
   val problemRefs by parser.option(
     ArgType.String,
     fullName = "problem",
-    description = "Problem reference from report (repeatable)"
+    description = "Select a specific problemRef (repeatable; use --all to select everything)"
   ).multiple()
   val allOpt by parser.option(
     ArgType.Boolean,
     fullName = "all",
-    description = "Select all problems in report"
+    description = "Select all problems in the report(s); can still be narrowed with --bundle, --category, --severity"
   ).default(false)
   val bundles by parser.option(
     ArgType.String,
     fullName = "bundle",
-    description = "Bundle BSN selector (repeatable)"
+    description = "Narrow selection to specific bundle BSNs (repeatable)"
   ).multiple()
   val categories by parser.option(
     ArgType.String,
     fullName = "category",
-    description = "Category selector (repeatable)"
+    description = "Narrow selection to specific problem categories (repeatable, case-insensitive)"
   ).multiple()
   val severities by parser.option(
     ArgType.String,
     fullName = "severity",
-    description = "Severity selector (repeatable)"
+    description = "Narrow selection to specific severities, e.g. 'error', 'warning' (repeatable, case-insensitive)"
   ).multiple()
   val commentTemplateOpt by parser.option(
     ArgType.String,
     fullName = "comment-template",
-    description = "Comment template with {problemRef},{bundleBsn},{timestamp}"
+    description = "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders"
   )
   val applyOpt by parser.option(
     ArgType.Boolean,
     fullName = "apply",
-    description = "Persist changes"
+    description = "Write .settings/.api_filters changes to disk (default: dry-run preview only)"
   ).default(false)
   val dryRunOpt by parser.option(
     ArgType.Boolean,
     fullName = "dry-run",
-    description = "Preview changes without writing files"
+    description = "Preview .api_filters changes without writing files (default)"
   ).default(false)
   val allowEmptySelectionOpt by parser.option(
     ArgType.Boolean,
     fullName = "allow-empty-selection",
-    description = "Treat empty selection as success"
+    description = "Exit 0 when the selection yields no problems (default: exit 3)"
   ).default(false)
   val reportPos by parser.argument(
     ArgType.String,
-    description = "Path to api-baseline check report JSON"
+    description = "Path to a report JSON; auto-inferred from .api-baseline/reports/ when absent"
   ).optional()
 
   parser.parse(args)
 
-  val reportPath = reportOpt ?: reportPos
-  if (reportPath.isNullOrBlank()) {
-    apiFiltersLogger.severe("Missing --report")
+  val reportPaths = inferReportPaths(reportOpt ?: reportPos)
+  if (reportPaths.isEmpty()) {
+    apiFiltersLogger.severe("No report found. Pass --report or run 'pde api-baseline check' first.")
     return 2
   }
   if (!allOpt && problemRefs.isEmpty()) {
@@ -301,19 +283,23 @@ private fun apiFiltersAddFromReportMain(args: Array<String>): Int {
   }
   val dryRun = dryRunOpt || !applyOpt
 
-  val reportFile = Paths.get(reportPath)
-  val report = runCatching {
-    readApiAnalyzeProblemReport(reportFile)
-  }.getOrElse { error ->
-    apiFiltersLogger.severe("Failed to parse report: ${error.message}")
-    return 4
+  val allProblems = run {
+    val acc = mutableListOf<ApiAnalyzeProblem>()
+    for (path in reportPaths) {
+      val problems = runCatching { readApiAnalyzeProblemReport(path).problems }.getOrElse { error ->
+        apiFiltersLogger.severe("Failed to parse report ${path}: ${error.message}")
+        return 4
+      }
+      acc += problems
+    }
+    acc
   }
 
   val selectedRefs = problemRefs.toSet()
   var selected = if (allOpt) {
-    report.problems
+    allProblems
   } else {
-    report.problems.filter { selectedRefs.contains(it.problemRef) }
+    allProblems.filter { selectedRefs.contains(it.problemRef) }
   }
   if (bundles.isNotEmpty()) {
     val bsnSet = bundles.toSet()
@@ -387,7 +373,86 @@ private fun apiFiltersAddFromReportMain(args: Array<String>): Int {
     stores.values.forEach { it.write() }
   }
   val mode = if (dryRun) "dry-run" else "apply"
-  apiFiltersLogger.info("api-filters add-from-report ($mode): created=$created updated=$updated skipped=$skipped")
+  apiFiltersLogger.info("api-baseline add-all-from-report ($mode): created=$created updated=$updated skipped=$skipped")
+  return 0
+}
+
+internal fun apiBaselineAddFilterMain(args: Array<String>): Int {
+  val parser = ArgParser("pde api-baseline add-filter")
+  val reportOpt by parser.option(
+    ArgType.String,
+    fullName = "report",
+    description = "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent"
+  )
+  val commentTemplateOpt by parser.option(
+    ArgType.String,
+    fullName = "comment-template",
+    description = "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders"
+  )
+  val idArg by parser.argument(
+    ArgType.String,
+    description = "problemRef from the report (e.g. P000001); always writes the filter to disk"
+  )
+
+  parser.parse(args)
+
+  val reportPaths = inferReportPaths(reportOpt)
+  if (reportPaths.isEmpty()) {
+    apiFiltersLogger.severe("No report found. Pass --report or run 'pde api-baseline check' first.")
+    return 2
+  }
+
+  val allProblems = run {
+    val acc = mutableListOf<ApiAnalyzeProblem>()
+    for (path in reportPaths) {
+      val problems = runCatching { readApiAnalyzeProblemReport(path).problems }.getOrElse { error ->
+        apiFiltersLogger.severe("Failed to parse report ${path}: ${error.message}")
+        return 4
+      }
+      acc += problems
+    }
+    acc
+  }
+
+  val problem = allProblems.firstOrNull { it.problemRef == idArg }
+  if (problem == null) {
+    apiFiltersLogger.severe("Problem '$idArg' not found in report(s). Check 'pde api-baseline check' output.")
+    return 3
+  }
+
+  if (problem.bundleBsn.isNullOrBlank() ||
+    problem.resourceType.isNullOrBlank() ||
+    problem.problemId == null ||
+    problem.messageArgs == null
+  ) {
+    apiFiltersLogger.severe("Problem '$idArg' is missing required fields (bundleBsn, resourceType, problemId, messageArgs)")
+    return 5
+  }
+
+  val bsn = problem.bundleBsn
+  val bundleDir = resolveBundleDir(problem)
+  if (bundleDir == null) {
+    apiFiltersLogger.severe("Cannot resolve bundle directory for '$idArg' ($bsn)")
+    return 5
+  }
+
+  val now = Instant.now().toString()
+  val store = ApiFiltersFile.load(bundleDir, bsn)
+  val comment = commentTemplateOpt?.let { template ->
+    template
+      .replace("{problemRef}", problem.problemRef ?: "")
+      .replace("{bundleBsn}", bsn)
+      .replace("{timestamp}", now)
+  }
+  val result = store.upsert(
+    type = problem.resourceType,
+    path = problem.resourcePath,
+    id = problem.problemId,
+    args = problem.messageArgs,
+    comment = comment
+  )
+  store.write()
+  apiFiltersLogger.info("api-baseline add-filter '$idArg': $result")
   return 0
 }
 

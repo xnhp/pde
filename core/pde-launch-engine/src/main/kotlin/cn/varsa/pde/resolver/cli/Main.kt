@@ -454,10 +454,6 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     val exit = testMain(args.drop(1).toTypedArray())
     exitProcess(exit)
   }
-  if (args.isNotEmpty() && args[0] == "api-filters") {
-    val exit = apiFiltersMain(args.drop(1).toTypedArray())
-    exitProcess(exit)
-  }
   if (args.isNotEmpty() && args[0] == "api-baseline") {
     val subcommand = args.getOrNull(1)
     val exit = when (subcommand) {
@@ -467,6 +463,8 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
         0
       }
       "check" -> apiBaselineCheckMain(args.drop(2).toTypedArray())
+      "add-all-from-report" -> apiBaselineAddAllFromReportMain(args.drop(2).toTypedArray())
+      "add-filter" -> apiBaselineAddFilterMain(args.drop(2).toTypedArray())
       else -> apiBaselineCheckMain(args.drop(1).toTypedArray())
     }
     exitProcess(exit)
@@ -1397,21 +1395,27 @@ private fun xmlEscape(value: String): String = value
   .replace(">", "&gt;")
 
 private fun printApiBaselineHelp() {
-  println("pde api-baseline ${maturityTag("WIP")} - API baseline analysis commands")
+  println("pde api-baseline ${maturityTag("WIP")} - API baseline compatibility analysis")
   println()
   println("Usage:")
-  println("  pde api-baseline check [options]")
+  println("  pde api-baseline <subcommand> [options]")
   println()
   println("Subcommands:")
-  println("  check ${maturityTag("WIP")} Run API analysis against the baseline (default)")
+  println("  check               ${maturityTag("WIP")} Run API compatibility analysis against the baseline target")
+  println("  add-all-from-report       Add .api_filters entries for problems in report(s) (--apply to write)")
+  println("  add-filter <id>           Add a .api_filters entry for one problem reference (always writes)")
   println()
   println("Examples:")
-  println("  pde api-baseline check --report build/api-report.json")
+  println("  pde api-baseline check")
+  println("  pde api-baseline check --report .api-baseline/custom-report.json")
+  println("  pde api-baseline add-all-from-report --all --apply")
+  println("  pde api-baseline add-filter P000001")
   println("  pde target install api-baseline --baseline-root .target/p2")
   println()
   println("See also:")
   println("  pde api-baseline check --help")
-  println("  pde api-filters add-from-report --help")
+  println("  pde api-baseline add-all-from-report --help")
+  println("  pde api-baseline add-filter --help")
   println("  pde --help")
 }
 
@@ -3868,7 +3872,7 @@ internal fun apiBaselineCheckMain(
   val configFileOpt by parser.option(
     ArgType.String,
     fullName = "config",
-    description = "Path to launch config YAML"
+    description = "Path to launch config YAML (auto-discovered from current directory if absent)"
   )
   val logLevelOpt by parser.option(
     ArgType.String,
@@ -3899,17 +3903,17 @@ internal fun apiBaselineCheckMain(
   val reportOpt by parser.option(
     ArgType.String,
     fullName = "report",
-    description = "Write machine-readable API problem report JSON"
+    description = "Write JSON problem report to this path; written per-bundle to .api-baseline/reports/<bsn> when multiple bundles are analyzed (consumed by add-all-from-report / add-filter)"
   )
   val bundleFilters by parser.option(
     ArgType.String,
     fullName = "bundle",
-    description = "Analyze only the selected workspace bundle symbolic name (repeatable)"
+    description = "Analyze only the named workspace bundle BSN (repeatable; default: all workspace bundles)"
   ).multiple()
   val workspaceDataOpt by parser.option(
     ArgType.String,
     fullName = "workspace-data",
-    description = "Path to workspace data directory (from pde jdt-workspace init) for since-tag analysis"
+    description = "Path to workspace data directory produced by 'pde jdt-workspace init' for @since-tag analysis; auto-detected at .jdtls/workspace/data, fails loudly if absent (use --legacy to skip)"
   )
   val legacyOpt by parser.option(
     ArgType.Boolean,
@@ -3918,7 +3922,7 @@ internal fun apiBaselineCheckMain(
   ).default(false)
   val configPosOpt by parser.argument(
     ArgType.String,
-    description = "Launch config YAML"
+    description = "Launch config YAML (auto-discovered if absent)"
   ).optional()
 
   parser.parse(normalizedArgs)
