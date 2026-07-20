@@ -220,6 +220,19 @@ internal val pdeCommand = CliCommandGroup(
         )
       )
     ),
+    CliCommandLeaf(
+      name = "init-config",
+      description = "Generate pde.yaml for an issue workspace by detecting modified OSGi bundles from git diff",
+      handler = { args -> InitConfig.main(args) },
+      options = listOf(
+        CliOption(listOf("--issue-dir"), "Issue directory containing git worktrees (defaults to cwd)", takesValue = true, valueLabel = "String"),
+        CliOption(listOf("--base"), "Git base ref for diff (default: origin/master)", takesValue = true, valueLabel = "String"),
+        CliOption(listOf("--dry-run"), "Print generated pde.yaml without writing it")
+      ),
+      positionalArgs = listOf(
+        CliPositionalArg(0, "issueDir", "Issue directory (defaults to cwd)", "0..1")
+      )
+    ),
     CliCommandGroup(
       name = "lsp",
       description = "Java Language Server (JDT LS) integration",

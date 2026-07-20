@@ -3,7 +3,6 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/ij-project.iml" filepath="$PROJECT_DIR$/ij-project.iml" />
-      <module fileurl="file://$PROJECT_DIR$/ij-module-files/org.knime.gateway.impl.iml" filepath="$PROJECT_DIR$/ij-module-files/org.knime.gateway.impl.iml" />
     </modules>
   </component>
 </project>
