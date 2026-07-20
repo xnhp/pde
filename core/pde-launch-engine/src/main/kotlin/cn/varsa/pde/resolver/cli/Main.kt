@@ -38,7 +38,6 @@ import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.importedPackageAndVersion
 import cn.varsa.pde.resolver.manifest.requireCapabilityClauses
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
-import cn.varsa.pde.resolver.compile.BundleCompileCache
 import cn.varsa.pde.resolver.compile.BundleCompileResult
 import cn.varsa.pde.resolver.compile.CompileExecutor
 import cn.varsa.pde.resolver.compile.CompileService
@@ -4374,11 +4373,6 @@ fun compileMain(args: Array<String>): Int {
   val workspaceRoots by parser.option(ArgType.String, fullName = "workspace", shortName = "w", description = "Workspace bundle directory (repeatable)").multiple()
   val framework by parser.option(ArgType.String, fullName = "framework", description = "Framework BSN").default("org.eclipse.osgi")
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
-  val fullRebuild by parser.option(
-    ArgType.Boolean,
-    fullName = "full-rebuild",
-    description = "Force full rebuild of all workspace bundles (skip incremental cache)"
-  ).default(false)
   val debugInfo by parser.option(ArgType.Boolean, fullName = "debug", description = "Emit debug info (lines/vars/source)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results to JSON file")
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
@@ -4465,9 +4459,7 @@ fun compileMain(args: Array<String>): Int {
     }
 
     val results = CompileExecutor.compile(
-      specs,
-      workspaceDependencies = planResult.workspaceDependencies,
-      forceFullRebuild = fullRebuild
+      specs
     )
     resultsJson?.let { path ->
       jsonMapper.writerWithDefaultPrettyPrinter().writeValue(java.io.File(path), results)
@@ -4478,8 +4470,6 @@ fun compileMain(args: Array<String>): Int {
       val spec = specsByBsn[result.bsn]
       if (spec?.isWorkspace == true && result.success && !result.skipped) {
         logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
-      } else if (spec?.isWorkspace == true && result.success && result.skipped) {
-        logger.info("skipped ${result.bsn}: ${result.output}")
       }
       val classfileWarning = extractClassfileWarning(result.output)
       if (classfileWarning != null) {

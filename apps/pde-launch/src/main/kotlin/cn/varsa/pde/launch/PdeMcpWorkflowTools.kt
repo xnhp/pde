@@ -28,13 +28,11 @@ internal val pdeMcpWorkflowCommand = CliCommandGroup(
         title = "Compile PDE workspace",
         description = "Compile PDE Java bundles from a pde.yaml launch configuration. Workspace bundles must be configured via the config's bundles entries.",
         inputSchema = workflowSchema(
-          "config" to stringProperty("Path to pde.yaml or equivalent launch config."),
-          "fullRebuild" to booleanProperty("Force full rebuild of all workspace bundles.", default = false)
+          "config" to stringProperty("Path to pde.yaml or equivalent launch config.")
         ),
         decodeArguments = { arguments ->
           buildArgs {
             addOptional("--config", arguments.string("config"))
-            addFlag("--full-rebuild", arguments.boolean("fullRebuild"))
           }
         }
       ),

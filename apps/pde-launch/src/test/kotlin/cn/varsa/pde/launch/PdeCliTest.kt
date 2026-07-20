@@ -322,7 +322,6 @@ class PdeCliTest {
     assertTrue(output.contains("pde compile"))
     assertTrue(!output.contains("--execute"))
     assertTrue(!output.contains("--workspace"))
-    assertTrue(output.contains("--full-rebuild"))
   }
 
   @Test

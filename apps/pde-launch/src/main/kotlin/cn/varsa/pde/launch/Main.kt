@@ -146,7 +146,6 @@ private val compileOptions = listOf(
   CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--framework"), "Framework BSN", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.osgi"),
   CliOption(listOf("--json"), "Emit compile specs as JSON"),
-  CliOption(listOf("--full-rebuild"), "Force full rebuild of all workspace bundles (skip incremental cache)"),
   CliOption(listOf("--debug"), "Emit debug info (lines/vars/source)"),
   CliOption(listOf("--results-json"), "Write compile results to JSON file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin)", takesValue = true, valueLabel = "String"),
