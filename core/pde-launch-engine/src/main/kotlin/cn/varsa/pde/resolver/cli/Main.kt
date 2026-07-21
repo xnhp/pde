@@ -1407,6 +1407,7 @@ private fun printApiBaselineHelp() {
   println("Examples:")
   println("  pde api-baseline check")
   println("  pde api-baseline check --report .api-baseline/custom-report.json")
+  println("  pde api-baseline check --no-filters")
   println("  pde api-baseline add-all-from-report --all --apply")
   println("  pde api-baseline add-filter P000001")
   println("  pde target install api-baseline --baseline-root .target/p2")
@@ -3919,6 +3920,11 @@ internal fun apiBaselineCheckMain(
     fullName = "legacy",
     description = "Run the legacy binary-only (BundleComponent) analysis path, skipping workspace-data / since-tag detection"
   ).default(false)
+  val noFiltersOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "no-filters",
+    description = "Disable .api_filters suppression; show all problems"
+  ).default(false)
   val configPosOpt by parser.argument(
     ArgType.String,
     description = "Launch config YAML (auto-discovered if absent)"
@@ -4153,7 +4159,7 @@ internal fun apiBaselineCheckMain(
       dependencyArtifacts = dependencyArtifacts.artifacts,
       baselineArtifacts = baselineArtifacts.artifacts,
       outputReportPath = reportPath,
-      apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters").takeIf(Files::isRegularFile)
+      apiFilterFile = descriptor.path.resolve(".settings").resolve(".api_filters")
     )
     val workspaceProjectName: String? = if (workspaceDataPath != null) {
       WorkspaceSetupService.projectName(currentBsn)
@@ -4194,7 +4200,8 @@ internal fun apiBaselineCheckMain(
       currentBundles = currentBundleInfos,
       dependencyArtifacts = batchDependencyArtifacts,
       baselineArtifacts = batchBaselineArtifacts,
-      workspaceDataDir = workspaceDataDirString
+      workspaceDataDir = workspaceDataDirString,
+      applyApiFilters = !noFiltersOpt
     ),
     logFile = batchLogFile
   ).invocation

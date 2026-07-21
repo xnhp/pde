@@ -89,7 +89,7 @@ class DirectApiAnalyzerHarness(
     referenceBaseline.addApiComponents(createComponents(referenceBaseline, referenceArtifacts).toTypedArray())
     try {
       val outcomes = input.currentBundles.map { bundleInfo ->
-        analyzeOneComponent(bundleInfo, input.preferences, currentBaseline, referenceBaseline)
+        analyzeOneComponent(bundleInfo, input.preferences, currentBaseline, referenceBaseline, input.applyApiFilters)
       }
       return BatchAnalysisResult(outcomes)
     } finally {
@@ -102,7 +102,8 @@ class DirectApiAnalyzerHarness(
     bundleInfo: CurrentBundleInfo,
     preferences: Map<String, String>,
     currentBaseline: ApiBaseline,
-    referenceBaseline: ApiBaseline
+    referenceBaseline: ApiBaseline,
+    applyApiFilters: Boolean = true
   ): BundleAnalysisOutcome {
     val bsn = bundleInfo.currentBundle.bundleSymbolicName
     val analyzer = BaseApiAnalyzer()
@@ -148,11 +149,27 @@ class DirectApiAnalyzerHarness(
         NullProgressMonitor()
       )
 
+      val filterRules = if (applyApiFilters && bundleInfo.apiFilterPath != null) {
+        loadApiFilterRules(bundleInfo.apiFilterPath)
+      } else emptyList()
+
+      val allProblems = analyzer.getProblems().toList()
+      val filteredProblems = if (filterRules.isNotEmpty()) {
+        allProblems.filter { problem ->
+          filterRules.none { it.matches(problem.typeName, problem.resourcePath, problem.id, problem.messageArguments.toList()) }
+        }
+      } else allProblems
+
+      val suppressed = allProblems.size - filteredProblems.size
+      if (suppressed > 0) {
+        logger.log(Level.INFO, "API filters suppressed $suppressed problem(s) for bundle $bsn")
+      }
+
       val baselineComponent = referenceBaseline.getApiComponent(bsn)
       val report = ApiAnalysisReport(
         generatedAt = Instant.now(clock).toString(),
         tool = "pde api-baseline check direct",
-        problems = analyzer.getProblems().mapIndexed { index, problem ->
+        problems = filteredProblems.mapIndexed { index, problem ->
           problem.toReportProblem(index + 1, currentComponent, baselineComponent, bundleInfo.apiFilterPath)
         }
       )
