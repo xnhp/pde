@@ -261,6 +261,11 @@ internal fun apiBaselineAddAllFromReportMain(args: Array<String>): Int {
     fullName = "allow-empty-selection",
     description = "Exit 0 when the selection yields no problems (default: exit 3)"
   ).default(false)
+  val allowMissingFieldsOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "allow-missing-fields",
+    description = "Skip problems with missing required fields instead of failing"
+  ).default(false)
   val reportPos by parser.argument(
     ArgType.String,
     description = "Path to a report JSON; auto-inferred from .api-baseline/reports/ when absent"
@@ -330,9 +335,22 @@ internal fun apiBaselineAddAllFromReportMain(args: Array<String>): Int {
       it.messageArgs == null
   }
   if (invalid.isNotEmpty()) {
-    val refs = invalid.map { it.problemRef ?: "<missing>" }
-    apiFiltersLogger.severe("Selected problems missing required fields: ${refs.joinToString(", ")}")
-    return 5
+    if (allowMissingFieldsOpt) {
+      invalid.forEach { problem ->
+        val missing = buildList {
+          if (problem.bundleBsn.isNullOrBlank()) add("bundleBsn")
+          if (problem.resourceType.isNullOrBlank()) add("resourceType")
+          if (problem.problemId == null) add("problemId")
+          if (problem.messageArgs == null) add("messageArgs")
+        }
+        apiFiltersLogger.warning("Skipping ${problem.problemRef ?: "<no-ref>"}: missing fields $missing")
+      }
+      selected = selected - invalid.toSet()
+    } else {
+      val refs = invalid.map { it.problemRef ?: "<missing>" }
+      apiFiltersLogger.severe("Selected problems missing required fields: ${refs.joinToString(", ")}")
+      return 5
+    }
   }
 
   val stores = mutableMapOf<Path, ApiFiltersFile>()
