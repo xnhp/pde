@@ -164,6 +164,7 @@ object IjInit {
       }
       vcsMappings.add(toProjectPath(projectDir, findVcsRoot(bundlePath) ?: bundlePath.parent ?: bundlePath))
       val bundle = bundlePath.fileName?.toString() ?: fail("Bundle path has no final segment: ${bundlePath}")
+      warnOnEmptyFetchJarsLibs(bundlePath, logger)
       val sourceRoots = determineSourceRoots(bundlePath)
       if (sourceRoots.isEmpty()) {
         logger.warning("Bundle has no source roots: ${bundlePath}; skipping")

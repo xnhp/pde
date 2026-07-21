@@ -67,7 +67,7 @@ If a bundle declares local jars in `Bundle-ClassPath`, make sure those jars
 exist before compiling or analyzing. Some bundles provide a `lib/fetch_jars`
 helper for that.
 
-If compilation fails due to missing libraries, look for `lib/fetch_jars` in bundles and inspect the readme there on how to pull extra dependencies. See also CLI `issue fetch_jars --help`.
+If compilation fails due to missing libraries, look for `lib/fetch_jars` in bundles and inspect the readme there on how to pull extra dependencies. See also CLI `issue fetch_jars --help`. `pde ide-init` warns automatically when a bundle's `lib`/`libs` folder ships a `fetch_jars` helper but has no jars yet.
 
 
 # Running and Testing

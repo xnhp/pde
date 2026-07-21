@@ -93,6 +93,7 @@ object VscodeInit {
       if (!Files.exists(bundlePath) || !Files.isDirectory(bundlePath)) {
         fail("Bundle directory does not exist: ${bundlePath}")
       }
+      warnOnEmptyFetchJarsLibs(bundlePath, logger)
       val root = findVcsRoot(bundlePath) ?: bundlePath
       folders.add(root.toAbsolutePath().normalize())
     }
