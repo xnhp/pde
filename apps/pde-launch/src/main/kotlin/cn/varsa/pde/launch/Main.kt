@@ -196,6 +196,18 @@ private val apiBaselineAddFilterOptions = listOf(
   CliOption(listOf("--comment-template"), "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders", takesValue = true, valueLabel = "String")
 )
 
+private val apiBaselineFiltersPrunePositionals = listOf(
+  CliPositionalArg(0, "reportPos", "Path to a report JSON; auto-inferred from .api-baseline/reports/ when absent", "0..1")
+)
+
+private val apiBaselineFiltersPruneOptions = listOf(
+  CliOption(listOf("--report"), "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--bundle"), "Narrow to specific bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--dry-run"), "Preview .api_filters changes without writing files (default)"),
+  CliOption(listOf("--apply"), "Write .settings/.api_filters changes to disk (default: dry-run preview only)"),
+  CliOption(listOf("--allow-empty-selection"), "Exit 0 when no unused filters are found (default: exit 3)")
+)
+
 private val validateConfigPositionals = listOf(
   CliPositionalArg(0, "file", "YAML config file to validate", "1")
 )
@@ -445,21 +457,44 @@ internal val pdeCommand = CliCommandGroup(
           options = apiBaselineCheckOptions,
           positionalArgs = apiBaselineCheckPositionals
         ),
-        CliCommandLeaf(
-          name = "add-all-from-report",
-          description = "Add .api_filters entries for problems in api-baseline check report(s) (--apply to write)",
-          handler = forwardToLaunch("pde api-baseline add-all-from-report", "api-baseline", "add-all-from-report"),
-          mixinStandardHelpOptions = true,
-          options = apiBaselineAddAllFromReportOptions,
-          positionalArgs = apiBaselineAddAllFromReportPositionals
-        ),
-        CliCommandLeaf(
-          name = "add-filter",
-          description = "Add a .api_filters entry for a specific problem reference (always writes)",
-          handler = forwardToLaunch("pde api-baseline add-filter", "api-baseline", "add-filter"),
-          mixinStandardHelpOptions = true,
-          options = apiBaselineAddFilterOptions,
-          positionalArgs = apiBaselineAddFilterPositionals
+        CliCommandGroup(
+          name = "filters",
+          description = "Manage .settings/.api_filters entries",
+          children = listOf(
+            CliCommandLeaf(
+              name = "add-all-from-report",
+              description = "Add .api_filters entries for problems in api-baseline check report(s) (--apply to write)",
+              handler = forwardToLaunch(
+                "pde api-baseline filters add-all-from-report",
+                "api-baseline", "filters", "add-all-from-report"
+              ),
+              mixinStandardHelpOptions = true,
+              options = apiBaselineAddAllFromReportOptions,
+              positionalArgs = apiBaselineAddAllFromReportPositionals
+            ),
+            CliCommandLeaf(
+              name = "add-filter",
+              description = "Add a .api_filters entry for a specific problem reference (always writes)",
+              handler = forwardToLaunch(
+                "pde api-baseline filters add-filter",
+                "api-baseline", "filters", "add-filter"
+              ),
+              mixinStandardHelpOptions = true,
+              options = apiBaselineAddFilterOptions,
+              positionalArgs = apiBaselineAddFilterPositionals
+            ),
+            CliCommandLeaf(
+              name = "prune",
+              description = "Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS (--apply to write)",
+              handler = forwardToLaunch(
+                "pde api-baseline filters prune",
+                "api-baseline", "filters", "prune"
+              ),
+              mixinStandardHelpOptions = true,
+              options = apiBaselineFiltersPruneOptions,
+              positionalArgs = apiBaselineFiltersPrunePositionals
+            )
+          )
         )
       )
     ),
