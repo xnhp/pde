@@ -4151,7 +4151,11 @@ internal fun apiBaselineCheckMain(
     val reportPath = if (reportOpt != null && descriptorsToAnalyze.size == 1) {
       Paths.get(reportOpt)
     } else {
-      outputRoot.resolve("reports").resolve(suffix)
+      // Must end in .json: inferReportPaths() (add-all-from-report / add-filter) discovers reports
+      // by file extension. Without it, a bundle whose BSN happens to end in ".json" (e.g.
+      // org.knime.gateway.json) would be the ONLY report discovered, and every other bundle's
+      // report would silently go unmatched.
+      outputRoot.resolve("reports").resolve("$suffix.json")
     }
     val builtInput = resolveAnalyzerBundleInput(
       currentBundleSymbolicName = currentBsn,

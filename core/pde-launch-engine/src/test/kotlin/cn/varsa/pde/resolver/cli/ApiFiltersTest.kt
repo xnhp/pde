@@ -225,6 +225,55 @@ class ApiBaselineFiltersTest {
   }
 
   @Test
+  fun `add-all-from-report skips version-category problems and still applies the rest`() {
+    val root = Files.createTempDirectory("api-filters-test")
+    try {
+      val bundleDir = createBundle(root, "org.example.bundle")
+      val report = root.resolve("problems.json")
+      Files.writeString(
+        report,
+        """
+        {
+          "schemaVersion": 1,
+          "problems": [
+            {
+              "problemRef": "P000001",
+              "bundleBsn": "org.example.bundle",
+              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "problemId": 926941240,
+              "messageArgs": ["5.13.0", "5.12.0"],
+              "category": "version",
+              "severity": "warning"
+            },
+            {
+              "problemRef": "P000002",
+              "bundleBsn": "org.example.bundle",
+              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "resourceType": "org.example.Type",
+              "problemId": 643842064,
+              "messageArgs": ["A", "B", "C"],
+              "category": "baseline",
+              "severity": "error"
+            }
+          ]
+        }
+        """.trimIndent()
+      )
+
+      val exit = apiBaselineAddAllFromReportMain(
+        arrayOf("--report", report.toString(), "--all", "--apply")
+      )
+
+      assertEquals(0, exit)
+      val content = Files.readString(bundleDir.resolve(".settings").resolve(".api_filters"))
+      assertTrue(content.contains("<filter id=\"643842064\""))
+      assertTrue(!content.contains("926941240"))
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
   fun `add-filter writes api_filters for the specified problem ref`() {
     val root = Files.createTempDirectory("api-filters-test")
     try {

@@ -145,7 +145,7 @@ class ApiBaselineCheckCliTest {
     val bundle = input.currentBundles.single()
     assertEquals("org.example.api", bundle.currentBundle.bundleSymbolicName)
     assertTrue(bundle.currentBundle.synthetic)
-    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.api"), bundle.outputReportPath)
+    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.api.json"), bundle.outputReportPath)
   }
 
   @Test
@@ -263,8 +263,8 @@ class ApiBaselineCheckCliTest {
     })
     assertTrue(Files.isDirectory(targetDependency))
     assertTrue(Files.isDirectory(apiBaseline))
-    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.api"), bundles.first().outputReportPath)
-    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.other"), bundles.last().outputReportPath)
+    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.api.json"), bundles.first().outputReportPath)
+    assertEquals(baseDir.resolve(".api-baseline/reports/org.example.other.json"), bundles.last().outputReportPath)
     assertTrue(!Files.exists(baseDir.resolve(".api-baseline/synthetic-artifacts/baseline/org.example.api")))
     assertTrue(!Files.exists(baseDir.resolve(".api-baseline/synthetic-artifacts/baseline/org.example.other")))
   }
