@@ -183,6 +183,17 @@ class AnalyzerArtifactMaterializerTest {
     assertTrue(diagnostics.any { it.type == AnalyzerArtifactDiagnosticType.UNRESOLVED_REQUIRE_BUNDLE_PROVIDER })
   }
 
+  @Test
+  fun `system-bundle require-bundle entry does not produce a warning`() {
+    val jar = temp.root.toPath().resolve("javax.xml.jre.jar")
+    createJar(jar, "javax.xml.jre", "1.0.0", extraHeaders = mapOf("Require-Bundle" to "system.bundle"))
+    val bundle = ResolvedBundle(jar, readJarManifest(jar), isDirectory = false)
+
+    val result = materialize(targetBundles = listOf(bundle))
+
+    assertTrue(result.diagnostics.none { it.type == AnalyzerArtifactDiagnosticType.UNRESOLVED_REQUIRE_BUNDLE_PROVIDER })
+  }
+
   private fun materialize(
     targetBundles: List<ResolvedBundle> = emptyList(),
     workspaceBundles: List<WorkspaceBundleDescriptor> = emptyList()

@@ -5,6 +5,7 @@ import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
 import cn.varsa.pde.resolver.index.ResolvedBundle
 import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
+import org.osgi.framework.Constants.SYSTEM_BUNDLE_SYMBOLICNAME
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
@@ -189,6 +190,12 @@ object AnalyzerArtifactMaterializer {
     return manifests.flatMap { (path, manifest) ->
       val bsn = manifest.bundleSymbolicName?.key
       manifest.requiredBundleAndVersion().mapNotNull { (requiredBsn, range) ->
+        // system.bundle is an OSGi alias for the framework bundle (bundle 0) which is always
+        // present at runtime.  Unlike a real BSN it never appears in the analyzer artifact set,
+        // so checking it here would produce a false-positive warning.  Eclipse PDE's own API
+        // analysis avoids the problem by delegating to the OSGi resolver state which resolves
+        // the alias transparently; we achieve the same effect by skipping it.
+        if (requiredBsn == SYSTEM_BUNDLE_SYMBOLICNAME) return@mapNotNull null
         val resolved = providers[requiredBsn]?.any { range.includes(it) } == true
         if (resolved) null else AnalyzerArtifactDiagnostic(
           severity = AnalyzerArtifactDiagnosticSeverity.WARNING,
