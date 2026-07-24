@@ -1,5 +1,7 @@
 package cn.varsa.pde.resolver.api
 
+import org.eclipse.core.resources.ResourcesPlugin
+import org.eclipse.core.runtime.NullProgressMonitor
 import org.eclipse.equinox.app.IApplication
 import org.eclipse.equinox.app.IApplicationContext
 import org.osgi.framework.Bundle
@@ -10,9 +12,11 @@ class DirectApiAnalyzerApplication : IApplication {
   override fun start(context: IApplicationContext): Any {
     val args = applicationArgs(context)
     val inputPath = parseInputPath(args)
+    var usesWorkspace = false
     return try {
       val input = BatchApiAnalyzerInputJson.read(inputPath)
-      if (input.workspaceDataDir != null) {
+      usesWorkspace = input.workspaceDataDir != null
+      if (usesWorkspace) {
         System.err.println("API analysis with workspace support; since-tag checks enabled.")
       }
       val result = DirectApiAnalyzerHarness().analyzeBatch(input)
@@ -22,6 +26,13 @@ class DirectApiAnalyzerApplication : IApplication {
       // non-zero if any bundle's analysis failed.
       if (result.allSucceeded) IApplication.EXIT_OK else EXIT_ANALYSIS_FAILED
     } finally {
+      // The workspace `-data` dir is reused across separate CLI invocations (each a fresh Equinox
+      // process). Without an explicit save, core.resources never persists a clean-shutdown marker,
+      // so the next invocation logs "workspace exited with unsaved changes ... refreshing workspace
+      // to recover changes" and re-derives state from scratch instead of trusting the prior save.
+      if (usesWorkspace) {
+        ResourcesPlugin.getWorkspace().save(true, NullProgressMonitor())
+      }
       stopDebugBundlesBeforeRegistryShutdown()
     }
   }

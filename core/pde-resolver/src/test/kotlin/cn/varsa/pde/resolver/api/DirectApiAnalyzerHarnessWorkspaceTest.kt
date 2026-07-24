@@ -180,6 +180,64 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
   }
 
   @Test
+  fun `reusing the same workspace data dir across two analyzer runs does not trigger recovery`() {
+    val setupArchive = workspaceSetupRuntimeArchive()
+    assumeTrue(
+      "Set PDE_WORKSPACE_SETUP_RUNTIME_ARCHIVE or -Dpde.workspaceSetup.runtime.archive to run this test",
+      setupArchive != null
+    )
+
+    val bsn = "org.example.wsreuse"
+    val sources = mapOf(
+      "org/example/api/Example.java" to """
+        package org.example.api;
+        public class Example {
+          public void kept() {}
+        }
+      """.trimIndent()
+    )
+    val baseline = bundleJar(bsn, "1.0.0", sources, exportPackage = "org.example.api;version=\"1.0.0\"")
+    val currentDir = explodedBundleDir(bsn, "1.1.0", sources)
+
+    val dataDir = temp.root.toPath().resolve("ws-data").also { Files.createDirectories(it) }
+    runWorkspaceSetup(setupArchive!!, dataDir, bsn, "1.1.0", currentDir)
+    val projectName = WorkspaceSetupService.projectName(bsn)
+    val current = AnalyzerBundleArtifact(
+      bundleSymbolicName = bsn,
+      version = "1.1.0",
+      path = currentDir,
+      workspaceProjectName = projectName,
+      sourcePath = currentDir
+    )
+
+    // First invocation opens and mutates the shared workspace `-data` dir. The second invocation,
+    // a fresh Equinox process against that same dir, must not see the "exited with unsaved
+    // changes ... refreshing workspace to recover changes" message that core.resources logs when
+    // the previous session didn't shut down cleanly (i.e. never called IWorkspace.save()).
+    analyzeBatchThroughEquinox(
+      bundles = listOf(current),
+      baselines = listOf(baseline),
+      outputReportPaths = listOf(temp.root.toPath().resolve("report1.json")),
+      workspaceDataDir = dataDir.toString()
+    )
+    val secondOutput = runAnalyzerProcess(
+      assembleRuntime(),
+      writeBatchAnalyzerInput(
+        bundles = listOf(current),
+        baselines = listOf(baseline),
+        outputReportPaths = listOf(temp.root.toPath().resolve("report2.json")),
+        workspaceDataDir = dataDir.toString()
+      ),
+      dataDir.toString()
+    )
+
+    assertTrue(
+      "Second run against the reused workspace dir should not trigger recovery. Output:\n$secondOutput",
+      "refreshing workspace to recover changes" !in secondOutput
+    )
+  }
+
+  @Test
   fun `api baseline analysis succeeds with workspaceProjectName equals null`() {
     val sources = mapOf(
       "org/example/api/Example.java" to """
@@ -226,9 +284,23 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
     dependencies: List<AnalyzerBundleArtifact> = emptyList(),
     workspaceDataDir: String? = null
   ): List<ApiAnalysisReport> {
+    val inputPath = writeBatchAnalyzerInput(bundles, baselines, outputReportPaths, dependencies, workspaceDataDir)
+    val output = runAnalyzerProcess(assembleRuntime(), inputPath, workspaceDataDir)
+    return outputReportPaths.map { reportPath ->
+      assertTrue("Analyzer did not write report $reportPath. Output:\n$output", reportPath.exists())
+      ApiAnalysisReportJson.read(reportPath)
+    }
+  }
+
+  private fun writeBatchAnalyzerInput(
+    bundles: List<AnalyzerBundleArtifact>,
+    baselines: List<AnalyzerBundleArtifact>,
+    outputReportPaths: List<Path>,
+    dependencies: List<AnalyzerBundleArtifact> = emptyList(),
+    workspaceDataDir: String? = null
+  ): Path {
     require(bundles.size == outputReportPaths.size) { "Expected one report path per current bundle" }
-    val runtime = assembleRuntime()
-    val inputPath = temp.root.toPath().resolve("batch-analyzer-input.json")
+    val inputPath = temp.root.toPath().resolve("batch-analyzer-input-${System.nanoTime()}.json")
     inputPath.writeText(
       java.lang.String.format(
         java.util.Locale.ROOT,
@@ -246,12 +318,7 @@ class DirectApiAnalyzerHarnessWorkspaceTest {
         if (workspaceDataDir != null) ""","workspaceDataDir":"$workspaceDataDir"""" else ""
       )
     )
-
-    val output = runAnalyzerProcess(runtime, inputPath, workspaceDataDir)
-    return outputReportPaths.map { reportPath ->
-      assertTrue("Analyzer did not write report $reportPath. Output:\n$output", reportPath.exists())
-      ApiAnalysisReportJson.read(reportPath)
-    }
+    return inputPath
   }
 
   private fun runAnalyzerProcess(runtime: RuntimePaths, inputPath: Path, workspaceDataDir: String? = null): String {
