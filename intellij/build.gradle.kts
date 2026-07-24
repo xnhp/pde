@@ -1,5 +1,7 @@
 import org.jetbrains.changelog.*
 import org.jetbrains.intellij.platform.gradle.*
+import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
+import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
 plugins {
   id("java") // Java support
@@ -9,7 +11,16 @@ plugins {
   alias(libs.plugins.qodana) // Gradle Qodana Plugin
   alias(libs.plugins.kover) // Gradle Kover Plugin
 }
-// toolchain/group/version configured in the root build
+// group/version configured in the root build
+
+// The IntelliJ Platform 2026.2 jars (e.g. intellij.spellchecker.jar) are compiled to
+// class file version 69 (Java 25). javac's own JVM must be able to parse that class file
+// version to resolve them as dependencies, so this module needs a JDK 25 toolchain -- the
+// root build's default jvmToolchain(21) is too old and fails with
+// "class file has wrong version 69.0, should be 65.0".
+extensions.configure<KotlinJvmProjectExtension>("kotlin") {
+  jvmToolchain(25)
+}
 
 // Configure project's dependencies
 repositories {
@@ -97,8 +108,18 @@ intellijPlatform {
 
   pluginVerification {
     ides {
-      recommended()
+      // Only 2026.2 is supported/verified; earlier-version compatibility is not guaranteed.
+      create(IntelliJPlatformType.IntellijIdeaUltimate, "2026.2.0.1")
     }
+
+    // Gate on actual incompatibility with the target IDE, not on pre-existing deprecated/
+    // internal API usages that already existed before this version bump and aren't
+    // migration blockers.
+    failureLevel = listOf(
+      VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+      VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+      VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
+    )
   }
 }
 
