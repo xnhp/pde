@@ -90,6 +90,15 @@ private class ApiFiltersFile(
     }
   }
 
+  fun removeMatching(type: String, path: String?, args: List<String>): Boolean {
+    val normalizedType = type.trim()
+    val normalizedPath = path?.trim()?.takeIf { it.isNotEmpty() }
+    val normalizedArgs = args.map { it.trim() }
+    return entries.removeAll {
+      it.type == normalizedType && (normalizedPath == null || it.path == normalizedPath) && it.args == normalizedArgs
+    }
+  }
+
   fun write() {
     val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
     val root = doc.createElement("component")
@@ -209,8 +218,8 @@ internal fun inferReportPaths(reportOpt: String?): List<Path> {
     .toList()
 }
 
-internal fun apiBaselineAddAllFromReportMain(args: Array<String>): Int {
-  val parser = ArgParser("pde api-baseline add-all-from-report")
+internal fun apiBaselineFiltersAddAllFromReportMain(args: Array<String>): Int {
+  val parser = ArgParser("pde api-baseline filters add-all-from-report")
   val reportOpt by parser.option(
     ArgType.String,
     fullName = "report",
@@ -409,12 +418,12 @@ internal fun apiBaselineAddAllFromReportMain(args: Array<String>): Int {
     stores.values.forEach { it.write() }
   }
   val mode = if (dryRun) "dry-run" else "apply"
-  apiFiltersLogger.info("api-baseline add-all-from-report ($mode): created=$created updated=$updated skipped=$skipped")
+  apiFiltersLogger.info("api-baseline filters add-all-from-report ($mode): created=$created updated=$updated skipped=$skipped")
   return 0
 }
 
-internal fun apiBaselineAddFilterMain(args: Array<String>): Int {
-  val parser = ArgParser("pde api-baseline add-filter")
+internal fun apiBaselineFiltersAddFilterMain(args: Array<String>): Int {
+  val parser = ArgParser("pde api-baseline filters add-filter")
   val reportOpt by parser.option(
     ArgType.String,
     fullName = "report",
@@ -488,7 +497,137 @@ internal fun apiBaselineAddFilterMain(args: Array<String>): Int {
     comment = comment
   )
   store.write()
-  apiFiltersLogger.info("api-baseline add-filter '$idArg': $result")
+  apiFiltersLogger.info("api-baseline filters add-filter '$idArg': $result")
+  return 0
+}
+
+// Eclipse PDE API Tools' own message for an IApiProblem.UNUSED_PROBLEM_FILTERS problem
+// (see problemmessages.properties key 30): "The API problem filter for: ''{0}'' is no longer
+// used", where {0} is literally the ORIGINAL suppressed problem's fully rendered message (see
+// BaseApiAnalyzer.createUnusedApiFilterProblems, which passes
+// `filter.getUnderlyingProblem().getMessage()` as the sole message argument). That means the
+// stale .api_filters <filter> entry can be found again by looking, within the same resource
+// (type + path) the warning was reported against, for a filter whose message_arguments equal
+// exactly that captured text -- which is how Eclipse itself stores single-argument filters
+// (missing-@since-tag, method-removed, etc.) in this schema.
+private val unusedApiFilterMessagePattern =
+  Regex("^The API problem filter for: '(.*)' is no longer used$", RegexOption.DOT_MATCHES_ALL)
+
+internal fun apiBaselineFiltersPruneMain(args: Array<String>): Int {
+  val parser = ArgParser("pde api-baseline filters prune")
+  val reportOpt by parser.option(
+    ArgType.String,
+    fullName = "report",
+    description = "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent"
+  )
+  val bundles by parser.option(
+    ArgType.String,
+    fullName = "bundle",
+    description = "Narrow to specific bundle BSNs (repeatable)"
+  ).multiple()
+  val applyOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "apply",
+    description = "Write .settings/.api_filters changes to disk (default: dry-run preview only)"
+  ).default(false)
+  val dryRunOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "dry-run",
+    description = "Preview .api_filters changes without writing files (default)"
+  ).default(false)
+  val allowEmptySelectionOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "allow-empty-selection",
+    description = "Exit 0 when no unused filters are found (default: exit 3)"
+  ).default(false)
+  val reportPos by parser.argument(
+    ArgType.String,
+    description = "Path to a report JSON; auto-inferred from .api-baseline/reports/ when absent"
+  ).optional()
+
+  parser.parse(args)
+
+  val reportPaths = inferReportPaths(reportOpt ?: reportPos)
+  if (reportPaths.isEmpty()) {
+    apiFiltersLogger.severe("No report found. Pass --report or run 'pde api-baseline check' first.")
+    return 2
+  }
+  if (applyOpt && dryRunOpt) {
+    apiFiltersLogger.severe("Use either --apply or --dry-run, not both")
+    return 2
+  }
+  val dryRun = dryRunOpt || !applyOpt
+
+  val allProblems = run {
+    val acc = mutableListOf<ApiAnalyzeProblem>()
+    for (path in reportPaths) {
+      val problems = runCatching { readApiAnalyzeProblemReport(path).problems }.getOrElse { error ->
+        apiFiltersLogger.severe("Failed to parse report ${path}: ${error.message}")
+        return 4
+      }
+      acc += problems
+    }
+    acc
+  }
+
+  var unusedFilterProblems = allProblems.mapNotNull { problem ->
+    val message = problem.message ?: return@mapNotNull null
+    if (problem.category?.lowercase() != "usage") return@mapNotNull null
+    val match = unusedApiFilterMessagePattern.find(message) ?: return@mapNotNull null
+    problem to match.groupValues[1]
+  }
+  if (bundles.isNotEmpty()) {
+    val bsnSet = bundles.toSet()
+    unusedFilterProblems = unusedFilterProblems.filter { (problem, _) -> bsnSet.contains(problem.bundleBsn) }
+  }
+
+  if (unusedFilterProblems.isEmpty()) {
+    if (allowEmptySelectionOpt) {
+      apiFiltersLogger.info("No unused API problem filters found; nothing to do.")
+      return 0
+    }
+    apiFiltersLogger.severe("No unused API problem filters found in report(s)")
+    return 3
+  }
+
+  val stores = mutableMapOf<Path, ApiFiltersFile>()
+  var removed = 0
+  var notFound = 0
+  unusedFilterProblems.forEach { (problem, underlyingMessage) ->
+    val bsn = problem.bundleBsn
+    if (bsn.isNullOrBlank() || problem.resourceType.isNullOrBlank()) {
+      apiFiltersLogger.warning("Skipping ${problem.problemRef ?: "<no-ref>"}: missing bundleBsn/resourceType")
+      notFound++
+      return@forEach
+    }
+    val bundleDir = resolveBundleDir(problem)
+    if (bundleDir == null) {
+      apiFiltersLogger.warning("Cannot resolve bundle directory for ${problem.problemRef ?: "<no-ref>"} ($bsn)")
+      notFound++
+      return@forEach
+    }
+    val store = stores.getOrPut(bundleDir) { ApiFiltersFile.load(bundleDir, bsn) }
+    val removedHere = store.removeMatching(
+      type = problem.resourceType,
+      path = problem.resourcePath,
+      args = listOf(underlyingMessage)
+    )
+    if (removedHere) {
+      removed++
+    } else {
+      apiFiltersLogger.warning(
+        "Could not locate the stale filter for ${problem.problemRef ?: "<no-ref>"} in $bsn " +
+          "(type=${problem.resourceType}, message=\"$underlyingMessage\")"
+      )
+      notFound++
+    }
+  }
+
+  if (!dryRun) {
+    stores.values.forEach { it.write() }
+  }
+  val mode = if (dryRun) "dry-run" else "apply"
+  apiFiltersLogger.info("api-baseline filters prune ($mode): removed=$removed notFound=$notFound")
   return 0
 }
 

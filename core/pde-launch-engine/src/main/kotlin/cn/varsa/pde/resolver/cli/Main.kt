@@ -462,8 +462,22 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
         0
       }
       "check" -> apiBaselineCheckMain(args.drop(2).toTypedArray())
-      "add-all-from-report" -> apiBaselineAddAllFromReportMain(args.drop(2).toTypedArray())
-      "add-filter" -> apiBaselineAddFilterMain(args.drop(2).toTypedArray())
+      "filters" -> {
+        val filtersSubcommand = args.getOrNull(2)
+        when (filtersSubcommand) {
+          null, "-h", "--help", "help" -> {
+            printApiBaselineFiltersHelp()
+            0
+          }
+          "add-all-from-report" -> apiBaselineFiltersAddAllFromReportMain(args.drop(3).toTypedArray())
+          "add-filter" -> apiBaselineFiltersAddFilterMain(args.drop(3).toTypedArray())
+          "prune" -> apiBaselineFiltersPruneMain(args.drop(3).toTypedArray())
+          else -> {
+            logger.severe("Unknown api-baseline filters subcommand '$filtersSubcommand'. Use 'pde api-baseline filters --help'.")
+            2
+          }
+        }
+      }
       else -> apiBaselineCheckMain(args.drop(1).toTypedArray())
     }
     exitProcess(exit)
@@ -1401,22 +1415,43 @@ private fun printApiBaselineHelp() {
   println()
   println("Subcommands:")
   println("  check               ${maturityTag("WIP")} Run API compatibility analysis against the baseline target")
-  println("  add-all-from-report       Add .api_filters entries for problems in report(s) (--apply to write)")
-  println("  add-filter <id>           Add a .api_filters entry for one problem reference (always writes)")
+  println("  filters             Manage .settings/.api_filters entries (see 'pde api-baseline filters --help')")
   println()
   println("Examples:")
   println("  pde api-baseline check")
   println("  pde api-baseline check --report .api-baseline/custom-report.json")
   println("  pde api-baseline check --no-filters")
-  println("  pde api-baseline add-all-from-report --all --apply")
-  println("  pde api-baseline add-filter P000001")
+  println("  pde api-baseline filters add-all-from-report --all --apply")
+  println("  pde api-baseline filters prune --apply")
   println("  pde target install api-baseline --baseline-root .target/p2")
   println()
   println("See also:")
   println("  pde api-baseline check --help")
-  println("  pde api-baseline add-all-from-report --help")
-  println("  pde api-baseline add-filter --help")
+  println("  pde api-baseline filters --help")
   println("  pde --help")
+}
+
+private fun printApiBaselineFiltersHelp() {
+  println("pde api-baseline filters ${maturityTag("WIP")} - Manage .settings/.api_filters entries")
+  println()
+  println("Usage:")
+  println("  pde api-baseline filters <subcommand> [options]")
+  println()
+  println("Subcommands:")
+  println("  add-all-from-report       Add .api_filters entries for problems in report(s) (--apply to write)")
+  println("  add-filter <id>           Add a .api_filters entry for one problem reference (always writes)")
+  println("  prune                     Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS (--apply to write)")
+  println()
+  println("Examples:")
+  println("  pde api-baseline filters add-all-from-report --all --apply")
+  println("  pde api-baseline filters add-filter P000001")
+  println("  pde api-baseline filters prune --apply")
+  println()
+  println("See also:")
+  println("  pde api-baseline filters add-all-from-report --help")
+  println("  pde api-baseline filters add-filter --help")
+  println("  pde api-baseline filters prune --help")
+  println("  pde api-baseline --help")
 }
 
 private fun describeConfig(

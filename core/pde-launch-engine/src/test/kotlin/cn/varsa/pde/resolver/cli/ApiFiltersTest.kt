@@ -35,7 +35,7 @@ class ApiBaselineFiltersTest {
         """.trimIndent()
       )
 
-      val exit = apiBaselineAddAllFromReportMain(
+      val exit = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report",
           report.toString(),
@@ -82,7 +82,7 @@ class ApiBaselineFiltersTest {
         """.trimIndent()
       )
 
-      val exit = apiBaselineAddAllFromReportMain(
+      val exit = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report",
           report.toString(),
@@ -111,7 +111,7 @@ class ApiBaselineFiltersTest {
           .replace("__API_FILTER_FILE__", filterFile.toAbsolutePath().normalize().toString())
       )
 
-      val exit = apiBaselineAddAllFromReportMain(
+      val exit = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report",
           report.toString(),
@@ -200,7 +200,7 @@ class ApiBaselineFiltersTest {
         )
       }
 
-      val exit = apiBaselineAddAllFromReportMain(
+      val exit = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report", reportsDir.resolve("org.example.bundle1.json").toString(),
           "--all",
@@ -210,7 +210,7 @@ class ApiBaselineFiltersTest {
       assertEquals(0, exit)
       assertTrue(Files.exists(bundleDir1.resolve(".settings").resolve(".api_filters")))
 
-      val exit2 = apiBaselineAddAllFromReportMain(
+      val exit2 = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report", reportsDir.resolve("org.example.bundle2.json").toString(),
           "--all",
@@ -269,7 +269,7 @@ class ApiBaselineFiltersTest {
         """.trimIndent()
       )
 
-      val exit = apiBaselineAddAllFromReportMain(
+      val exit = apiBaselineFiltersAddAllFromReportMain(
         arrayOf("--report", report.toString(), "--all", "--apply")
       )
 
@@ -321,7 +321,7 @@ class ApiBaselineFiltersTest {
         """.trimIndent()
       )
 
-      val exit = apiBaselineAddFilterMain(
+      val exit = apiBaselineFiltersAddFilterMain(
         arrayOf(
           "--report",
           report.toString(),
@@ -358,7 +358,7 @@ class ApiBaselineFiltersTest {
         """.trimIndent()
       )
 
-      val exit = apiBaselineAddFilterMain(
+      val exit = apiBaselineFiltersAddFilterMain(
         arrayOf(
           "--report",
           report.toString(),
@@ -402,7 +402,7 @@ class ApiBaselineFiltersTest {
       val paths = inferReportPaths(reportsDir.resolve("org.example.bundle.json").toString())
       assertEquals(1, paths.size)
 
-      val exit = apiBaselineAddAllFromReportMain(
+      val exit = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report",
           reportsDir.resolve("org.example.bundle.json").toString(),
@@ -416,6 +416,137 @@ class ApiBaselineFiltersTest {
       assertTrue(Files.exists(filtersFile))
       val content = Files.readString(filtersFile)
       assertTrue(content.contains("<message_argument value=\"Auto\""))
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `prune removes a filter reported as UNUSED_PROBLEM_FILTERS`() {
+    val root = Files.createTempDirectory("api-filters-test")
+    try {
+      val bundleDir = createBundle(root, "org.example.bundle")
+      val filtersFile = bundleDir.resolve(".settings").resolve(".api_filters")
+      Files.createDirectories(filtersFile.parent)
+      Files.writeString(
+        filtersFile,
+        """
+        <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+        <component id="org.example.bundle" version="2">
+            <resource path="src/org/example/Type.java" type="org.example.Type">
+                <filter id="338792546">
+                    <message_arguments>
+                        <message_argument value="Missing @since tag on org.example.Type"/>
+                    </message_arguments>
+                </filter>
+                <filter id="614465566">
+                    <message_arguments>
+                        <message_argument value="The method org.example.Type.stillUsed() has been removed"/>
+                    </message_arguments>
+                </filter>
+            </resource>
+        </component>
+        """.trimIndent()
+      )
+
+      val report = root.resolve("problems.json")
+      Files.writeString(
+        report,
+        """
+        {
+          "schemaVersion": 1,
+          "problems": [
+            {
+              "problemRef": "P000001",
+              "bundleBsn": "org.example.bundle",
+              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "resourceType": "org.example.Type",
+              "resourcePath": "src/org/example/Type.java",
+              "problemId": 681574430,
+              "messageArgs": ["Missing @since tag on org.example.Type"],
+              "category": "usage",
+              "severity": "warning",
+              "message": "The API problem filter for: 'Missing @since tag on org.example.Type' is no longer used"
+            }
+          ]
+        }
+        """.trimIndent()
+      )
+
+      val exit = apiBaselineFiltersPruneMain(arrayOf("--report", report.toString(), "--apply"))
+
+      assertEquals(0, exit)
+      val content = Files.readString(filtersFile)
+      assertTrue(!content.contains("Missing @since tag on org.example.Type"))
+      assertTrue(content.contains("stillUsed"))
+    } finally {
+      root.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `prune is dry-run by default and ignores non-usage categories`() {
+    val root = Files.createTempDirectory("api-filters-test")
+    try {
+      val bundleDir = createBundle(root, "org.example.bundle")
+      val filtersFile = bundleDir.resolve(".settings").resolve(".api_filters")
+      Files.createDirectories(filtersFile.parent)
+      Files.writeString(
+        filtersFile,
+        """
+        <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+        <component id="org.example.bundle" version="2">
+            <resource path="src/org/example/Type.java" type="org.example.Type">
+                <filter id="338792546">
+                    <message_arguments>
+                        <message_argument value="Missing @since tag on org.example.Type"/>
+                    </message_arguments>
+                </filter>
+            </resource>
+        </component>
+        """.trimIndent()
+      )
+
+      val report = root.resolve("problems.json")
+      Files.writeString(
+        report,
+        """
+        {
+          "schemaVersion": 1,
+          "problems": [
+            {
+              "problemRef": "P000001",
+              "bundleBsn": "org.example.bundle",
+              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "resourceType": "org.example.Type",
+              "resourcePath": "src/org/example/Type.java",
+              "problemId": 681574430,
+              "messageArgs": ["Missing @since tag on org.example.Type"],
+              "category": "usage",
+              "severity": "warning",
+              "message": "The API problem filter for: 'Missing @since tag on org.example.Type' is no longer used"
+            },
+            {
+              "problemRef": "P000002",
+              "bundleBsn": "org.example.bundle",
+              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "resourceType": "org.example.Type",
+              "problemId": 643842064,
+              "messageArgs": ["A"],
+              "category": "compatibility",
+              "severity": "error",
+              "message": "The method org.example.Type.foo() has been removed"
+            }
+          ]
+        }
+        """.trimIndent()
+      )
+
+      val exit = apiBaselineFiltersPruneMain(arrayOf("--report", report.toString()))
+
+      assertEquals(0, exit)
+      val content = Files.readString(filtersFile)
+      assertTrue(content.contains("Missing @since tag on org.example.Type"))
     } finally {
       root.toFile().deleteRecursively()
     }
