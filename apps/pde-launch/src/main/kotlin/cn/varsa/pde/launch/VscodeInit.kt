@@ -94,8 +94,7 @@ object VscodeInit {
         fail("Bundle directory does not exist: ${bundlePath}")
       }
       warnOnEmptyFetchJarsLibs(bundlePath, logger)
-      val root = findVcsRoot(bundlePath) ?: bundlePath
-      folders.add(root.toAbsolutePath().normalize())
+      folders.add(bundlePath.toAbsolutePath().normalize())
     }
     val relativeFolders = folders.sorted().map { root ->
       val relative = issueRoot.relativize(root).toString().replace('\\', '/')
@@ -120,14 +119,6 @@ object VscodeInit {
     Files.createDirectories(workspaceFile.parent ?: issueRoot)
     Files.writeString(workspaceFile, builder.toString(), StandardCharsets.UTF_8)
     return relativeFolders.size
-  }
-
-  private fun findVcsRoot(path: Path): Path? {
-    var current = path.toAbsolutePath().normalize()
-    while (true) {
-      if (Files.exists(current.resolve(".git"))) return current
-      current = current.parent ?: return null
-    }
   }
 
   private fun resolveConfigPath(baseDir: Path, configOpt: String?, configPos: String?): Path? {
