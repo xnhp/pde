@@ -150,13 +150,20 @@ class DirectApiAnalyzerHarness(
       )
 
       val filterRules = if (applyApiFilters && bundleInfo.apiFilterPath != null) {
-        loadApiFilterRules(bundleInfo.apiFilterPath)
+        ApiFilterRule.load(bundleInfo.apiFilterPath)
       } else emptyList()
 
       val allProblems = analyzer.getProblems().toList()
       val filteredProblems = if (filterRules.isNotEmpty()) {
         allProblems.filter { problem ->
-          filterRules.none { it.matches(problem.typeName, problem.resourcePath, problem.id, problem.messageArguments.toList()) }
+          filterRules.none { rule ->
+            rule.matches(
+              problemId = problem.id,
+              typeName = problem.typeName,
+              resourcePath = problem.resourcePath,
+              messageArguments = problem.messageArguments.toList()
+            )
+          }
         }
       } else allProblems
 
