@@ -246,6 +246,17 @@ internal val pdeCommand = CliCommandGroup(
           name = "run",
           description = "Generate metadata and launch JDT LS for this workspace",
           handler = { args -> LspRunCommand.main(args) }
+        ),
+        CliCommandLeaf(
+          name = "ignore",
+          description = "Git skip-worktree the .project/.classpath/.settings/*.prefs files rewritten by lsp init " +
+            "(they are already tracked, not gitignored, so this hides local modifications instead)",
+          handler = { args -> LspIgnoreCommand.main(args) }
+        ),
+        CliCommandLeaf(
+          name = "unignore",
+          description = "Undo 'pde lsp ignore': clear the git skip-worktree bit on those files",
+          handler = { args -> LspIgnoreCommand.mainUndo(args) }
         )
       )
     ),
