@@ -225,7 +225,7 @@ class ApiBaselineFiltersTest {
   }
 
   @Test
-  fun `add-all-from-report skips version-category problems and still applies the rest`() {
+  fun `add-all-from-report skips unsuppressible-category problems and still applies the rest`() {
     val root = Files.createTempDirectory("api-filters-test")
     try {
       val bundleDir = createBundle(root, "org.example.bundle")
@@ -249,6 +249,15 @@ class ApiBaselineFiltersTest {
               "problemRef": "P000002",
               "bundleBsn": "org.example.bundle",
               "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "problemId": 1462763580,
+              "messageArgs": [],
+              "category": "api-baseline",
+              "severity": "warning"
+            },
+            {
+              "problemRef": "P000003",
+              "bundleBsn": "org.example.bundle",
+              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
               "resourceType": "org.example.Type",
               "problemId": 643842064,
               "messageArgs": ["A", "B", "C"],
@@ -268,6 +277,7 @@ class ApiBaselineFiltersTest {
       val content = Files.readString(bundleDir.resolve(".settings").resolve(".api_filters"))
       assertTrue(content.contains("<filter id=\"643842064\""))
       assertTrue(!content.contains("926941240"))
+      assertTrue(!content.contains("1462763580"))
     } finally {
       root.toFile().deleteRecursively()
     }

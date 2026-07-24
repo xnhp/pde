@@ -319,18 +319,22 @@ internal fun apiBaselineAddAllFromReportMain(args: Array<String>): Int {
     selected = selected.filter { it.severity?.lowercase()?.let(severitySet::contains) == true }
   }
 
-  // Version-category problems (e.g. "the minor version should be the same since no new APIs have
-  // been added") are never suppressible via .api_filters: Eclipse PDE API Tools always constructs
-  // them with a null type name (BaseApiAnalyzer.java passes `null` to
-  // newApiVersionNumberProblem(...)), so they can never carry the resourceType an .api_filters entry
-  // requires. Resolving them means bumping the bundle's manifest version, not adding a filter.
-  val versionProblems = selected.filter { it.category?.lowercase() == "version" }
-  if (versionProblems.isNotEmpty()) {
+  // These categories are never suppressible via .api_filters: Eclipse PDE API Tools'
+  // ApiProblemFactory always constructs them with a null type name --
+  // newApiVersionNumberProblem/newApiBaselineProblem/newApiComponentResolutionProblem/
+  // newFatalProblem all pass `null` for typeName -- so they can never carry the resourceType an
+  // .api_filters entry requires. "version" needs a manifest version bump, "api-baseline" needs the
+  // bundle added to the reference baseline, "component-resolution"/"fatal" need the underlying
+  // resolution problem fixed; none of them are fixed by adding a filter.
+  val unsuppressibleCategories = setOf("version", "api-baseline", "component-resolution", "fatal")
+  val unsuppressibleProblems = selected.filter { it.category?.lowercase() in unsuppressibleCategories }
+  if (unsuppressibleProblems.isNotEmpty()) {
     apiFiltersLogger.info(
-      "Skipping ${versionProblems.size} version-category problem(s) not suppressible via .api_filters " +
-        "(requires a manifest version bump instead): ${versionProblems.mapNotNull { it.problemRef }.joinToString(", ")}"
+      "Skipping ${unsuppressibleProblems.size} problem(s) not suppressible via .api_filters " +
+        "(categories: ${unsuppressibleProblems.mapNotNull { it.category }.toSet().joinToString(", ")}): " +
+        unsuppressibleProblems.mapNotNull { it.problemRef }.joinToString(", ")
     )
-    selected = selected - versionProblems.toSet()
+    selected = selected - unsuppressibleProblems.toSet()
   }
 
   if (selected.isEmpty()) {
