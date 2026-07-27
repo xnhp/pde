@@ -41,14 +41,6 @@ class WorkspaceSetupService {
             val project = root.getProject(projectName)
             if (project.exists()) {
                 project.open(IResource.NONE, monitor)
-                // A persisted workspace can be reused across many days of ongoing development on the
-                // underlying checkout (branch switches, pulls, new files) without Eclipse ever being told
-                // the filesystem changed underneath it -- auto-build is deliberately off (see above), so
-                // nothing implicitly re-syncs it either. Without this, PDE API Tools builds its API
-                // description from a stale resource/Java model and reports spurious "no longer an API" /
-                // "no longer used" problems for content that changed after the project was first created.
-                logger.info("Refreshing existing project $projectName to pick up on-disk changes")
-                project.refreshLocal(IResource.DEPTH_INFINITE, monitor)
             } else {
                 createProject(project, projectSpec, input.targetClasspath, knownBsns, monitor)
             }
