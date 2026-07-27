@@ -53,9 +53,9 @@ jobs:
           VERSION=$(cat build/release/version.txt)
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           {
-            echo "notes<<'EOF'"
+            echo "notes<<EOF"
             cat build/release/notes.md
-            echo 'EOF'
+            echo EOF
           } >> "$GITHUB_OUTPUT"
 
       - name: Build artifacts
