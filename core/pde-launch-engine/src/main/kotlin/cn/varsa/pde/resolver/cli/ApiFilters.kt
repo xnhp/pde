@@ -630,7 +630,11 @@ internal fun apiBaselineFiltersPruneMain(args: Array<String>): Int {
     if (removedHere) {
       removed++
     } else {
-      apiFiltersLogger.warning(
+      // The filter is reported as unused by the analyzer but is already absent from
+      // .api_filters (e.g. removed by a prior prune --apply or manually). This is
+      // benign — there is simply nothing to delete — so log at INFO rather than
+      // WARNING to avoid noise in the dry-run summary.
+      apiFiltersLogger.info(
         "Could not locate the stale filter for ${problem.problemRef ?: "<no-ref>"} in $bsn " +
           "(type=${problem.resourceType}, message=\"$underlyingMessage\")"
       )
