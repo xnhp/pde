@@ -16,6 +16,10 @@ import java.io.File
  * headless p2 applications (FeaturesAndBundlesPublisher, p2.director).
  */
 fun Project.equinoxLauncherJar(sdkDir: Provider<File>): Provider<File> = provider {
+  providers.gradleProperty("eclipseLauncherJar").orNull?.let { jarPath ->
+    val jar = file(jarPath)
+    if (jar.isFile) return@provider jar
+  }
   val sdk = sdkDir.get()
   sdk.resolve("plugins")
     .listFiles { f -> f.name.startsWith("org.eclipse.equinox.launcher_") && f.name.endsWith(".jar") }

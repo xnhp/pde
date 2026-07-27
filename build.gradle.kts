@@ -69,8 +69,8 @@ val publishSdkP2Repo by tasks.registering(Exec::class) {
   // Only plugins/features affect published p2 metadata; the rest of a live Eclipse
   // SDK install (configuration/, workspace/) mutates constantly just from being run
   // and would otherwise make this task look "changed" on every build.
-  inputs.dir(eclipseSdkDir.map { it.resolve("plugins") })
-  inputs.dir(eclipseSdkDir.map { it.resolve("features") })
+  inputs.dir(eclipseSdkDir.map { it.resolve("plugins") }).optional()
+  inputs.dir(eclipseSdkDir.map { it.resolve("features") }).optional()
   outputs.dir(sdkP2RepoDir)
   outputs.cacheIf { true }
 

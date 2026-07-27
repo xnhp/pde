@@ -60,36 +60,17 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
-      - name: Setup Eclipse SDK
+      - name: Setup equinox launcher
         run: |
-          SDK_DIR=/tmp/eclipse-sdk
-          if [ ! -d "$SDK_DIR/plugins" ]; then
-            echo "Downloading Eclipse SDK..."
-            curl -sL "https://download.eclipse.org/eclipse/downloads/drops4/R-4.34-202412050800/eclipse-SDK-4.34-linux-gtk-x86_64.tar.gz" \
-              -o /tmp/eclipse-sdk.tar.gz
-            mkdir -p "$SDK_DIR"
-            tar -xzf /tmp/eclipse-sdk.tar.gz -C "$SDK_DIR" --strip-components=1
-            rm /tmp/eclipse-sdk.tar.gz
-          else
-            echo "Eclipse SDK already present, skipping download"
-          fi
-
-      - name: Pre-populate pinned bundle caches
-        run: |
-          if [ ! -d "$HOME/.gradle/caches/pde-pinned-runtime-bundles" ] || [ -z "$(ls -A "$HOME/.gradle/caches/pde-pinned-runtime-bundles" 2>/dev/null)" ]; then
-            echo "Pre-populating pinned bundle caches..."
-            ./gradlew :api-analyzer:regeneratePinnedRuntimeBundles \
-                      :target-installer:regeneratePinnedRuntimeBundles \
-                      -PeclipseSdk=/tmp/eclipse-sdk
-          else
-            echo "Pinned bundle cache already populated, skipping"
-          fi
+          mkdir -p /tmp/eclipse-sdk-launcher
+          curl -sSL --fail "https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.equinox.launcher/1.6.800.v20240603-1754/org.eclipse.equinox.launcher-1.6.800.v20240603-1754.jar" \
+            -o "/tmp/eclipse-sdk-launcher/org.eclipse.equinox.launcher_1.6.800.v20240603-1754.jar"
 
       - name: Build artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }} -PeclipseSdk=/tmp/eclipse-sdk
+        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }} -PeclipseSdk=/tmp/dummy-eclipse-sdk -PeclipseLauncherJar=/tmp/eclipse-sdk-launcher/org.eclipse.equinox.launcher_1.6.800.v20240603-1754.jar
 
       - name: List build outputs
         run: |
