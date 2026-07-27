@@ -107,7 +107,9 @@ private fun parseCommits(rawLog: String): Pair<List<ConventionalCommit>, List<St
   for (record in records) {
     val parts = record.split("\u001F")
     if (parts.size < 3) continue
-    val hash = parts[0]
+    // Every record after the first carries a leading newline from the %x1E separator, which
+    // would otherwise land inside hash.take(7) and break the "(abc1234)" suffix across lines.
+    val hash = parts[0].trim()
     val subject = parts[1].trim()
     val body = parts[2]
     val match = COMMIT_REGEX.find(subject)
@@ -147,10 +149,14 @@ private fun formatCommitLine(commit: ConventionalCommit): String {
   return "$marker$scopePrefix${commit.description} (${commit.hash.take(7)})"
 }
 
-private fun buildReleaseNotes(commits: List<ConventionalCommit>): String {
-  if (commits.isEmpty()) {
+private fun buildReleaseNotes(rawCommits: List<ConventionalCommit>): String {
+  if (rawCommits.isEmpty()) {
     return "No user-facing changes in this release."
   }
+
+  // A change can be reachable twice in one range -- e.g. reverted and re-applied, or landed on
+  // two branches that both merged. Same subject means same change to a reader, so list it once.
+  val commits = rawCommits.distinctBy { it.rawSubject }
 
   val builder = StringBuilder()
   val grouped = commits.groupBy { sectionNameFor(it.type) }
@@ -216,11 +222,9 @@ fun Project.writeReleaseArtifacts(info: ReleaseInfo) {
     appendLine()
     append(info.releaseNotes.ifBlank { "No user-facing changes in this release." })
     appendLine()
-    if (info.nonConventionalSubjects.isNotEmpty()) {
-      appendLine()
-      appendLine("_Unclassified commits_:")
-      info.nonConventionalSubjects.forEach { appendLine("- $it") }
-    }
+    // No trailing "_Unclassified commits_" block: buildReleaseNotes already renders every
+    // non-conventional commit under "Other", with its hash. Repeating the bare subjects here
+    // listed each of them a second time -- 56 duplicate entries on the v0.1.0 notes.
   }.trimEnd() + "\n")
 }
 
