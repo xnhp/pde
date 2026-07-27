@@ -7,6 +7,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,5 +30,11 @@ jobs:
         with:
           pinned-bundles: 'true'
 
+      # cn.varsa:cli-core resolves from GitHub Packages, whose credentials fall back to
+      # GITHUB_ACTOR/GITHUB_TOKEN (see githubPackagesUsername/Password in build.gradle.kts).
+      # Without them the repository 401s. ci.yml and release.yml already set these.
       - name: Build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: ./gradlew build -PeclipseSdk=${{ steps.eclipse.outputs.sdk-path }}
