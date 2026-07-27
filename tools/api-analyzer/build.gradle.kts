@@ -79,7 +79,11 @@ val installIUs = provider {
   listOf(
     appBsn, "org.eclipse.equinox.launcher", "org.eclipse.equinox.simpleconfigurator",
     "org.eclipse.osgi.compatibility.state", "org.apache.felix.scr", "org.eclipse.pde.api.tools",
-    "org.eclipse.pde.core", "org.eclipse.jdt.core", "org.eclipse.jdt.launching"
+    "org.eclipse.pde.core", "org.eclipse.jdt.core", "org.eclipse.jdt.launching",
+    // slf4j.api alone leaves the binding up to p2, which will just as happily resolve
+    // slf4j.nop -- and that silently discards every log record the analyzer emits. Name the
+    // binding we want so the resolution is deterministic across machines.
+    "slf4j.simple"
   )
 }
 

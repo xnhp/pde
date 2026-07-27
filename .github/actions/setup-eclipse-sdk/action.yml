@@ -79,17 +79,19 @@ runs:
           :jdt-build:regeneratePinnedRuntimeBundles \
           -PeclipseSdk=/opt/eclipse-sdk
 
-    # regeneratePinnedRuntimeBundles rewrites the lockfiles from the resolution it just ran.
-    # If they come back changed, the SDK version pinned in this action has drifted from the one
-    # the checked-in lockfiles were generated against -- fail here rather than silently shipping
-    # a runtime built from a different bundle set than the repo documents.
+    # regeneratePinnedRuntimeBundles rewrites the lockfiles from the resolution it just ran, so a
+    # non-empty diff means the committed lockfiles are not reproducible from a clean SDK. The usual
+    # cause is that they were generated on a developer machine whose Eclipse install contributes
+    # bundles a vanilla SDK does not, or that an IU with several equally-valid providers (e.g. an
+    # slf4j binding) was left un-pinned in installIUs and p2 tie-broke differently. Fail here
+    # rather than shipping a runtime that differs from what the repo documents.
     - name: Verify pinned bundle lockfiles are unchanged
       if: inputs.pinned-bundles == 'true' && steps.bundle-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         if ! git diff --exit-code -- 'tools/*/runtime-bundles.lock'; then
-          echo "::error::Pinned bundle lockfiles changed when regenerated against Eclipse SDK ${{ inputs.version }}." \
-               "Either bump the SDK version in .github/actions/setup-eclipse-sdk/action.yml to match the" \
-               "lockfiles, or regenerate and commit the lockfiles for this SDK version."
+          echo "::error::Pinned bundle lockfiles are not reproducible from a clean Eclipse SDK ${{ inputs.version }}." \
+               "Review the diff above: if the change is correct, commit the regenerated lockfiles;" \
+               "if an ambiguous IU was resolved differently, pin the provider you want in that tool's installIUs."
           exit 1
         fi
