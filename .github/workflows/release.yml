@@ -70,7 +70,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }} -PeclipseSdk=/tmp/eclipse-sdk
+        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }} -PeclipseSdk=/tmp/eclipse-sdk -x :publishSdkP2Repo
 
       - name: List build outputs
         run: |
