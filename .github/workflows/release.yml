@@ -62,7 +62,7 @@ jobs:
 
       - name: Setup minimal Eclipse SDK
         run: |
-          mkdir -p /tmp/eclipse-sdk/plugins
+          mkdir -p /tmp/eclipse-sdk/plugins /tmp/eclipse-sdk/features
           curl -sL "https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.equinox.launcher/1.6.800.v20240603-1754/org.eclipse.equinox.launcher-1.6.800.v20240603-1754.jar" \
             -o "/tmp/eclipse-sdk/plugins/org.eclipse.equinox.launcher_1.6.800.v20240603-1754.jar"
 
