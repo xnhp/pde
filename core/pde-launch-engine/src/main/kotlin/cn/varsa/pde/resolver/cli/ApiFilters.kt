@@ -90,15 +90,28 @@ private class ApiFiltersFile(
     }
   }
 
+  private fun typeMatches(filterType: String, searchType: String): Boolean =
+    filterType == searchType || (filterType + "$") in searchType
+
+  private fun argsMatch(entryArgs: List<String>, searchArgs: List<String>): Boolean =
+    entryArgs == searchArgs || entryArgs.all { ea -> searchArgs.any { sa -> ea in sa || sa in ea } }
+
   fun removeMatching(type: String, path: String?, args: List<String>): Boolean {
     val normalizedType = type.trim()
     val normalizedPath = path?.trim()?.takeIf { it.isNotEmpty() }
     val normalizedArgs = args.map { it.trim() }
-    return entries.removeAll {
-      it.type == normalizedType &&
-        (normalizedPath == null || it.path == normalizedPath) &&
-        (it.args == normalizedArgs || it.args.all { entryArg -> normalizedArgs.any { searchArg -> entryArg in searchArg } })
+    val candidates = entries.filter {
+      typeMatches(it.type, normalizedType) &&
+        (normalizedPath == null || it.path == normalizedPath)
     }
+    val matched = candidates.filter { argsMatch(it.args, normalizedArgs) }
+    if (matched.isNotEmpty()) {
+      return entries.removeAll { it in matched }
+    }
+    if (candidates.size == 1) {
+      return entries.removeIf { it in candidates }
+    }
+    return false
   }
 
   fun write() {
