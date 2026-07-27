@@ -43,7 +43,7 @@ public class Application implements IApplication{
         //  /home/ben/eclipse as target location
 
         var profileId = resolvedConfig.profileId();
-        var p2Path = resolvedConfig.p2Path();
+        var p2Path = createDirIfNotExist(resolvedConfig.p2Path());
         var agent = Activator.getProvisioningAgent(p2Path.toUri());
         var targetDefinition = TargetFileParser.parseTargetFile(resolvedConfig.targetDefinition().toString());
         var installFolder = createDirIfNotExist(resolvedConfig.installFolder());
