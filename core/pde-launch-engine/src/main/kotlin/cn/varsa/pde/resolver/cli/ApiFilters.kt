@@ -95,7 +95,9 @@ private class ApiFiltersFile(
     val normalizedPath = path?.trim()?.takeIf { it.isNotEmpty() }
     val normalizedArgs = args.map { it.trim() }
     return entries.removeAll {
-      it.type == normalizedType && (normalizedPath == null || it.path == normalizedPath) && it.args == normalizedArgs
+      it.type == normalizedType &&
+        (normalizedPath == null || it.path == normalizedPath) &&
+        (it.args == normalizedArgs || it.args.all { entryArg -> normalizedArgs.any { searchArg -> entryArg in searchArg } })
     }
   }
 
