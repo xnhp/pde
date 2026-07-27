@@ -182,13 +182,11 @@ private val apiBaselineAddAllFromReportOptions = listOf(
   CliOption(listOf("--category"), "Narrow selection to specific problem categories (repeatable, case-insensitive)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--severity"), "Narrow selection to specific severities (repeatable, case-insensitive)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--comment-template"), "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--dry-run"), "Preview .api_filters changes without writing files (default)"),
-  CliOption(listOf("--apply"), "Write .settings/.api_filters changes to disk (default: dry-run preview only)"),
   CliOption(listOf("--allow-empty-selection"), "Exit 0 when selection yields no problems (default: exit 3)")
 )
 
 private val apiBaselineAddFilterPositionals = listOf(
-  CliPositionalArg(0, "id", "problemRef from the report (e.g. P000001); always writes the filter", "1")
+  CliPositionalArg(0, "id", "problemRef from the report (e.g. P000001)", "1")
 )
 
 private val apiBaselineAddFilterOptions = listOf(
@@ -203,8 +201,6 @@ private val apiBaselineFiltersPrunePositionals = listOf(
 private val apiBaselineFiltersPruneOptions = listOf(
   CliOption(listOf("--report"), "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundle"), "Narrow to specific bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--dry-run"), "Preview .api_filters changes without writing files (default)"),
-  CliOption(listOf("--apply"), "Write .settings/.api_filters changes to disk (default: dry-run preview only)"),
   CliOption(listOf("--allow-empty-selection"), "Exit 0 when no unused filters are found (default: exit 3)")
 )
 
@@ -463,7 +459,7 @@ internal val pdeCommand = CliCommandGroup(
           children = listOf(
             CliCommandLeaf(
               name = "add-all-from-report",
-              description = "Add .api_filters entries for problems in api-baseline check report(s) (--apply to write)",
+              description = "Add .api_filters entries for problems in api-baseline check report(s)",
               handler = forwardToLaunch(
                 "pde api-baseline filters add-all-from-report",
                 "api-baseline", "filters", "add-all-from-report"
@@ -474,7 +470,7 @@ internal val pdeCommand = CliCommandGroup(
             ),
             CliCommandLeaf(
               name = "add-filter",
-              description = "Add a .api_filters entry for a specific problem reference (always writes)",
+              description = "Add a .api_filters entry for a specific problem reference",
               handler = forwardToLaunch(
                 "pde api-baseline filters add-filter",
                 "api-baseline", "filters", "add-filter"
@@ -485,7 +481,7 @@ internal val pdeCommand = CliCommandGroup(
             ),
             CliCommandLeaf(
               name = "prune",
-              description = "Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS (--apply to write)",
+              description = "Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS",
               handler = forwardToLaunch(
                 "pde api-baseline filters prune",
                 "api-baseline", "filters", "prune"

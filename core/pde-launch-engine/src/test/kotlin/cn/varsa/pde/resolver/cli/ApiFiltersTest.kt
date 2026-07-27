@@ -8,7 +8,7 @@ import java.nio.file.Path
 
 class ApiBaselineFiltersTest {
   @Test
-  fun `add-all-from-report writes api_filters when apply is set`() {
+  fun `add-all-from-report writes api_filters`() {
     val root = Files.createTempDirectory("api-filters-test")
     try {
       val bundleDir = createBundle(root, "org.example.bundle")
@@ -40,8 +40,7 @@ class ApiBaselineFiltersTest {
           "--report",
           report.toString(),
           "--problem",
-          "P000001",
-          "--apply"
+          "P000001"
         )
       )
 
@@ -52,47 +51,6 @@ class ApiBaselineFiltersTest {
       assertTrue(content.contains("<component id=\"org.example.bundle\" version=\"2\""))
       assertTrue(content.contains("<filter id=\"643842064\""))
       assertTrue(content.contains("<message_argument value=\"A\""))
-    } finally {
-      root.toFile().deleteRecursively()
-    }
-  }
-
-  @Test
-  fun `add-all-from-report is dry-run by default`() {
-    val root = Files.createTempDirectory("api-filters-test")
-    try {
-      val bundleDir = createBundle(root, "org.example.bundle")
-      val report = root.resolve("problems.json")
-      Files.writeString(
-        report,
-        """
-        {
-          "schemaVersion": 1,
-          "problems": [
-            {
-              "problemRef": "P000001",
-              "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
-              "resourceType": "org.example.Type",
-              "problemId": 643842064,
-              "messageArgs": ["A"]
-            }
-          ]
-        }
-        """.trimIndent()
-      )
-
-      val exit = apiBaselineFiltersAddAllFromReportMain(
-        arrayOf(
-          "--report",
-          report.toString(),
-          "--problem",
-          "P000001"
-        )
-      )
-
-      assertEquals(0, exit)
-      assertTrue(!Files.exists(bundleDir.resolve(".settings").resolve(".api_filters")))
     } finally {
       root.toFile().deleteRecursively()
     }
@@ -115,8 +73,7 @@ class ApiBaselineFiltersTest {
         arrayOf(
           "--report",
           report.toString(),
-          "--all",
-          "--apply"
+          "--all"
         )
       )
 
@@ -203,8 +160,7 @@ class ApiBaselineFiltersTest {
       val exit = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report", reportsDir.resolve("org.example.bundle1.json").toString(),
-          "--all",
-          "--apply"
+          "--all"
         )
       )
       assertEquals(0, exit)
@@ -213,8 +169,7 @@ class ApiBaselineFiltersTest {
       val exit2 = apiBaselineFiltersAddAllFromReportMain(
         arrayOf(
           "--report", reportsDir.resolve("org.example.bundle2.json").toString(),
-          "--all",
-          "--apply"
+          "--all"
         )
       )
       assertEquals(0, exit2)
@@ -270,7 +225,7 @@ class ApiBaselineFiltersTest {
       )
 
       val exit = apiBaselineFiltersAddAllFromReportMain(
-        arrayOf("--report", report.toString(), "--all", "--apply")
+        arrayOf("--report", report.toString(), "--all")
       )
 
       assertEquals(0, exit)
@@ -406,8 +361,7 @@ class ApiBaselineFiltersTest {
         arrayOf(
           "--report",
           reportsDir.resolve("org.example.bundle.json").toString(),
-          "--all",
-          "--apply"
+          "--all"
         )
       )
 
@@ -473,7 +427,7 @@ class ApiBaselineFiltersTest {
         """.trimIndent()
       )
 
-      val exit = apiBaselineFiltersPruneMain(arrayOf("--report", report.toString(), "--apply"))
+      val exit = apiBaselineFiltersPruneMain(arrayOf("--report", report.toString()))
 
       assertEquals(0, exit)
       val content = Files.readString(filtersFile)
@@ -485,7 +439,7 @@ class ApiBaselineFiltersTest {
   }
 
   @Test
-  fun `prune is dry-run by default and ignores non-usage categories`() {
+  fun `prune ignores non-usage categories`() {
     val root = Files.createTempDirectory("api-filters-test")
     try {
       val bundleDir = createBundle(root, "org.example.bundle")
@@ -546,7 +500,7 @@ class ApiBaselineFiltersTest {
 
       assertEquals(0, exit)
       val content = Files.readString(filtersFile)
-      assertTrue(content.contains("Missing @since tag on org.example.Type"))
+      assertTrue(!content.contains("Missing @since tag on org.example.Type"))
     } finally {
       root.toFile().deleteRecursively()
     }

@@ -270,16 +270,6 @@ internal fun apiBaselineFiltersAddAllFromReportMain(args: Array<String>): Int {
     fullName = "comment-template",
     description = "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders"
   )
-  val applyOpt by parser.option(
-    ArgType.Boolean,
-    fullName = "apply",
-    description = "Write .settings/.api_filters changes to disk (default: dry-run preview only)"
-  ).default(false)
-  val dryRunOpt by parser.option(
-    ArgType.Boolean,
-    fullName = "dry-run",
-    description = "Preview .api_filters changes without writing files (default)"
-  ).default(false)
   val allowEmptySelectionOpt by parser.option(
     ArgType.Boolean,
     fullName = "allow-empty-selection",
@@ -306,12 +296,6 @@ internal fun apiBaselineFiltersAddAllFromReportMain(args: Array<String>): Int {
     apiFiltersLogger.severe("Specify --problem <ref> (repeatable) or --all")
     return 2
   }
-  if (applyOpt && dryRunOpt) {
-    apiFiltersLogger.severe("Use either --apply or --dry-run, not both")
-    return 2
-  }
-  val dryRun = dryRunOpt || !applyOpt
-
   val allProblems = run {
     val acc = mutableListOf<ApiAnalyzeProblem>()
     for (path in reportPaths) {
@@ -429,11 +413,8 @@ internal fun apiBaselineFiltersAddAllFromReportMain(args: Array<String>): Int {
     }
   }
 
-  if (!dryRun) {
-    stores.values.forEach { it.write() }
-  }
-  val mode = if (dryRun) "dry-run" else "apply"
-  apiFiltersLogger.info("api-baseline filters add-all-from-report ($mode): created=$created updated=$updated skipped=$skipped")
+  stores.values.forEach { it.write() }
+  apiFiltersLogger.info("api-baseline filters add-all-from-report: created=$created updated=$updated skipped=$skipped")
   return 0
 }
 
@@ -451,7 +432,7 @@ internal fun apiBaselineFiltersAddFilterMain(args: Array<String>): Int {
   )
   val idArg by parser.argument(
     ArgType.String,
-    description = "problemRef from the report (e.g. P000001); always writes the filter to disk"
+    description = "problemRef from the report (e.g. P000001)"
   )
 
   parser.parse(args)
@@ -540,16 +521,6 @@ internal fun apiBaselineFiltersPruneMain(args: Array<String>): Int {
     fullName = "bundle",
     description = "Narrow to specific bundle BSNs (repeatable)"
   ).multiple()
-  val applyOpt by parser.option(
-    ArgType.Boolean,
-    fullName = "apply",
-    description = "Write .settings/.api_filters changes to disk (default: dry-run preview only)"
-  ).default(false)
-  val dryRunOpt by parser.option(
-    ArgType.Boolean,
-    fullName = "dry-run",
-    description = "Preview .api_filters changes without writing files (default)"
-  ).default(false)
   val allowEmptySelectionOpt by parser.option(
     ArgType.Boolean,
     fullName = "allow-empty-selection",
@@ -567,12 +538,6 @@ internal fun apiBaselineFiltersPruneMain(args: Array<String>): Int {
     apiFiltersLogger.severe("No report found. Pass --report or run 'pde api-baseline check' first.")
     return 2
   }
-  if (applyOpt && dryRunOpt) {
-    apiFiltersLogger.severe("Use either --apply or --dry-run, not both")
-    return 2
-  }
-  val dryRun = dryRunOpt || !applyOpt
-
   val allProblems = run {
     val acc = mutableListOf<ApiAnalyzeProblem>()
     for (path in reportPaths) {
@@ -631,9 +596,8 @@ internal fun apiBaselineFiltersPruneMain(args: Array<String>): Int {
       removed++
     } else {
       // The filter is reported as unused by the analyzer but is already absent from
-      // .api_filters (e.g. removed by a prior prune --apply or manually). This is
-      // benign — there is simply nothing to delete — so log at INFO rather than
-      // WARNING to avoid noise in the dry-run summary.
+      // .api_filters (e.g. removed by a prior prune or manually). This is benign —
+      // there is simply nothing to delete — so log at INFO rather than WARNING.
       apiFiltersLogger.info(
         "Could not locate the stale filter for ${problem.problemRef ?: "<no-ref>"} in $bsn " +
           "(type=${problem.resourceType}, message=\"$underlyingMessage\")"
@@ -642,11 +606,8 @@ internal fun apiBaselineFiltersPruneMain(args: Array<String>): Int {
     }
   }
 
-  if (!dryRun) {
-    stores.values.forEach { it.write() }
-  }
-  val mode = if (dryRun) "dry-run" else "apply"
-  apiFiltersLogger.info("api-baseline filters prune ($mode): removed=$removed notFound=$notFound")
+  stores.values.forEach { it.write() }
+  apiFiltersLogger.info("api-baseline filters prune: removed=$removed notFound=$notFound")
   return 0
 }
 
