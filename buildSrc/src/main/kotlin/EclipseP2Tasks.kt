@@ -15,7 +15,8 @@ import java.io.File
  * Resolves the Equinox launcher jar inside an Eclipse SDK install, used to invoke
  * headless p2 applications (FeaturesAndBundlesPublisher, p2.director).
  */
-fun Project.equinoxLauncherJar(sdkDir: Provider<File>): Provider<File> = sdkDir.map { sdk ->
+fun Project.equinoxLauncherJar(sdkDir: Provider<File>): Provider<File> = provider {
+  val sdk = sdkDir.get()
   sdk.resolve("plugins")
     .listFiles { f -> f.name.startsWith("org.eclipse.equinox.launcher_") && f.name.endsWith(".jar") }
     ?.firstOrNull()
