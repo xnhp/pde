@@ -12,6 +12,24 @@ import org.gradle.kotlin.dsl.register
 import java.io.File
 
 /**
+ * True when the build was asked to skip everything that needs a real Eclipse SDK install
+ * (`-PskipEclipseRuntimes=true`).
+ *
+ * Materializing an Equinox runtime needs either a local Eclipse SDK (`eclipseSdk`, which defaults
+ * to a developer-machine path) or a warm pinned-bundle cache in the Gradle user home -- see
+ * docs/pinned-runtime-bundles.md. Neither exists on a plain CI runner, yet the resulting runtime
+ * archives are wired into `processResources`/`assemble`, which drags `check` into needing an SDK
+ * just to run unit tests that never touch a runtime.
+ *
+ * This flag unhooks the runtime archives from `processResources`/`assemble` so `check` is
+ * SDK-free. It deliberately does NOT make the materialize tasks silently succeed: anything that
+ * actually ships a runtime (`distZip`, `buildPlugin`, the Release workflow) must run without this
+ * flag, and still fails loudly if the SDK is missing, rather than publishing a gutted artifact.
+ */
+fun Project.skipEclipseRuntimes(): Boolean =
+  providers.gradleProperty("skipEclipseRuntimes").orNull?.toBoolean() == true
+
+/**
  * Resolves the Equinox launcher jar inside an Eclipse SDK install, used to invoke
  * headless p2 applications (FeaturesAndBundlesPublisher, p2.director).
  */

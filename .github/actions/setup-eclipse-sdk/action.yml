@@ -1,0 +1,95 @@
+name: Setup Eclipse SDK
+description: >-
+  Provision the Eclipse SDK this build needs, and optionally the pinned runtime bundle cache,
+  both restored from the Actions cache so only the first run on a given version pays for them.
+
+inputs:
+  version:
+    description: "Eclipse SDK version (must match the version tools/*/runtime-bundles.lock was generated against)"
+    required: false
+    default: "4.31"
+  drop:
+    description: "Eclipse drop identifier for the above version"
+    required: false
+    default: "R-4.31-202402290520"
+  pinned-bundles:
+    description: >-
+      Also populate $GRADLE_USER_HOME/caches/pde-pinned-runtime-bundles via
+      regeneratePinnedRuntimeBundles. Required by anything that materializes a runtime
+      (distZip, buildPlugin); not needed for a -PskipEclipseRuntimes check.
+    required: false
+    default: "false"
+
+outputs:
+  sdk-path:
+    description: "Absolute path to the extracted Eclipse SDK, for -PeclipseSdk"
+    value: ${{ steps.sdk.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    # The build compiles tools/*/src against a fileTree of the SDK's plugins/ directory and
+    # runs headless p2 applications out of it, so a real SDK install is required -- a stub
+    # directory holding only the equinox launcher is not enough.
+    - name: Restore Eclipse SDK
+      id: sdk-cache
+      uses: actions/cache@v4
+      with:
+        path: /opt/eclipse-sdk
+        key: eclipse-sdk-${{ inputs.version }}-${{ inputs.drop }}-linux-x86_64
+
+    - name: Download Eclipse SDK
+      if: steps.sdk-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        url="https://download.eclipse.org/eclipse/downloads/drops4/${{ inputs.drop }}/eclipse-SDK-${{ inputs.version }}-linux-gtk-x86_64.tar.gz"
+        # --fail matters: without it a 404 saves the HTML error page and tar fails with a
+        # misleading "Child returned status 1" instead of reporting the bad URL.
+        curl -sSL --fail "$url" -o /tmp/eclipse-sdk.tar.gz
+        mkdir -p /opt/eclipse-sdk
+        tar -xzf /tmp/eclipse-sdk.tar.gz -C /opt/eclipse-sdk --strip-components=1
+        rm /tmp/eclipse-sdk.tar.gz
+        test -d /opt/eclipse-sdk/plugins
+
+    - name: Export SDK path
+      id: sdk
+      shell: bash
+      run: echo "path=/opt/eclipse-sdk" >> "$GITHUB_OUTPUT"
+
+    # Keyed on the lockfiles: the pinned set only changes when they do, so this is a cache hit
+    # on every build that doesn't touch them. See docs/pinned-runtime-bundles.md.
+    - name: Restore pinned runtime bundle cache
+      if: inputs.pinned-bundles == 'true'
+      id: bundle-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.gradle/caches/pde-pinned-runtime-bundles
+        key: pde-pinned-runtime-bundles-${{ inputs.version }}-${{ hashFiles('tools/*/runtime-bundles.lock') }}
+
+    - name: Populate pinned runtime bundle cache
+      if: inputs.pinned-bundles == 'true' && steps.bundle-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        ./gradlew --no-daemon \
+          :api-analyzer:regeneratePinnedRuntimeBundles \
+          :target-installer:regeneratePinnedRuntimeBundles \
+          :workspace-setup:regeneratePinnedRuntimeBundles \
+          :jdt-build:regeneratePinnedRuntimeBundles \
+          -PeclipseSdk=/opt/eclipse-sdk
+
+    # regeneratePinnedRuntimeBundles rewrites the lockfiles from the resolution it just ran.
+    # If they come back changed, the SDK version pinned in this action has drifted from the one
+    # the checked-in lockfiles were generated against -- fail here rather than silently shipping
+    # a runtime built from a different bundle set than the repo documents.
+    - name: Verify pinned bundle lockfiles are unchanged
+      if: inputs.pinned-bundles == 'true' && steps.bundle-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        if ! git diff --exit-code -- 'tools/*/runtime-bundles.lock'; then
+          echo "::error::Pinned bundle lockfiles changed when regenerated against Eclipse SDK ${{ inputs.version }}." \
+               "Either bump the SDK version in .github/actions/setup-eclipse-sdk/action.yml to match the" \
+               "lockfiles, or regenerate and commit the lockfiles for this SDK version."
+          exit 1
+        fi

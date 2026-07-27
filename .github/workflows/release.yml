@@ -60,17 +60,24 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
-      - name: Setup equinox launcher
-        run: |
-          mkdir -p /tmp/eclipse-sdk-launcher
-          curl -sSL --fail "https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.equinox.launcher/1.6.800.v20240603-1754/org.eclipse.equinox.launcher-1.6.800.v20240603-1754.jar" \
-            -o "/tmp/eclipse-sdk-launcher/org.eclipse.equinox.launcher_1.6.800.v20240603-1754.jar"
+      # A released artifact embeds a real Equinox runtime, so this job gets the full SDK and a
+      # populated pinned bundle cache -- never -PskipEclipseRuntimes, which would produce a
+      # distribution with the runtime archives silently missing.
+      - name: Setup Eclipse SDK
+        id: eclipse
+        uses: ./.github/actions/setup-eclipse-sdk
+        with:
+          pinned-bundles: 'true'
 
       - name: Build artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }} -PeclipseSdk=/tmp/dummy-eclipse-sdk -PeclipseLauncherJar=/tmp/eclipse-sdk-launcher/org.eclipse.equinox.launcher_1.6.800.v20240603-1754.jar
+        run: >-
+          ./gradlew check :pde-cli:distZip :intellij:buildPlugin
+          :pde-cli:verifyTargetInstallerLauncherInDist :pde-cli:verifyApiAnalyzerRuntimeInDist
+          -PpluginVersion=${{ steps.release_info.outputs.version }}
+          -PeclipseSdk=${{ steps.eclipse.outputs.sdk-path }}
 
       - name: List build outputs
         run: |

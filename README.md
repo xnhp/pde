@@ -175,7 +175,7 @@ Releases are produced via the **Release** GitHub Actions workflow:
    - Leave the version input empty to use the recommended version from `generateReleaseInfo`, or
      override it with a specific `X.Y.Z`.
    - Select whether to publish the CLI bundle, the IntelliJ plugin, or both.
-4. The workflow checks out the tip of `knime`, runs
+4. The workflow checks out the tip of `knime`, provisions an Eclipse SDK (see below), runs
    `./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=<calculated version>`
    (authenticating against GitHub Packages with the workflow token), and produces
    the ZIP artifacts under `apps/pde-launch/build/distributions/` and
@@ -192,3 +192,28 @@ Notes:
 - The Release workflow only runs on demand (`workflow_dispatch`); normal CI jobs do not publish.
 - Do not publish a release without the expected assets; users install
   directly from the GitHub release archives.
+
+### How CI gets an Eclipse SDK
+
+`eclipseSdk` in `gradle.properties` points at a local developer install, which does not exist on a
+GitHub runner. All three workflows therefore provision one through the composite action in
+`.github/actions/setup-eclipse-sdk`, which downloads the Eclipse SDK and caches it, and pass its
+path via `-PeclipseSdk`. The SDK version pinned there **must** match the version
+`tools/*/runtime-bundles.lock` was generated against; the action regenerates the lockfiles and
+fails the build if they come back changed, which is the signal that the two have drifted apart.
+
+Two levels of provisioning:
+
+- **`ci.yml`** (unit tests) takes the SDK only and adds `-PskipEclipseRuntimes=true`. The tools'
+  Java sources compile against jars in the SDK's `plugins/`, so the SDK itself is unavoidable, but
+  the flag unhooks the Equinox runtime archives from `processResources`/`assemble` -- those need
+  `p2.director` runs and the pinned bundle cache described in `docs/pinned-runtime-bundles.md`, and
+  nothing under `src/test` loads them.
+- **`build.yml` and `release.yml`** additionally populate the pinned bundle cache
+  (`pinned-bundles: 'true'`) and never pass `-PskipEclipseRuntimes`, because the shipped artifacts
+  embed those runtimes. The release job also runs `verifyTargetInstallerLauncherInDist` and
+  `verifyApiAnalyzerRuntimeInDist` so a distribution missing its runtime fails the build instead of
+  being published.
+
+`-PskipEclipseRuntimes=true` is equally useful locally for compiling and testing on a machine with
+no Eclipse SDK. Never use it to produce something you intend to ship.

@@ -396,20 +396,20 @@ class PdeCliTest {
   }
 
   @Test
-  fun `api filters command prints subcommand help`() {
+  fun `api baseline filters command prints subcommand help`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      runPde(arrayOf("api-filters", "--help"))
+      runPde(arrayOf("api-baseline", "filters", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains("Usage: pde api-filters"))
+    assertTrue(output.contains("Usage: pde api-baseline filters"))
     assertTrue(output.contains("Commands:"))
-    assertTrue(output.contains("add-from-report"))
+    assertTrue(output.contains("add-all-from-report"))
   }
 
   @Test

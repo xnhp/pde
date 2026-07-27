@@ -4,6 +4,7 @@ import eclipsep2.registerMaterializeRuntime
 import eclipsep2.registerPinnedRuntimeMaterialize
 import eclipsep2.registerRegeneratePinnedRuntimeBundles
 import eclipsep2.pinnedRuntimeBundleCacheDir
+import eclipsep2.skipEclipseRuntimes
 
 plugins {
   base
@@ -171,8 +172,13 @@ val targetInstallerLauncherJar by tasks.registering(Jar::class) {
   from(runtimeZip.flatMap { it.archiveFile })
 }
 
-tasks.named("assemble") {
-  dependsOn(targetInstallerLauncherJar)
+// targetInstallerLauncherJar embeds runtimeZip, so it needs a materialized Equinox runtime.
+// -PskipEclipseRuntimes=true keeps `assemble`/`build` off the Eclipse-SDK path so a checkout
+// without a local SDK can still compile and test; see skipEclipseRuntimes().
+if (!skipEclipseRuntimes()) {
+  tasks.named("assemble") {
+    dependsOn(targetInstallerLauncherJar)
+  }
 }
 
 // The `java` plugin's default `jar` task packages the same classes redundantly;

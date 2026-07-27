@@ -4,6 +4,7 @@ import eclipsep2.registerMaterializeRuntime
 import eclipsep2.registerPinnedRuntimeMaterialize
 import eclipsep2.registerRegeneratePinnedRuntimeBundles
 import eclipsep2.pinnedRuntimeBundleCacheDir
+import eclipsep2.skipEclipseRuntimes
 
 plugins {
   base
@@ -136,6 +137,10 @@ val jdtBuildRuntimeZip by tasks.registering(Zip::class) {
   destinationDirectory = layout.buildDirectory.dir("libs")
 }
 
-tasks.named("assemble") {
-  dependsOn(jdtBuildRuntimeZip)
+// -PskipEclipseRuntimes=true keeps `assemble`/`build` off the Eclipse-SDK path so a
+// checkout without a local SDK can still compile and test; see skipEclipseRuntimes().
+if (!skipEclipseRuntimes()) {
+  tasks.named("assemble") {
+    dependsOn(jdtBuildRuntimeZip)
+  }
 }

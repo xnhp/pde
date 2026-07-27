@@ -1,5 +1,6 @@
 import eclipsep2.equinoxLauncherJar
 import eclipsep2.registerMaterializeRuntime
+import eclipsep2.skipEclipseRuntimes
 
 plugins {
   alias(libs.plugins.kotlin)
@@ -62,10 +63,16 @@ val formatterRuntimeZip by tasks.registering(Zip::class) {
   destinationDirectory = layout.buildDirectory.dir("libs")
 }
 
-tasks.named<ProcessResources>("processResources") {
-  from(formatterRuntimeZip)
-}
+// Embedding the runtime archive here is what couples `check` to a local Eclipse SDK: the unit
+// tests in src/test never load it (FormatterRuntimeBootstrap only reads it at runtime), but the
+// resource lands on the test runtime classpath, so `test` transitively requires p2.director.
+// -PskipEclipseRuntimes=true unhooks it for test-only builds; see skipEclipseRuntimes().
+if (!skipEclipseRuntimes()) {
+  tasks.named<ProcessResources>("processResources") {
+    from(formatterRuntimeZip)
+  }
 
-tasks.named("assemble") {
-  dependsOn(formatterRuntimeZip)
+  tasks.named("assemble") {
+    dependsOn(formatterRuntimeZip)
+  }
 }

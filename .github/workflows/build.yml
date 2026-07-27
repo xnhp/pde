@@ -20,5 +20,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Unlike ci.yml this builds the real artifacts, so it needs the pinned bundle cache too.
+      - name: Setup Eclipse SDK
+        id: eclipse
+        uses: ./.github/actions/setup-eclipse-sdk
+        with:
+          pinned-bundles: 'true'
+
       - name: Build
-        run: ./gradlew build
+        run: ./gradlew build -PeclipseSdk=${{ steps.eclipse.outputs.sdk-path }}
