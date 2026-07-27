@@ -60,11 +60,17 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+      - name: Setup minimal Eclipse SDK
+        run: |
+          mkdir -p /tmp/eclipse-sdk/plugins
+          curl -sL "https://repo1.maven.org/maven2/org/eclipse/platform/org.eclipse.equinox.launcher/1.6.800.v20240603-1754/org.eclipse.equinox.launcher-1.6.800.v20240603-1754.jar" \
+            -o "/tmp/eclipse-sdk/plugins/org.eclipse.equinox.launcher_1.6.800.v20240603-1754.jar"
+
       - name: Build artifacts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }}
+        run: ./gradlew check :pde-cli:distZip :intellij:buildPlugin -PpluginVersion=${{ steps.release_info.outputs.version }} -PeclipseSdk=/tmp/eclipse-sdk
 
       - name: List build outputs
         run: |

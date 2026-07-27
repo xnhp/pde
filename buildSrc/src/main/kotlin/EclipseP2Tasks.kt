@@ -132,7 +132,6 @@ fun Project.registerPinnedRuntimeMaterialize(
 
   inputs.file(lockFile)
   inputs.dir(appBundlePluginsDir)
-  inputs.file(launcherJar)
   // cacheDir is deliberately NOT declared as a task input. It lives outside the project (shared
   // Gradle user home cache, see pinnedRuntimeBundleCacheDir), so its mtime/content churns for
   // reasons unrelated to this build (other worktrees regenerating it, cache eviction, etc.) --
