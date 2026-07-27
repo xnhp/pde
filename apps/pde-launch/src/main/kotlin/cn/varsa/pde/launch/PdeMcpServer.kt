@@ -22,7 +22,7 @@ fun main(args: Array<String>) {
   runPdeMcpServer()
 }
 
-private fun detectedVersion(): String {
+internal fun detectedVersion(): String {
   val pkg = object {}::class.java.`package`
   return pkg?.implementationVersion?.takeIf { it.isNotBlank() } ?: "0.0.0"
 }

@@ -559,10 +559,15 @@ private fun pdeMcpHelpText(): String = """
 """.trimIndent()
 
 private val topLevelHelpArgs = setOf("--help", "-h")
+private val topLevelVersionArgs = setOf("--version", "-V")
 
 internal fun runPde(args: Array<String>): Int {
   if (args.isEmpty() || (args.size == 1 && args[0] in topLevelHelpArgs)) {
     println(pdeCommandTreeHelpText(pdeCommand))
+    return 0
+  }
+  if (args.size == 1 && args[0] in topLevelVersionArgs) {
+    println("pde version ${detectedVersion()}")
     return 0
   }
   return CliMain.run(createPdeCommandLine(), args)

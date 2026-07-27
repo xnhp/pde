@@ -473,4 +473,36 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("pde add-test"))
   }
+
+  @Test
+  fun `top-level --version prints version string`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("--version"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString().trim()
+    assertTrue(output.startsWith("pde version "))
+    assertTrue(output.length > "pde version ".length)
+  }
+
+  @Test
+  fun `top-level -V prints version string`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("-V"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString().trim()
+    assertTrue(output.startsWith("pde version "))
+    assertTrue(output.length > "pde version ".length)
+  }
 }
