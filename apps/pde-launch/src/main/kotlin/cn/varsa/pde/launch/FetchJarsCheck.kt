@@ -11,10 +11,10 @@ import java.util.logging.Logger
 private val fetchJarsScanSkipDirs = setOf(".git", "node_modules", "bin", "target")
 
 /**
- * Finds `lib`/`libs` directories (possibly nested, e.g. `lib/mysql8/fetch_jars`) that ship a
- * `fetch_jars` helper but currently contain no jars, meaning the helper has not been run yet.
+ * Finds `fetch_jars` directories (possibly nested, e.g. `lib/mysql8/fetch_jars`), regardless of
+ * whether they currently contain a Maven pom.xml.
  */
-internal fun findEmptyFetchJarsLibDirs(bundlePath: Path): List<Path> {
+internal fun discoverFetchJarsDirs(bundlePath: Path): List<Path> {
   if (!Files.isDirectory(bundlePath)) return emptyList()
 
   val fetchJarsDirs = mutableListOf<Path>()
@@ -30,7 +30,22 @@ internal fun findEmptyFetchJarsLibDirs(bundlePath: Path): List<Path> {
     }
   })
 
-  return fetchJarsDirs.mapNotNull { it.parent }.distinct().filter { libDir -> !containsJar(libDir) }
+  return fetchJarsDirs
+}
+
+/**
+ * Finds `fetch_jars` directories that ship a Maven pom.xml, i.e. that the `pde fetch-jars`
+ * helper can run `mvn clean package` against.
+ */
+internal fun discoverRunnableFetchJarsDirs(bundlePath: Path): List<Path> =
+  discoverFetchJarsDirs(bundlePath).filter { Files.isRegularFile(it.resolve("pom.xml")) }
+
+/**
+ * Finds `lib`/`libs` directories (possibly nested, e.g. `lib/mysql8/fetch_jars`) that ship a
+ * `fetch_jars` helper but currently contain no jars, meaning the helper has not been run yet.
+ */
+internal fun findEmptyFetchJarsLibDirs(bundlePath: Path): List<Path> {
+  return discoverFetchJarsDirs(bundlePath).mapNotNull { it.parent }.distinct().filter { libDir -> !containsJar(libDir) }
 }
 
 private fun containsJar(dir: Path): Boolean =
