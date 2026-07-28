@@ -83,7 +83,7 @@ val installIUs = provider {
 val sdkP2Repo = rootProject.layout.buildDirectory.dir("sdk-p2repo")
 val runtimeDir = layout.buildDirectory.dir("runtime")
 
-// Real p2.director resolution -- manual/CI-only, see docs/pinned-runtime-bundles.md. Feeds
+// Real p2.director resolution -- manual/CI-only (see registerRegeneratePinnedRuntimeBundles). Feeds
 // regeneratePinnedRuntimeBundles below; NOT part of assemble/installDist (materializeWorkspaceSetupRuntime is).
 val p2ResolvedRuntimeDir = layout.buildDirectory.dir("p2-resolved-runtime")
 val resolveRuntimeViaP2Director = registerMaterializeRuntime(

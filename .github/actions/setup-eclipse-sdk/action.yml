@@ -58,7 +58,7 @@ runs:
       run: echo "path=/opt/eclipse-sdk" >> "$GITHUB_OUTPUT"
 
     # Keyed on the lockfiles: the pinned set only changes when they do, so this is a cache hit
-    # on every build that doesn't touch them. See docs/pinned-runtime-bundles.md.
+    # on every build that doesn't touch them (see buildSrc/.../EclipseP2Tasks.kt).
     - name: Restore pinned runtime bundle cache
       if: inputs.pinned-bundles == 'true'
       id: bundle-cache

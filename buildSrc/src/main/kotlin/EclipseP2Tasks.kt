@@ -16,8 +16,8 @@ import java.io.File
  * (`-PskipEclipseRuntimes=true`).
  *
  * Materializing an Equinox runtime needs either a local Eclipse SDK (`eclipseSdk`, which defaults
- * to a developer-machine path) or a warm pinned-bundle cache in the Gradle user home -- see
- * docs/pinned-runtime-bundles.md. Neither exists on a plain CI runner, yet the resulting runtime
+ * to a developer-machine path) or a warm pinned-bundle cache in the Gradle user home (see
+ * [pinnedRuntimeBundleCacheDir]). Neither exists on a plain CI runner, yet the resulting runtime
  * archives are wired into `processResources`/`assemble`, which drags `check` into needing an SDK
  * just to run unit tests that never touch a runtime.
  *
@@ -88,6 +88,21 @@ fun Project.registerPublishAppP2Repo(
  * of IUs into [destinationDir]. Shared shape for both tools' "materialize runtime"
  * step. Kept as Exec (no native Gradle p2 task type exists) but with real
  * inputs/outputs so unrelated changes don't force a re-resolve.
+ *
+ * This is the slow, real resolution -- not wired into `assemble`/`installDist` by default (see
+ * [registerPinnedRuntimeMaterialize], the fast path that replaces it there). Each of the four
+ * tools (`api-analyzer`, `target-installer`, `workspace-setup`, `jdt-build`) embeds the whole
+ * `pde-resolver` module in its OSGi app bundle jar, so any `pde-resolver` change invalidates all
+ * four `p2.director` resolutions at once -- and `p2.director` is an unconstrained-heap JVM doing
+ * real OSGi dependency-graph solving (~20-30s solo; measured one run go from 24s solo to 2m30s
+ * under 3-way concurrency), so running it on every build made `pde-resolver` iteration painfully
+ * slow. `p2.director`'s only real job is resolving a fixed IU set into its transitive jar closure
+ * and copying those jars into a directory -- nothing about its own provisioning model (profiles,
+ * `.p2` metadata) survives past that copy, since `bundles.info`/`config.ini` get regenerated from
+ * each jar's `MANIFEST.MF` at runtime anyway (`ensureEquinoxAppRuntimeConfiguration` in
+ * `core/pde-launch-engine/.../cli/Main.kt`). That result barely changes (only on an SDK bump or an
+ * `installIUs` change), so [registerRegeneratePinnedRuntimeBundles] snapshots it into a lockfile
+ * once instead of recomputing it every time.
  */
 fun Project.registerMaterializeRuntime(
   taskName: String,
@@ -130,16 +145,69 @@ fun Project.registerMaterializeRuntime(
 /**
  * Shared, per-machine cache of pinned runtime bundle jars, keyed by filename. Lives under the
  * Gradle user home (not inside any single worktree/checkout) so it survives `git worktree add`,
- * branch switches, and `clean` -- see docs/pinned-runtime-bundles.md for why this exists.
+ * branch switches, and `clean`.
+ *
+ * Only the filename list (`tools/<tool>/runtime-bundles.lock`, one name per line) is checked into
+ * git -- the resolved sets are 80-100+ Eclipse SDK jars (tens of MB), and vendoring that much
+ * binary content would bloat clones/diffs for no benefit. The lockfile is a trivial, reviewable
+ * diff and is fully reproducible from the cache at any time by rerunning
+ * `regeneratePinnedRuntimeBundles` (re-resolves via `p2.director`, repopulates the cache, rewrites
+ * the lockfile). If a runtime failure looks like a missing bundle (`NoClassDefFoundError`,
+ * `ClassNotFoundException`, a missing extension point) even without an SDK version bump, that's
+ * the first thing to try: `p2.director`'s dependency resolution is more semantically complete than
+ * this snapshot (it also resolves service/capability wiring like SCR or the extension registry),
+ * so a code path that was never exercised the last time the lockfile was generated can be missing
+ * a jar that a fresh resolution would include.
  */
 fun Project.pinnedRuntimeBundleCacheDir(): Provider<Directory> =
   layout.dir(provider { gradle.gradleUserHomeDir.resolve("caches/pde-pinned-runtime-bundles") })
 
 /**
+ * Resolves the compile-time jar for one internal-API bundle (e.g. `org.eclipse.pde.api.tools`),
+ * preferring the *exact* jar the pinned runtime uses (looked up by [namePrefix] in [lockFile],
+ * fetched from the shared [cacheDir], see [pinnedRuntimeBundleCacheDir]) so compile-time and
+ * runtime can never drift onto different versions of an internal, unversioned Maven-coordinate-free
+ * API surface. Falls back to whatever version is in the local Eclipse SDK's
+ * `plugins/` dir when the pinned cache isn't warm yet (e.g. `ci.yml`'s `-PskipEclipseRuntimes=true`
+ * fast path, which still has the SDK but skips populating the cache) -- that keeps `check` SDK-only,
+ * at the cost of a possible (compile-time-only, caught by tests) version mismatch until the cache
+ * is regenerated.
+ */
+fun Project.pinnedRuntimeBundleJar(
+  lockFile: Provider<RegularFile>,
+  cacheDir: Provider<Directory>,
+  sdkDir: Provider<File>,
+  namePrefix: String
+): Provider<RegularFile> = layout.file(provider {
+  val lock = lockFile.get().asFile
+  val pinnedName = lock.takeIf { it.isFile }
+    ?.readLines()
+    ?.map { it.trim() }
+    ?.firstOrNull { it.startsWith(namePrefix) }
+  if (pinnedName != null) {
+    val cached = cacheDir.get().asFile.resolve(pinnedName)
+    if (cached.isFile) return@provider cached
+  }
+
+  val sdkJar = sdkDir.orNull?.resolve("plugins")
+    ?.listFiles { f -> f.name.startsWith(namePrefix) && f.name.endsWith(".jar") }
+    ?.firstOrNull()
+
+  sdkJar ?: throw GradleException(
+    "Unable to locate a compile-time jar for '$namePrefix'.\n" +
+      "Checked the pinned runtime bundle cache (${cacheDir.get().asFile}, keyed by $lock) " +
+      "and the Eclipse SDK at ${sdkDir.orNull}.\n" +
+      "Run './gradlew :api-analyzer:regeneratePinnedRuntimeBundles' to warm the pinned cache, " +
+      "or point -PeclipseSdk at a valid Eclipse install."
+  )
+})
+
+/**
  * Materializes an Equinox runtime by copying a pre-resolved, checked-in set of bundle jars
  * (named in [lockFile], one filename per line) out of the shared [cacheDir], instead of running
- * p2.director. This is the FAST default path used by `assemble`/`installDist` -- see
- * docs/pinned-runtime-bundles.md for the full rationale and the regeneration procedure.
+ * p2.director. This is the FAST default path used by `assemble`/`installDist` (see
+ * [registerMaterializeRuntime] for why this exists and [registerRegeneratePinnedRuntimeBundles]
+ * for how the pinned set is (re)computed).
  */
 fun Project.registerPinnedRuntimeMaterialize(
   taskName: String,
@@ -149,7 +217,7 @@ fun Project.registerPinnedRuntimeMaterialize(
   launcherJar: Provider<File>,
   destinationDir: Provider<Directory>
 ): TaskProvider<Task> = tasks.register(taskName) {
-  description = "Materialize an Equinox runtime from the pinned bundle set (fast path, see docs/pinned-runtime-bundles.md)"
+  description = "Materialize an Equinox runtime from the pinned bundle set (fast path)"
   group = "build"
 
   inputs.file(lockFile)
@@ -175,8 +243,7 @@ fun Project.registerPinnedRuntimeMaterialize(
         throw GradleException(
           "Pinned runtime bundle '$name' is missing from the shared cache at $cache.\n" +
             "Run './gradlew ${path.removeSuffix(":$taskName")}:regeneratePinnedRuntimeBundles' once " +
-            "(needs the local Eclipse SDK / p2Repositories fallback) to (re)populate it, then retry.\n" +
-            "See docs/pinned-runtime-bundles.md."
+            "(needs the local Eclipse SDK / p2Repositories fallback) to (re)populate it, then retry."
         )
       }
       source.copyRecursively(pluginsDir.resolve(name), overwrite = true)
@@ -197,8 +264,18 @@ fun Project.registerPinnedRuntimeMaterialize(
  * bundle jar and the equinox launcher (both always freshly built/copied, never pinned) into the
  * shared [cacheDir], and rewrites [lockFile] with the resulting sorted filename list.
  *
- * Manual/CI-only: NOT wired into `assemble`/`build`/`installDist`. Run this only when the local
- * Eclipse SDK version changes (expected to be rare) -- see docs/pinned-runtime-bundles.md.
+ * Manual/CI-only: NOT wired into `assemble`/`build`/`installDist`. Needs the local Eclipse SDK
+ * (`eclipseSdk` in `gradle.properties`) and, currently, the `p2Repositories` remote fallback
+ * (still load-bearing for the `osgi.ee JavaSE-21` capability gap documented there). Commit the
+ * resulting `tools/<tool>/runtime-bundles.lock` change. Run this (once per tool: `api-analyzer`,
+ * `target-installer`, `workspace-setup`, `jdt-build`) when:
+ * - the local Eclipse SDK install is upgraded to a new version;
+ * - a tool's `installIUs` list changes (a bundle dependency is added/removed); or
+ * - [registerPinnedRuntimeMaterialize] fails with "missing from the shared cache" (a fresh
+ *   machine, or a cleared cache, doesn't have the jars the lockfile names yet).
+ *
+ * Expected to be rare (tied to SDK upgrades) -- if this needs running on every build, something
+ * has gone wrong with the pinning and is worth investigating rather than working around.
  */
 fun Project.registerRegeneratePinnedRuntimeBundles(
   taskName: String,
@@ -207,7 +284,7 @@ fun Project.registerRegeneratePinnedRuntimeBundles(
   cacheDir: Provider<Directory>,
   excludeNamePrefixes: Provider<List<String>>
 ): TaskProvider<Task> = tasks.register(taskName) {
-  description = "Regenerate the pinned runtime bundle set from a real p2.director resolution (manual/CI only, see docs/pinned-runtime-bundles.md)"
+  description = "Regenerate the pinned runtime bundle set from a real p2.director resolution (manual/CI only)"
   group = "build"
   outputs.upToDateWhen { false }
 

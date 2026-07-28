@@ -207,8 +207,8 @@ Two levels of provisioning:
 - **`ci.yml`** (unit tests) takes the SDK only and adds `-PskipEclipseRuntimes=true`. The tools'
   Java sources compile against jars in the SDK's `plugins/`, so the SDK itself is unavoidable, but
   the flag unhooks the Equinox runtime archives from `processResources`/`assemble` -- those need
-  `p2.director` runs and the pinned bundle cache described in `docs/pinned-runtime-bundles.md`, and
-  nothing under `src/test` loads them.
+  `p2.director` runs and the pinned bundle cache (see `EclipseP2Tasks.kt`), and nothing under
+  `src/test` loads them.
 - **`build.yml` and `release.yml`** additionally populate the pinned bundle cache
   (`pinned-bundles: 'true'`) and never pass `-PskipEclipseRuntimes`, because the shipped artifacts
   embed those runtimes. The release job also runs `verifyTargetInstallerLauncherInDist` and
