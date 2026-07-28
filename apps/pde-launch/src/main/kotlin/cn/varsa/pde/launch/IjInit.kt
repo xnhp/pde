@@ -7,6 +7,7 @@ import cn.varsa.cli.core.CliStyle
 import cn.varsa.cli.core.ColorMode
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
+import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.optional
@@ -177,7 +178,17 @@ object IjInit {
         bundlePath.relativize(root).toString().replace('\\', '/')
       }
       val excludeFolders = determineExcludedFolders(bundlePath)
-      writeModuleFile(moduleFile, contentRoot, relativeSourceRoots, excludeFolders)
+      val libraryJars = runCatching {
+        val descriptor = WorkspaceBundleLoader.load(bundlePath)
+        descriptor.classPathEntries.filter { entry ->
+          val normalized = entry.toAbsolutePath().normalize()
+          normalized != bundlePath.toAbsolutePath().normalize()
+        }
+      }.getOrElse { ex ->
+        logger.warning("Failed to read Bundle-ClassPath for ${bundle}: ${ex.message}")
+        emptyList()
+      }
+      writeModuleFile(moduleFile, contentRoot, relativeSourceRoots, excludeFolders, libraryJars, moduleDir)
       modules.add(moduleFileName)
     }
 
@@ -389,7 +400,9 @@ object IjInit {
     moduleFile: Path,
     contentRoot: String,
     sourceRoots: List<String>,
-    excludeFolders: List<String>
+    excludeFolders: List<String>,
+    libraryJars: List<Path>,
+    moduleDir: Path
   ) {
     val builder = StringBuilder()
     builder.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
@@ -411,6 +424,19 @@ object IjInit {
     builder.appendLine("    </content>")
     builder.appendLine("    <orderEntry type=\"inheritedJdk\" />")
     builder.appendLine("    <orderEntry type=\"sourceFolder\" forTests=\"false\" />")
+    libraryJars.forEach { jarPath ->
+      val jarModulePath = toModulePath(moduleDir, jarPath)
+      val jarUrl = "jar://${jarModulePath}!/"
+      builder.appendLine("    <orderEntry type=\"module-library\">")
+      builder.appendLine("      <library>")
+      builder.appendLine("        <CLASSES>")
+      builder.appendLine("          <root url=\"${jarUrl}\" />")
+      builder.appendLine("        </CLASSES>")
+      builder.appendLine("        <JAVADOC />")
+      builder.appendLine("        <SOURCES />")
+      builder.appendLine("      </library>")
+      builder.appendLine("    </orderEntry>")
+    }
     builder.appendLine("  </component>")
     builder.appendLine("</module>")
     Files.writeString(moduleFile, builder.toString())

@@ -183,6 +183,98 @@ class IjInitTest {
     assertTrue(module.contains("sourceFolder url=\"file://\$MODULE_DIR\$/../../repo/org.example.bundle/src/eclipse\""))
   }
 
+  private fun setupBundleFixture(
+    tempPrefix: String,
+    manifest: String,
+    jarRelativePaths: List<String> = emptyList()
+  ): java.nio.file.Path {
+    val baseDir = Files.createTempDirectory(tempPrefix)
+    Files.writeString(baseDir.resolve("issue.yaml"), "id: EX-9\n")
+    val bundleDir = baseDir.resolve("repo").resolve("org.example.bundle")
+    Files.createDirectories(bundleDir.resolve("src"))
+    Files.createDirectories(bundleDir.resolve("META-INF"))
+    Files.writeString(bundleDir.resolve("META-INF/MANIFEST.MF"), manifest)
+    jarRelativePaths.forEach { rel ->
+      val jarPath = bundleDir.resolve(rel)
+      Files.createDirectories(jarPath.parent)
+      Files.writeString(jarPath, "")
+    }
+    val configPath = baseDir.resolve("pde.yaml")
+    Files.writeString(
+      configPath,
+      """
+        bundles:
+          - path: repo/org.example.bundle
+      """.trimIndent()
+    )
+    IjInit.initIjProjectFromConfig(configPath)
+    return baseDir.resolve("ij-project/ij-module-files/org.example.bundle.iml")
+  }
+
+  @Test
+  fun `Bundle-ClassPath jars emit module-library orderEntries`() {
+    val manifest = """
+      Manifest-Version: 1.0
+      Bundle-ManifestVersion: 2
+      Bundle-SymbolicName: org.example.bundle
+      Bundle-Version: 1.0.0
+      Bundle-ClassPath: .,
+       lib/foo.jar,
+       lib/bar.jar
+    """.trimIndent() + "\n"
+    val moduleFile = setupBundleFixture(
+      "ij-init-cp-jars",
+      manifest,
+      listOf("lib/foo.jar", "lib/bar.jar")
+    )
+    val contents = Files.readString(moduleFile)
+    assertEquals(2, Regex("<orderEntry type=\"module-library\">").findAll(contents).count())
+    assertEquals(2, Regex("<root url=\"jar://").findAll(contents).count())
+    assertTrue(contents.contains("lib/foo.jar!/"))
+    assertTrue(contents.contains("lib/bar.jar!/"))
+  }
+
+  @Test
+  fun `bundle without Bundle-ClassPath header emits no module-library orderEntry`() {
+    val manifest = """
+      Manifest-Version: 1.0
+      Bundle-ManifestVersion: 2
+      Bundle-SymbolicName: org.example.bundle
+      Bundle-Version: 1.0.0
+    """.trimIndent() + "\n"
+    val moduleFile = setupBundleFixture("ij-init-no-cp", manifest)
+    val contents = Files.readString(moduleFile)
+    assertTrue(!contents.contains("module-library"))
+  }
+
+  @Test
+  fun `bundle with only dot Bundle-ClassPath emits no module-library orderEntry`() {
+    val manifest = """
+      Manifest-Version: 1.0
+      Bundle-ManifestVersion: 2
+      Bundle-SymbolicName: org.example.bundle
+      Bundle-Version: 1.0.0
+      Bundle-ClassPath: .
+    """.trimIndent() + "\n"
+    val moduleFile = setupBundleFixture("ij-init-cp-dot", manifest)
+    val contents = Files.readString(moduleFile)
+    assertTrue(!contents.contains("module-library"))
+  }
+
+  @Test
+  fun `missing Bundle-ClassPath jar file emits no module-library orderEntry`() {
+    val manifest = """
+      Manifest-Version: 1.0
+      Bundle-ManifestVersion: 2
+      Bundle-SymbolicName: org.example.bundle
+      Bundle-Version: 1.0.0
+      Bundle-ClassPath: lib/missing.jar
+    """.trimIndent() + "\n"
+    val moduleFile = setupBundleFixture("ij-init-cp-missing", manifest)
+    val contents = Files.readString(moduleFile)
+    assertTrue(!contents.contains("module-library"))
+  }
+
   @Test
   fun `findConfigPath finds config in parent directory`() {
     val baseDir = Files.createTempDirectory("ij-init-find")
