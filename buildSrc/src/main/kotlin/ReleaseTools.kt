@@ -68,6 +68,7 @@ data class ReleaseInfo(
 
 private val COMMIT_REGEX = Regex("^(\\w+)(?:\\(([^)]+)\\))?(!?): (.+)$")
 private val BREAKING_FOOTER_REGEX = Regex("^BREAKING CHANGE:?", RegexOption.MULTILINE)
+private val MERGE_COMMIT_REGEX = Regex("^Merge (branch|pull request) ", RegexOption.IGNORE_CASE)
 
 private fun normalizeType(type: String): String = type.lowercase()
 
@@ -112,6 +113,9 @@ private fun parseCommits(rawLog: String): Pair<List<ConventionalCommit>, List<St
     val hash = parts[0].trim()
     val subject = parts[1].trim()
     val body = parts[2]
+    // Merge commits carry no user-facing change of their own -- the commits they bring in are
+    // already listed individually. Including them just adds noise like "Merge branch 'x' into y".
+    if (MERGE_COMMIT_REGEX.containsMatchIn(subject)) continue
     val match = COMMIT_REGEX.find(subject)
     if (match != null) {
       val type = normalizeType(match.groupValues[1])
@@ -135,9 +139,9 @@ private fun sectionNameFor(type: String?): String = when (type) {
   "refactor" -> "Refactoring"
   "docs" -> "Documentation"
   "test" -> "Tests"
-  "build", "gradle" -> "Build System"
-  "ci" -> "Continuous Integration"
-  "chore" -> "Chores"
+  // CI, build tooling, and chores are all "how the project is built/maintained" rather than
+  // user-facing product change -- readers don't benefit from three near-empty sections for that.
+  "build", "gradle", "ci", "chore" -> "Build System"
   "style" -> "Code Style"
   "revert" -> "Reverts"
   else -> "Other"
