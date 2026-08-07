@@ -36,20 +36,25 @@ class ForeachRepoTest {
     val repoB = Files.createDirectories(baseDir.resolve("repo-b"))
     Files.createDirectories(repoA.resolve("bundle-a"))
     Files.createDirectories(repoB.resolve("bundle-b"))
+    // A unique marker per repo proves the command ran with that repo as its working directory.
+    // (Asserting on `pwd` output would compare a POSIX-shell path against Path.toString(), which
+    // never matches on Windows, where sh prints /c/... but Path.toString() yields C:\...)
+    Files.writeString(repoA.resolve("marker.txt"), "MARKER_REPO_A")
+    Files.writeString(repoB.resolve("marker.txt"), "MARKER_REPO_B")
 
     val out = ByteArrayOutputStream()
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      val exitCode = ForeachRepoCommand.main(arrayOf("--config", configPath.toString(), "pwd"))
+      val exitCode = ForeachRepoCommand.main(arrayOf("--config", configPath.toString(), "cat marker.txt"))
       assertEquals(0, exitCode)
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains(repoA.toAbsolutePath().normalize().toString()))
-    assertTrue(output.contains(repoB.toAbsolutePath().normalize().toString()))
+    assertTrue(output.contains("MARKER_REPO_A"))
+    assertTrue(output.contains("MARKER_REPO_B"))
   }
 
   @Test

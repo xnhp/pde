@@ -87,7 +87,8 @@ class TargetInspectCliTest {
       System.setOut(savedOut)
     }
 
-    assertEquals("com.example.alpha\n", out.toString())
+    // println emits the platform line separator (CRLF on Windows).
+    assertEquals("com.example.alpha" + System.lineSeparator(), out.toString())
   }
 
   @Test

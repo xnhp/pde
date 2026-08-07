@@ -171,7 +171,8 @@ class LspIgnoreTest {
     val files = LspIgnoreCommand.candidateFiles(bundle)
     assertEquals(
       setOf(".project", ".classpath", ".settings/org.eclipse.jdt.core.prefs", ".settings/org.eclipse.jdt.ui.prefs"),
-      files.map { bundle.relativize(it).toString() }.toSet()
+      // Normalize to '/' so the comparison is platform-independent (Path.toString() uses '\' on Windows).
+      files.map { bundle.relativize(it).toString().replace('\\', '/') }.toSet()
     )
   }
 

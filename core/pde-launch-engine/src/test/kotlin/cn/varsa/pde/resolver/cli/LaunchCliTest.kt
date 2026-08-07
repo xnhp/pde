@@ -18,6 +18,17 @@ import kotlin.io.path.writeText
 class LaunchCliTest {
   @Rule @JvmField val tmp = TemporaryFolder()
 
+  /**
+   * The launch tests that spawn a fake `java` fake it with a `#!/bin/sh` script, which Windows
+   * cannot execute (and the launcher would look for `bin/java.exe` there anyway). A Windows
+   * equivalent needs a real fake executable; until then these tests are POSIX-only.
+   */
+  private fun assumePosixShell() =
+    org.junit.Assume.assumeFalse(
+      "fake java is a #!/bin/sh script; not executable on Windows",
+      System.getProperty("os.name").lowercase().contains("windows")
+    )
+
   @Test
   fun launchCommandGeneratesOutputs() {
     val target = tmp.newFolder("target").also { createBundle(it, "org.eclipse.osgi", "1.0.0") }
@@ -44,6 +55,7 @@ class LaunchCliTest {
 
   @Test
   fun envFileJavaHomeSelectsLaunchJavaExecutable() {
+    assumePosixShell()
     val root = tmp.root.toPath()
     val workspace = tmp.newFolder("workspace").also {
       createBundle(it, "org.example.app", "1.0.0", require = "org.eclipse.osgi")
@@ -88,6 +100,7 @@ class LaunchCliTest {
 
   @Test
   fun cracCheckpointExitCodeSucceedsWhenImageFilesExist() {
+    assumePosixShell()
     val root = tmp.root.toPath()
     val workspace = tmp.newFolder("workspace").also {
       createBundle(it, "org.example.app", "1.0.0", require = "org.eclipse.osgi")
@@ -111,6 +124,7 @@ class LaunchCliTest {
 
   @Test
   fun cracCheckpointExitCodeFailsWhenImageFilesAreMissing() {
+    assumePosixShell()
     val root = tmp.root.toPath()
     val workspace = tmp.newFolder("workspace").also {
       createBundle(it, "org.example.app", "1.0.0", require = "org.eclipse.osgi")
