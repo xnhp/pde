@@ -33,7 +33,8 @@ class ValidateConfigCommandTest {
     }
 
     assertEquals(0, exitCode)
-    assertEquals("Config is valid: ${config.toAbsolutePath().normalize()}\n", out.toString())
+    // println emits the platform line separator (CRLF on Windows).
+    assertEquals("Config is valid: ${config.toAbsolutePath().normalize()}" + System.lineSeparator(), out.toString())
   }
 
   @Test
@@ -80,6 +81,6 @@ class ValidateConfigCommandTest {
     }
 
     assertEquals(1, exitCode)
-    assertEquals("Usage: pde validate-config <file>\n", err.toString())
+    assertEquals("Usage: pde validate-config <file>" + System.lineSeparator(), err.toString())
   }
 }
