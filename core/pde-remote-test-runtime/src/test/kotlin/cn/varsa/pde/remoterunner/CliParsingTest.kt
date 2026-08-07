@@ -1,5 +1,6 @@
 package cn.varsa.pde.remoterunner
 
+import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -14,13 +15,15 @@ class CliParsingTest {
   fun `parses report specs`() {
     assertTrue(parseReportTarget("teamcity") is ReportTarget.TeamCity)
     val junit = parseReportTarget("junit-xml:build/results.xml") as ReportTarget.JUnitXml
-    assertEquals("build/results.xml", junit.path.toString())
+    // Compare Path to Path: Path.toString() uses the platform separator, so a string
+    // comparison would fail on Windows (`build\results.xml`).
+    assertEquals(Paths.get("build/results.xml"), junit.path)
   }
 
   @Test
   fun `parses forward log specs`() {
     val spec = parseForwardSpec("stdout=/tmp/stdout.pipe")
     assertEquals("stdout", spec.label)
-    assertEquals("/tmp/stdout.pipe", spec.path.toString())
+    assertEquals(Paths.get("/tmp/stdout.pipe"), spec.path)
   }
 }
