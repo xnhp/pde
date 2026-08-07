@@ -30,7 +30,9 @@ class VscodeInitTest {
     assertTrue(wrote)
 
     val tasksJson = Files.readString(issueDir.resolve(".vscode/tasks.json"))
-    val absConfigPath = configPath.toAbsolutePath().normalize().toString()
+    // The production writer JSON-escapes the path, so on Windows the file contains doubled
+    // backslashes; the expected string must be escaped the same way.
+    val absConfigPath = configPath.toAbsolutePath().normalize().toString().replace("\\", "\\\\")
 
     assertTrue(tasksJson.contains("\"label\": \"runApp\""))
     assertTrue(tasksJson.contains("\"args\": [\"run\", \"${absConfigPath}\", \"runApp\"]"))
