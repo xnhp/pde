@@ -1,6 +1,8 @@
 package cn.varsa.pde.resolver.api
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.core.util.DefaultIndenter
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import org.w3c.dom.Element
@@ -153,13 +155,18 @@ data class ApiAnalysisProblem(
   val apiFilterFile: String? = null
 )
 
+// Pretty printer pinned to "\n": the default one indents with the PLATFORM line separator, which
+// would make the "stable contract" reports differ byte-wise between Windows (CRLF) and Linux.
+private fun stablePrettyPrinter(): DefaultPrettyPrinter =
+  DefaultPrettyPrinter().withObjectIndenter(DefaultIndenter("  ", "\n"))
+
 object ApiAnalysisReportJson {
   private val mapper = ObjectMapper()
     .registerModule(KotlinModule.Builder().build())
     .setSerializationInclusion(JsonInclude.Include.NON_NULL)
 
   fun write(report: ApiAnalysisReport): String =
-    mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report)
+    mapper.writer(stablePrettyPrinter()).writeValueAsString(report)
 
   fun read(path: Path): ApiAnalysisReport =
     mapper.readValue(path.toFile(), ApiAnalysisReport::class.java)
@@ -171,7 +178,7 @@ object BatchApiAnalyzerInputJson {
     .setSerializationInclusion(JsonInclude.Include.NON_NULL)
 
   fun write(input: BatchApiAnalyzerInput): String =
-    mapper.writerWithDefaultPrettyPrinter().writeValueAsString(input)
+    mapper.writer(stablePrettyPrinter()).writeValueAsString(input)
 
   fun read(path: Path): BatchApiAnalyzerInput =
     mapper.readValue(path.toFile(), BatchApiAnalyzerInput::class.java)
