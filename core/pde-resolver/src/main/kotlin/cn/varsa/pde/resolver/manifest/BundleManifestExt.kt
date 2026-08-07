@@ -56,8 +56,8 @@ fun BundleManifest.reexportRequiredBundleAndVersion(includeOptional: Boolean = f
   requireBundle?.clauses(includeOptional)?.filter { it.value.directive["visibility"] == "reexport" }
     ?.mapValues { (_, attrs) -> attrs.attribute[BUNDLE_VERSION_ATTRIBUTE].parseVersionRange() } ?: emptyMap()
 
-fun BundleManifest.importedPackageAndVersion(): Map<String, VersionRange> =
-  importPackage?.mandatoryClauses()
+fun BundleManifest.importedPackageAndVersion(includeOptional: Boolean = false): Map<String, VersionRange> =
+  importPackage?.clauses(includeOptional)
     ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersionRange() } ?: emptyMap()
 
 fun BundleManifest.exportedPackageAndVersion(): Map<String, Version> =
