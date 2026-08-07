@@ -33,6 +33,13 @@ application {
   applicationName = "pde"
 }
 
+tasks.test {
+  // Tests assert on plain help text. Without this, picocli enables ANSI styling whenever it
+  // detects a pseudo-TTY (e.g. TERM=xterm leaking into the test JVM from a Git Bash-launched
+  // Gradle on Windows), and escape sequences inside "Usage: ..." break contains() assertions.
+  systemProperty("picocli.ansi", "false")
+}
+
 distributions {
   main {
     contents {

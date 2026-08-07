@@ -91,7 +91,9 @@ object LspIgnoreCommand {
         if (files.isEmpty()) continue
 
         bundlesProcessed++
-        val relPaths = files.map { moduleDir.relativize(it).toString() }
+        // Git pathspecs use forward slashes on every platform; Path.toString() would emit
+        // backslashes on Windows, which git treats as escape characters in pathspecs.
+        val relPaths = files.map { moduleDir.relativize(it).toString().replace('\\', '/') }
         val ok = gitUpdateIndexRunner(moduleDir, flag, relPaths)
         if (ok) {
           totalFiles += relPaths.size

@@ -22,7 +22,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "resourcePath": "src/org/example/Type.java",
               "problemId": 643842064,
@@ -66,7 +66,7 @@ class ApiBaselineFiltersTest {
       Files.writeString(
         report,
         readResource("api-filters/schema-v2-report.json")
-          .replace("__API_FILTER_FILE__", filterFile.toAbsolutePath().normalize().toString())
+          .replace("__API_FILTER_FILE__", filterFile.jsonPath())
       )
 
       val exit = apiBaselineFiltersAddAllFromReportMain(
@@ -116,7 +116,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle1",
-              "bundleDir": "${bundleDir1.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir1.jsonPath()}",
               "resourceType": "org.example.Type1",
               "problemId": 100,
               "messageArgs": ["X"]
@@ -135,7 +135,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000002",
               "bundleBsn": "org.example.bundle2",
-              "bundleDir": "${bundleDir2.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir2.jsonPath()}",
               "resourceType": "org.example.Type2",
               "problemId": 200,
               "messageArgs": ["Y"]
@@ -194,7 +194,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "problemId": 926941240,
               "messageArgs": ["5.13.0", "5.12.0"],
               "category": "version",
@@ -203,7 +203,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000002",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "problemId": 1462763580,
               "messageArgs": [],
               "category": "api-baseline",
@@ -212,7 +212,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000003",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "problemId": 643842064,
               "messageArgs": ["A", "B", "C"],
@@ -253,7 +253,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "resourcePath": "src/org/example/Type.java",
               "problemId": 643842064,
@@ -264,7 +264,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000002",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Other",
               "problemId": 999,
               "messageArgs": ["Z"],
@@ -343,7 +343,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "problemId": 643842064,
               "messageArgs": ["Auto"]
@@ -413,7 +413,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "resourcePath": "src/org/example/Type.java",
               "problemId": 681574430,
@@ -471,7 +471,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "resourcePath": "src/org/example/Type.java",
               "problemId": 681574430,
@@ -483,7 +483,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000002",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "problemId": 643842064,
               "messageArgs": ["A"],
@@ -547,7 +547,7 @@ class ApiBaselineFiltersTest {
     {
       "problemRef": "$ref",
       "bundleBsn": "org.example.bundle",
-      "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+      "bundleDir": "${bundleDir.jsonPath()}",
       "resourceType": "$type",
       "resourcePath": "$path",
       "problemId": 681574430,
@@ -669,7 +669,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "resourcePath": "src/org/example/Type.java",
               "problemId": 643842064,
@@ -679,7 +679,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000002",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Fresh",
               "resourcePath": "src/org/example/Fresh.java",
               "problemId": 338792546,
@@ -756,7 +756,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Alone",
               "resourcePath": "src/org/example/Alone.java",
               "problemId": 7,
@@ -795,7 +795,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Fresh",
               "problemId": 7,
               "messageArgs": ["x"]
@@ -833,7 +833,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Alone",
               "resourcePath": "src/org/example/Alone.java",
               "problemId": 338792546,
@@ -866,7 +866,7 @@ class ApiBaselineFiltersTest {
             {
               "problemRef": "P000001",
               "bundleBsn": "org.example.bundle",
-              "bundleDir": "${bundleDir.toAbsolutePath().normalize()}",
+              "bundleDir": "${bundleDir.jsonPath()}",
               "resourceType": "org.example.Type",
               "resourcePath": "src/org/example/Type.java",
               "problemId": 7,
@@ -909,6 +909,13 @@ class ApiBaselineFiltersTest {
     }
     return buffer.toString("UTF-8")
   }
+
+  /**
+   * Absolute path rendered safely for embedding in a JSON string literal: on Windows the raw
+   * `Path.toString()` contains backslashes, which JSON would reject as invalid escapes.
+   */
+  private fun Path.jsonPath(): String =
+    toAbsolutePath().normalize().toString().replace("\\", "\\\\")
 
   private fun readResource(path: String): String =
     javaClass.classLoader.getResource(path)?.readText()

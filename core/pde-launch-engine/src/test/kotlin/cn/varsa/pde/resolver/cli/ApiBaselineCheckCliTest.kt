@@ -928,9 +928,10 @@ class ApiBaselineCheckCliTest {
 
   @Test
   fun `direct analyzer command launches equinox launcher jar with java`() {
+    val launcherJar = Path.of("/runtime/plugins/org.eclipse.equinox.launcher.jar")
     val command = buildApiAnalyzerCommand(
       ApiAnalyzerInvocation(
-        launcherExecutable = Path.of("/runtime/plugins/org.eclipse.equinox.launcher.jar"),
+        launcherExecutable = launcherJar,
         configurationDir = "/runtime/configuration",
         dataDir = "/runtime/workspace",
         applicationId = "cn.varsa.pde.api_analyzer",
@@ -944,7 +945,8 @@ class ApiBaselineCheckCliTest {
       listOf(
         "/java/bin/java",
         "-jar",
-        "/runtime/plugins/org.eclipse.equinox.launcher.jar",
+        // Rendered from a Path, so expect the platform-specific separator form.
+        launcherJar.toString(),
         "-nosplash",
         "-consoleLog",
         "-configuration",

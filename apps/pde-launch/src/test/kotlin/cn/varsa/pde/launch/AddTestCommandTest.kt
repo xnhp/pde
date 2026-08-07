@@ -53,7 +53,8 @@ class AddTestCommandTest {
     assertEquals("org.knime.gateway.impl", entry["testPluginName"])
     assertEquals("org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests", entry["className"])
 
-    assertEquals("Added test entry to pde.yaml\n", stdout.toString())
+    // println emits the platform line separator (CRLF on Windows).
+    assertEquals("Added test entry to pde.yaml" + System.lineSeparator(), stdout.toString())
   }
 
   private fun readYamlMap(contents: String): Map<*, *> {
