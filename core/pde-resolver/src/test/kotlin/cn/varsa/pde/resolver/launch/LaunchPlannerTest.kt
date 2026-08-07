@@ -10,6 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.osgi.framework.Constants.ACTIVATION_LAZY
+import org.osgi.framework.Constants.BUNDLE_ACTIVATIONPOLICY
 import org.osgi.framework.Constants.BUNDLE_SYMBOLICNAME
 import org.osgi.framework.Constants.BUNDLE_VERSION
 import org.osgi.framework.Constants.REQUIRE_BUNDLE
@@ -106,5 +108,31 @@ class LaunchPlannerTest {
 
     val launchProblems = result.problemsByScope["Launch Plan"] ?: error("expected launch plan problems")
     assertTrue(launchProblems.any { it.symbol == "missing.bundle" && it.type == ResolveProblemType.MISSING_BUNDLE })
+  }
+
+  @Test
+  fun lazyActivationBundlesAreArmedEvenWhenAutoStartDefaultIsFalse() {
+    // A Bundle-ActivationPolicy: lazy bundle (e.g. org.knime.core) must be started/armed or Equinox
+    // never runs its activator + DS components — which is why `pde test` found 0 tests for the
+    // org.knime.core.workflow.tests fragment. autoStartDefault=false mirrors pde's real launch.
+    val lazyDep = resolved("lazy.dep", "1.0.0", BUNDLE_ACTIVATIONPOLICY to ACTIVATION_LAZY)
+    val eagerDep = resolved("eager.dep", "1.0.0")
+    val targetIndex = tpIndex(lazyDep, eagerDep)
+    val workspace = workspace(
+      bsn = "app.bundle",
+      version = "1.0.0",
+      REQUIRE_BUNDLE to "lazy.dep,eager.dep"
+    )
+    val environment = LaunchEnvironment(
+      targetIndex = targetIndex,
+      workspaceEntries = listOf(workspace),
+      resolverOptions = ResolveOptions(preferWorkspace = true)
+    )
+    val options = LauncherOptions(frameworkBSN = "eager.dep", defaultStartLevel = 4, autoStartDefault = false)
+    val result = LaunchPlanner.build(environment, options)
+    val bundles = result.plan.bundles.associateBy { it.bsn }
+
+    assertTrue("lazy bundle is armed so its activator/DS components run", bundles.getValue("lazy.dep").autoStart)
+    assertFalse("non-lazy bundle stays un-started under autoStartDefault=false", bundles.getValue("eager.dep").autoStart)
   }
 }

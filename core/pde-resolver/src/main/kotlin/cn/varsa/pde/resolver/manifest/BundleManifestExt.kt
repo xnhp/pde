@@ -4,6 +4,8 @@ import cn.varsa.pde.resolver.support.VersionRangeAny
 import cn.varsa.pde.resolver.support.contains
 import cn.varsa.pde.resolver.support.parseVersion
 import cn.varsa.pde.resolver.support.parseVersionRange
+import org.osgi.framework.Constants.ACTIVATION_LAZY
+import org.osgi.framework.Constants.BUNDLE_ACTIVATIONPOLICY
 import org.osgi.framework.Constants.BUNDLE_VERSION_ATTRIBUTE
 import org.osgi.framework.Constants.RESOLUTION_DIRECTIVE
 import org.osgi.framework.Constants.RESOLUTION_OPTIONAL
@@ -16,6 +18,14 @@ fun BundleManifest.fragmentHostAndVersionRange(): Pair<String, VersionRange>? =
 
 val BundleManifest.canonicalName: String
   get() = "${bundleSymbolicName?.key}-${bundleVersion}"
+
+/**
+ * True if the bundle declares `Bundle-ActivationPolicy: lazy`. Such bundles must be *started* (with
+ * the activation policy) for Equinox to arm lazy activation — otherwise their `BundleActivator` and
+ * DS components never run. The launch planner uses this to auto-start (arm) lazy bundles.
+ */
+fun BundleManifest.isLazyActivated(): Boolean =
+  this[BUNDLE_ACTIVATIONPOLICY]?.substringBefore(";")?.trim().equals(ACTIVATION_LAZY, ignoreCase = true)
 
 fun BundleManifest.isFragmentHost(
   fragmentHostBSN: String,
