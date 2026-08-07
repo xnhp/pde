@@ -43,6 +43,19 @@ data class ResolveOptions(
 
 enum class BundleOrigin { WORKSPACE, TARGET }
 
+/**
+ * Packages provided by the JRE / OSGi system bundle (boot classpath), never exported by a regular
+ * bundle. The indirect-import closure must skip these — otherwise it records hundreds of bogus
+ * `import-package-indirect` unresolved entries for `javax.*`/`jdk.*`/etc.
+ */
+private val SYSTEM_PACKAGE_PREFIXES = listOf(
+  "java.", "javax.", "jakarta.", "jdk.", "sun.", "com.sun.",
+  "org.w3c.dom", "org.xml.sax", "org.ietf.jgss", "org.omg."
+)
+
+internal fun isSystemPackage(pkg: String): Boolean =
+  SYSTEM_PACKAGE_PREFIXES.any { pkg == it.trimEnd('.') || pkg.startsWith(it) }
+
 data class ResolvedBundle(
   val bsn: String,
   val version: Version,
@@ -294,30 +307,6 @@ object Resolver {
       map
     }
 
-    val importedPkgs = imports.keys
-    val tpProvidersByPkg: Map<String, java.util.NavigableMap<Version, PkgProvider>> = run {
-      val map = HashMap<String, java.util.NavigableMap<Version, PkgProvider>>()
-      val byPkg = target.exportedBundlesByPackageNav()
-      importedPkgs.forEach { pkg ->
-        val nav = byPkg[pkg] ?: return@forEach
-        val providers = java.util.TreeMap<Version, PkgProvider>()
-        nav.forEach { (ver, rb) ->
-          val bsn = rb.manifest.bundleSymbolicName?.key ?: return@forEach
-          providers[ver] = PkgProvider(
-            bsn,
-            ver,
-            rb.location,
-            rb.manifest,
-            BundleOrigin.TARGET,
-            computeTargetClassPathEntries(rb, target),
-            computeTargetSourceEntries(rb, target)
-          )
-        }
-        if (providers.isNotEmpty()) map[pkg] = providers
-      }
-      map
-    }
-
     fun providerToCandidate(provider: PkgProvider) = Candidate(
       bsn = provider.bsn,
       version = provider.version,
@@ -329,13 +318,21 @@ object Resolver {
       fragmentHost = provider.manifest.fragmentHost?.key
     )
 
-    fun pinnedProviderCandidate(provider: PkgProvider, pkg: String, range: VersionRange): Candidate? {
-      val pinnedVersion = options.pinnedVersions[provider.bsn] ?: return providerToCandidate(provider)
-      val pinned = selectExact(provider.bsn, pinnedVersion) ?: return null
+    // If the provider's BSN is pinned, the pinned version replaces the candidate — but only if
+    // it still exports the package within the requested range; otherwise the candidate is
+    // rejected (a pin must not silently satisfy an import it cannot actually provide).
+    fun applyPin(candidate: Candidate, pkg: String, range: VersionRange): Candidate? {
+      val pinnedVersion = options.pinnedVersions[candidate.bsn] ?: return candidate
+      val pinned = selectExact(candidate.bsn, pinnedVersion) ?: return null
       val exported = exportsOf(pinned.manifest)[pkg] ?: return null
       return if (range.includes(exported)) pinned else null
     }
 
+    // Provider of an imported package: workspace exporters first, then target exporters ordered
+    // by bundle version descending (symbolic name as deterministic tie-break). The target lookup
+    // enumerates EVERY exporter of the package — unlike a version-keyed map, two bundles
+    // exporting the same package at the same bundle version don't shadow each other; the first
+    // whose export version satisfies the range (and survives pinning) wins.
     fun findProviderForPackage(pkg: String, range: VersionRange): Candidate? {
       if (options.preferWorkspace) {
         val ws = wsProvidersByPkg[pkg]
@@ -346,26 +343,79 @@ object Resolver {
           }
           ?.maxByOrNull { it.version }
         if (ws != null) {
-          val pinned = pinnedProviderCandidate(ws, pkg, range)
+          val pinned = applyPin(providerToCandidate(ws), pkg, range)
           if (pinned != null) return pinned
         }
       }
 
-      val nav = tpProvidersByPkg[pkg] ?: return null
-      val provider = nav.descendingMap().entries.asSequence().mapNotNull { e ->
-        val man = e.value.manifest
-        val ver = exportsOf(man)[pkg]
-        if (ver != null && range.includes(ver)) pinnedProviderCandidate(e.value, pkg, range) else null
+      val providers = target.exportedBundlesByPackage()[pkg] ?: return null
+      return providers.asSequence().mapNotNull { rb ->
+        val exported = exportsOf(rb.manifest)[pkg] ?: return@mapNotNull null
+        if (!range.includes(exported)) return@mapNotNull null
+        applyPin(candidateFromTarget(rb), pkg, range)
       }.firstOrNull()
-      return provider
     }
 
-    imports.forEach { (pkg, range) ->
-      val provider = findProviderForPackage(pkg, range)
-      if (provider != null && !selected.containsKey(provider.bsn)) {
-        selected[provider.bsn] = provider
-      } else if (provider == null) {
-        unresolved.add(UnresolvedBundle(pkg, range, "import-package"))
+    // Requirements-closure fixpoint, approximating Eclipse PDE's
+    // DependencyManager.findRequirementsClosure: every selected bundle's Import-Package,
+    // Require-Bundle, and Fragment-Host dependencies are followed until the selection is stable,
+    // so e.g. junit-jupiter-api -> org.opentest4j (a package a closure member only Imports) lands
+    // on the compile classpath instead of ecj reporting "indirectly referenced from required
+    // type". Unlike Eclipse PDE there is no resolved Equinox wiring state to read exporters from,
+    // so each package's provider is re-derived (workspace first, pins honored, then highest
+    // in-range export). An import is satisfied only by its resolved provider: an unrelated
+    // selected bundle exporting the same package does not mask it — if the provider is already
+    // selected nothing is added, otherwise it joins the selection. Optional imports are followed
+    // like Eclipse PDE's INCLUDE_OPTIONAL_DEPENDENCIES build closure; an unsatisfiable optional
+    // import is skipped silently. Unsatisfiable JRE/system-package imports (java./jdk./...) are
+    // also skipped silently — they come from the OSGi system bundle via boot delegation, so their
+    // absence from the target index is expected — but a bundle-provided javax.* package (e.g.
+    // javax.servlet) still resolves normally because providers are looked up before the check.
+    run {
+      val processed = HashSet<String>()
+      while (true) {
+        val pending = selected.keys.filter { it !in processed }
+        if (pending.isEmpty()) break
+        pending.forEach { bsn ->
+          processed.add(bsn)
+          val cand = selected[bsn] ?: return@forEach
+          val manifest = cand.manifest
+
+          // A fragment pulled into the closure needs its host on the classpath (the entry's own
+          // host was already handled above, gated by includeHostsForFragments).
+          if (bsn != entrySymbolicName) {
+            manifest.fragmentHostAndVersionRange()?.let { (hostBsn, hostRange) ->
+              if (!selected.containsKey(hostBsn)) {
+                val host = select(hostBsn, hostRange)
+                if (host != null) selected[hostBsn] = host
+                else unresolved.add(UnresolvedBundle(hostBsn, hostRange, "fragmentHost"))
+              }
+            }
+          }
+
+          // Bundles that entered the selection via Import-Package still bring their own
+          // Require-Bundle closure (idempotent for bundles the require phase already expanded).
+          addRequireWithClosure(bsn, exactVersionRange(cand.version))
+
+          val mandatoryImports = manifest.importedPackageAndVersion()
+          manifest.importedPackageAndVersion(includeOptional = true).forEach forEachPkg@{ (pkg, range) ->
+            val provider = findProviderForPackage(pkg, range)
+            if (provider == null) {
+              if (pkg in mandatoryImports && !isSystemPackage(pkg)) {
+                val reason =
+                  if (bsn == entrySymbolicName || bsn == hostPair?.first) "import-package"
+                  else "import-package-indirect"
+                unresolved.add(UnresolvedBundle(pkg, range, reason))
+              }
+              return@forEachPkg
+            }
+            // Only the resolved provider satisfies the import; if it is already selected
+            // (possibly at another version — consistency first) there is nothing to add.
+            if (!selected.containsKey(provider.bsn)) {
+              selected[provider.bsn] = provider
+            }
+          }
+        }
       }
     }
 
@@ -427,7 +477,7 @@ object Resolver {
     val problems = directProblems + unresolved.map { u ->
       val type = when (u.reason) {
         "fragmentHost" -> ResolveProblemType.FRAGMENT_HOST
-        "import-package" -> ResolveProblemType.MISSING_PACKAGE
+        "import-package", "import-package-indirect" -> ResolveProblemType.MISSING_PACKAGE
         else -> ResolveProblemType.MISSING_BUNDLE
       }
       ResolveProblem(type, u.bsn, u.range, u.reason)
