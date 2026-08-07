@@ -61,8 +61,15 @@ class TargetPlatformIndex(
       }
     }
 
-    // Optional: order per package by bundle version descending (cheap heuristic)
-    map.replaceAll { _, list -> list.sortedByDescending { it.manifest.bundleVersion } as MutableList<ResolvedBundle> }
+    // Order per package by bundle version descending; tie-break on symbolic name so two
+    // different bundles exporting the same package at the same bundle version enumerate in a
+    // deterministic order (byBsn is hash-ordered, and a stable sort alone would leak that).
+    map.replaceAll { _, list ->
+      list.sortedWith(
+        compareByDescending<ResolvedBundle> { it.manifest.bundleVersion }
+          .thenBy { it.manifest.bundleSymbolicName?.key ?: "" }
+      ) as MutableList<ResolvedBundle>
+    }
 
     exportsByPackage = map
     exportsByPackageNav = null

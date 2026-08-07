@@ -18,6 +18,7 @@ import cn.varsa.pde.remoterunner.parsePortRange
 import cn.varsa.pde.remoterunner.parseReportTarget
 import cn.varsa.pde.remoterunner.startForwarders
 import cn.varsa.pde.resolver.algo.ResolveOptions
+import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
 import cn.varsa.pde.resolver.api.BatchApiAnalyzerInput
@@ -2611,6 +2612,25 @@ private fun prepareLaunch(
   return PreparedLaunch(command, planResult, layout)
 }
 
+/**
+ * A fragment bundle has no classloader of its own, so the PDE test runner's
+ * `bundle.loadClass(testClass)` throws "Can not load a class from a fragment bundle". When
+ * `-testpluginname` names a fragment, rewrite it to the fragment's host (e.g.
+ * `org.knime.core.workflow.tests` -> `org.knime.core`); the host's classloader loads the
+ * fragment's classes.
+ */
+private fun rewriteFragmentTestPluginNameToHost(
+  programArgs: MutableList<String>,
+  planResult: LaunchPlanner.PlanResult
+) {
+  val idx = programArgs.indexOf("-testpluginname")
+  if (idx < 0 || idx + 1 >= programArgs.size) return
+  val bsn = programArgs[idx + 1]
+  val host = planResult.selectedBundles.firstOrNull { it.bsn == bsn }?.fragmentHost ?: return
+  logger.info("-testpluginname '$bsn' is a fragment; using host '$host' so its classes can be loaded.")
+  programArgs[idx + 1] = host
+}
+
 private fun assembleCommand(
   context: LaunchConfigContext,
   layout: LaunchLayout,
@@ -2632,6 +2652,7 @@ private fun assembleCommand(
     addAll(targetArgs?.programArgs ?: emptyList())
     addAll(configProgramArgs)
   }
+  rewriteFragmentTestPluginNameToHost(programArgs, planResult)
   val stdArgs = mutableListOf<String>().apply {
     if (context.clean) {
       add("-clean")
@@ -4478,7 +4499,16 @@ fun compileMain(args: Array<String>): Int {
     )
     val planResult = LaunchPlanner.build(env, options)
     logPlanSummary(planResult)
-    val specs = CompileService.buildSpecs(planResult, workspaceInputs.descriptors)
+    // Each workspace bundle compiles against its OWN resolved closure (its declared Require-Bundle
+    // ranges), not the aggregate union of every bundle's closure -- which can carry several versions
+    // of a multi-version library (e.g. Guava 19 and 33) and make ecj bind an overload the bundle
+    // won't have at runtime (compile/launch version skew -> NoSuchMethodError).
+    val perEntryClasspath: Map<String, List<String>> = workspaceInputs.descriptors.mapNotNull { desc ->
+      val bsn = desc.manifest.bundleSymbolicName?.key ?: return@mapNotNull null
+      val res = Resolver.resolve(targetIndex, workspaceInputs.descriptors, desc, env.resolverOptions)
+      bsn to res.bundles.flatMap { it.classPathEntries }.map { it.toAbsolutePath().normalize().toString() }
+    }.toMap()
+    val specs = CompileService.buildSpecs(planResult, workspaceInputs.descriptors, perEntryClasspath)
       .specs
       .map { spec ->
         val withDebug = if (debugInfo && spec.isWorkspace) {
