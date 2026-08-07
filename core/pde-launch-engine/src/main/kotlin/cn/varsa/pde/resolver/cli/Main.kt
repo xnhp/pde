@@ -18,6 +18,7 @@ import cn.varsa.pde.remoterunner.parsePortRange
 import cn.varsa.pde.remoterunner.parseReportTarget
 import cn.varsa.pde.remoterunner.startForwarders
 import cn.varsa.pde.resolver.algo.ResolveOptions
+import cn.varsa.pde.resolver.algo.Resolver
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
 import cn.varsa.pde.resolver.api.BatchApiAnalyzerInput
@@ -4478,7 +4479,16 @@ fun compileMain(args: Array<String>): Int {
     )
     val planResult = LaunchPlanner.build(env, options)
     logPlanSummary(planResult)
-    val specs = CompileService.buildSpecs(planResult, workspaceInputs.descriptors)
+    // Each workspace bundle compiles against its OWN resolved closure (its declared Require-Bundle
+    // ranges), not the aggregate union of every bundle's closure -- which can carry several versions
+    // of a multi-version library (e.g. Guava 19 and 33) and make ecj bind an overload the bundle
+    // won't have at runtime (compile/launch version skew -> NoSuchMethodError).
+    val perEntryClasspath: Map<String, List<String>> = workspaceInputs.descriptors.mapNotNull { desc ->
+      val bsn = desc.manifest.bundleSymbolicName?.key ?: return@mapNotNull null
+      val res = Resolver.resolve(targetIndex, workspaceInputs.descriptors, desc, env.resolverOptions)
+      bsn to res.bundles.flatMap { it.classPathEntries }.map { it.toAbsolutePath().normalize().toString() }
+    }.toMap()
+    val specs = CompileService.buildSpecs(planResult, workspaceInputs.descriptors, perEntryClasspath)
       .specs
       .map { spec ->
         val withDebug = if (debugInfo && spec.isWorkspace) {
