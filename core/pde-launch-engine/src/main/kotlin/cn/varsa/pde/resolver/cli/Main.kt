@@ -2612,6 +2612,25 @@ private fun prepareLaunch(
   return PreparedLaunch(command, planResult, layout)
 }
 
+/**
+ * A fragment bundle has no classloader of its own, so the PDE test runner's
+ * `bundle.loadClass(testClass)` throws "Can not load a class from a fragment bundle". When
+ * `-testpluginname` names a fragment, rewrite it to the fragment's host (e.g.
+ * `org.knime.core.workflow.tests` -> `org.knime.core`); the host's classloader loads the
+ * fragment's classes.
+ */
+private fun rewriteFragmentTestPluginNameToHost(
+  programArgs: MutableList<String>,
+  planResult: LaunchPlanner.PlanResult
+) {
+  val idx = programArgs.indexOf("-testpluginname")
+  if (idx < 0 || idx + 1 >= programArgs.size) return
+  val bsn = programArgs[idx + 1]
+  val host = planResult.selectedBundles.firstOrNull { it.bsn == bsn }?.fragmentHost ?: return
+  logger.info("-testpluginname '$bsn' is a fragment; using host '$host' so its classes can be loaded.")
+  programArgs[idx + 1] = host
+}
+
 private fun assembleCommand(
   context: LaunchConfigContext,
   layout: LaunchLayout,
@@ -2633,6 +2652,7 @@ private fun assembleCommand(
     addAll(targetArgs?.programArgs ?: emptyList())
     addAll(configProgramArgs)
   }
+  rewriteFragmentTestPluginNameToHost(programArgs, planResult)
   val stdArgs = mutableListOf<String>().apply {
     if (context.clean) {
       add("-clean")
