@@ -309,6 +309,8 @@ class PdeCliTest {
     val output = out.toString()
     assertTrue(output.contains("Usage: pde test"))
     assertTrue(output.contains("--report=String"))
+    assertTrue(output.contains("--merged"))
+    assertTrue(output.contains("--isolated"))
     assertTrue(!output.contains("--all"))
     assertTrue(!output.contains("--include"))
     assertTrue(output.contains("[testPos...]"))

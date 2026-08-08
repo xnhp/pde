@@ -99,5 +99,11 @@ and observe nice output:
 
 (Dont forget to compile first e.g. with `pde compile`)
 
+By default every test entry gets its own platform instance, so a suite of many small test classes
+starts the platform once per class. On Windows that startup can dominate: a 20-entry suite took
+7m59s isolated and 25.8s merged. Set `testStrategy: merged` at the top level of `pde.yaml` (or pass
+`pde test --merged`) to run compatible entries in a single instance; see
+[the configuration notes](config-yaml.md) for what makes entries compatible.
+
 JaCoCo coverage can be collected by adding a JaCoCo `-javaagent` entry to `vmArgs`.
 See [the coverage notes](coverage.md) for the report-generation command.
