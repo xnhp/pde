@@ -287,3 +287,15 @@ properties:
     description: Named test presets for `pde test`.
     items:
       $ref: "#/$defs/testEntry"
+  testStrategy:
+    type: string
+    enum: [isolated, merged]
+    default: isolated
+    description: >-
+      How `pde test` runs several test entries. `isolated` (the default) starts one platform
+      instance per entry. `merged` runs compatible entries in a single instance, which pays the
+      platform startup cost once instead of once per test class. Entries are compatible when they
+      agree on the resolved test plugin (a fragment counts as its host), `runner`, `programArgs`,
+      `vmArgs`, `dataDir`, `configDir`, `workDir` and `debug`; incompatible entries still get their
+      own instance. Note that merged entries share one JVM, so static state outlives a test class.
+      Override per run with `pde test --merged` or `pde test --isolated`.

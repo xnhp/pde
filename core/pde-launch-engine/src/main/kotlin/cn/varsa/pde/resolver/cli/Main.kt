@@ -1615,10 +1615,10 @@ private fun selectLaunchConfig(
   )
 }
 
-private fun selectTestConfig(
+private fun resolveTestEntry(
   context: LaunchConfigContext,
   testName: String?
-): LaunchConfigContext? {
+): TestEntry? {
   if (context.config.tests.isEmpty()) {
     logger.severe("No tests defined in ${context.file}. Add a 'tests' entry or pass a legacy launch.yaml.")
     return null
@@ -1669,25 +1669,124 @@ private fun selectTestConfig(
     logger.severe("Test '$testName' not found in ${context.file}. Available tests: $available")
     return null
   }
-  return applyTestEntry(context, selected, testName, logSelection = true)
+  return selected
 }
 
 private fun testLabel(entry: TestEntry): String =
   entry.name ?: entry.className ?: entry.testPluginName ?: "<unnamed>"
 
-private fun applyTestEntry(
+internal enum class TestStrategy { ISOLATED, MERGED }
+
+/** CLI flags win over the config value; without either, entries run one platform instance each. */
+internal fun resolveTestStrategy(configValue: String?, merged: Boolean, isolated: Boolean): TestStrategy {
+  if (merged) return TestStrategy.MERGED
+  if (isolated) return TestStrategy.ISOLATED
+  return when (configValue?.trim()?.lowercase(Locale.ROOT)) {
+    null, "", "isolated" -> TestStrategy.ISOLATED
+    "merged" -> TestStrategy.MERGED
+    else -> {
+      logger.warning("Unknown testStrategy '$configValue'; running each test in its own platform instance.")
+      TestStrategy.ISOLATED
+    }
+  }
+}
+
+/**
+ * Everything that has to match for two test entries to share one platform instance. A launch
+ * carries a single `-testpluginname` and the PDE runner loads every test class through that
+ * bundle's classloader, so the test plugin is part of the key; the rest of the fields shape the
+ * launch itself (loader flags, JVM, directories) and cannot differ within one instance.
+ */
+private data class TestGroupKey(
+  val testPlugin: String?,
+  val runner: String?,
+  val programArgs: List<String>,
+  val vmArgs: List<String>,
+  val dataDir: String?,
+  val configDir: String?,
+  val workDir: String?,
+  val debug: Boolean
+)
+
+private fun testGroupKey(entry: TestEntry, fragmentHosts: Map<String, String>) = TestGroupKey(
+  testPlugin = entry.testPluginName?.let { fragmentHosts[it] ?: it },
+  runner = entry.runner?.trim()?.lowercase(Locale.ROOT),
+  programArgs = entry.programArgs,
+  vmArgs = entry.vmArgs,
+  dataDir = entry.dataDir,
+  configDir = entry.configDir,
+  workDir = entry.workDir,
+  debug = entry.debug
+)
+
+/**
+ * Partition test entries into groups that can each run in a single platform instance, preserving
+ * the order in which the groups first appear. Entries without a class name keep their own instance
+ * because their launch is open-ended (program args may select the tests instead).
+ */
+internal fun groupTestEntries(
+  entries: List<TestEntry>,
+  fragmentHosts: Map<String, String> = emptyMap()
+): List<List<TestEntry>> {
+  val groups = mutableListOf<MutableList<TestEntry>>()
+  val indexByKey = linkedMapOf<TestGroupKey, Int>()
+  entries.forEach { entry ->
+    if (entry.className == null) {
+      groups += mutableListOf(entry)
+      return@forEach
+    }
+    val key = testGroupKey(entry, fragmentHosts)
+    val existing = indexByKey[key]
+    if (existing != null) {
+      groups[existing] += entry
+    } else {
+      indexByKey[key] = groups.size
+      groups += mutableListOf(entry)
+    }
+  }
+  return groups
+}
+
+/**
+ * Workspace fragment BSN to its host BSN. A fragment has no classloader of its own and its classes
+ * are loaded through the host, so an entry naming the fragment and one naming the host address the
+ * same bundle and belong in the same instance. A BSN that is not a workspace fragment maps to
+ * itself.
+ */
+internal fun workspaceFragmentHosts(context: LaunchConfigContext): Map<String, String> =
+  WorkspaceModuleResolver.resolveDefinitions(context).mapNotNull { definition ->
+    val descriptor = runCatching { WorkspaceBundleLoader.load(definition.moduleDir) }.getOrNull()
+      ?: return@mapNotNull null
+    val bsn = descriptor.manifest.bundleSymbolicName?.key ?: return@mapNotNull null
+    val host = descriptor.fragmentHost?.symbolicName ?: return@mapNotNull null
+    bsn to host
+  }.toMap()
+
+/**
+ * Turn one group of test entries into the launch context that runs them. All entries in [group]
+ * must be compatible (see [groupTestEntries]); the first one supplies everything but the class
+ * names. More than one class is passed as `-classnames`, which the JDT runner reads up to the next
+ * `-`-prefixed argument, so the whole group runs in a single platform instance.
+ */
+internal fun applyTestEntries(
   context: LaunchConfigContext,
-  selected: TestEntry,
-  testName: String?,
-  logSelection: Boolean
+  group: List<TestEntry>
 ): LaunchConfigContext {
+  val selected = group.first()
   val programArgs = context.runtime.programArgs.toMutableList()
   programArgs.addAll(selected.programArgs)
   if (selected.testPluginName != null && "-testpluginname" !in programArgs) {
     programArgs += listOf("-testpluginname", selected.testPluginName)
   }
-  if (selected.className != null && "-classname" !in programArgs) {
-    programArgs += listOf("-classname", selected.className)
+  val classNames = group.mapNotNull { it.className }
+  val classesAlreadyGiven = "-classname" in programArgs || "-classnames" in programArgs
+  if (!classesAlreadyGiven) {
+    if (classNames.size > 1) {
+      programArgs += "-classnames"
+      programArgs += classNames
+    } else if (selected.className != null) {
+      programArgs += listOf("-classname", selected.className)
+    }
   }
   val normalizedRunner = selected.runner?.trim()?.lowercase()
     ?: error("Missing required test runner in config test entry '${testLabel(selected)}'")
@@ -1722,20 +1821,20 @@ private fun applyTestEntry(
     configDir = selected.configDir ?: context.runtime.configDir,
     workDir = selected.workDir ?: context.runtime.workDir
   )
-  val withDebug = context.copy(
+  return context.copy(
     runtime = runtime,
     jvmDebug = selected.debug,
     jvmDebugRequiresPdeTestApp = true
   )
-  if (logSelection) {
-    val label = testLabel(selected)
-    if (testName == null) {
-      logger.info("Using default test '$label'.")
-    } else {
-      logger.info("Using test '$label'.")
-    }
+}
+
+private fun logTestGroup(index: Int, groupCount: Int, group: List<TestEntry>) {
+  val labels = group.joinToString(", ") { testLabel(it) }
+  if (group.size > 1) {
+    logger.info("Running test group ${index + 1}/$groupCount in one platform instance (${group.size} classes): $labels")
+  } else {
+    logger.info("Running test ${index + 1}/$groupCount: '$labels'.")
   }
-  return withDebug
 }
 
 private fun executeLaunch(
@@ -4002,6 +4101,16 @@ private fun testMain(args: Array<String>): Int {
   val reportValues by parser.option(ArgType.String, fullName = "report", description = "Reporting sink (teamcity, junit-xml:/path)").multiple()
   val forwardValues by parser.option(ArgType.String, fullName = "forward-log", description = "Prefix and stream an existing log source (label=path)").multiple()
   val quiet by parser.option(ArgType.Boolean, fullName = "quiet", description = "Suppress console test logs").default(false)
+  val mergedOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "merged",
+    description = "Run compatible test entries in a single platform instance (overrides testStrategy)"
+  ).default(false)
+  val isolatedOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "isolated",
+    description = "Run every test entry in its own platform instance (overrides testStrategy)"
+  ).default(false)
   val clean by parser.option(
     ArgType.Boolean,
     fullName = "clean",
@@ -4035,49 +4144,35 @@ private fun testMain(args: Array<String>): Int {
       logger.severe("Invalid --forward-log value: ${error.message}")
       return 2
     }
-  if (requestedTests.isEmpty()) {
+  if (mergedOpt && isolatedOpt) {
+    logger.severe("--merged and --isolated cannot be combined")
+    return 2
+  }
+  val strategy = resolveTestStrategy(loaded.config.testStrategy, mergedOpt, isolatedOpt)
+
+  val selectedEntries = if (requestedTests.isEmpty()) {
     if (loaded.config.tests.isEmpty()) {
       logger.severe("No tests defined in ${loaded.file}. Add a 'tests' entry or pass a legacy launch.yaml.")
       return 2
     }
-    var exitCode = 0
-    val outcomes = mutableListOf<TestLaunchOutcome>()
-    for ((index, selectedTest) in loaded.config.tests.withIndex()) {
-      logger.info("Running test ${index + 1}/${loaded.config.tests.size}: '${testLabel(selectedTest)}'.")
-      val configContext = applyTestEntry(loaded, selectedTest, null, logSelection = false)
-        .let { applyOsgiDebug(it, osgiDebug) }
-      val targetArgs = resolveTargetArgs(configContext)
-      val outcome = runTestLaunch(
-        configContext = configContext,
-        targetArgs = targetArgs,
-        listenHost = listenHost,
-        listenPort = listenPort,
-        portRangeSpec = portRangeSpec,
-        timeoutSeconds = timeoutSeconds,
-        reports = reports,
-        forwardSpecs = forwardSpecs,
-        quiet = quiet,
-        logFile = logFile,
-        debug = debug
-      )
-      outcomes += outcome
-      if (outcome.exitCode != 0 && exitCode == 0) {
-        exitCode = outcome.exitCode
-      }
-    }
-    writeJUnitReports(reports, outcomes)
-    return exitCode
+    loaded.config.tests
+  } else {
+    requestedTests.map { testName -> resolveTestEntry(loaded, testName) ?: return 2 }
+  }
+
+  val groups = when (strategy) {
+    TestStrategy.MERGED -> groupTestEntries(selectedEntries, workspaceFragmentHosts(loaded))
+    TestStrategy.ISOLATED -> selectedEntries.map { listOf(it) }
+  }
+  if (groups.size < selectedEntries.size) {
+    logger.info("Merged ${selectedEntries.size} test entries into ${groups.size} platform instance(s).")
   }
 
   var exitCode = 0
   val outcomes = mutableListOf<TestLaunchOutcome>()
-  for ((index, testName) in requestedTests.withIndex()) {
-    val selected = selectTestConfig(loaded, testName)
-    if (selected == null) return 2
-    if (requestedTests.size > 1) {
-      logger.info("Running requested test ${index + 1}/${requestedTests.size}: '$testName'.")
-    }
-    val configContext = applyOsgiDebug(selected, osgiDebug)
+  for ((index, group) in groups.withIndex()) {
+    logTestGroup(index, groups.size, group)
+    val configContext = applyOsgiDebug(applyTestEntries(loaded, group), osgiDebug)
     val targetArgs = resolveTargetArgs(configContext)
     val outcome = runTestLaunch(
       configContext = configContext,

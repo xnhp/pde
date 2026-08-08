@@ -72,6 +72,8 @@ private val testOptions = listOf(
   CliOption(listOf("--report"), "Reporting sink (teamcity, junit-xml:/path)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--forward-log"), "Prefix and stream an existing log source (label=path)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--quiet"), "Suppress console test logs"),
+  CliOption(listOf("--merged"), "Run compatible test entries in a single platform instance (overrides testStrategy)"),
+  CliOption(listOf("--isolated"), "Run every test entry in its own platform instance (overrides testStrategy)"),
 )
 
 private val targetInstallPositionals = listOf(
