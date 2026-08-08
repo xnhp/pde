@@ -66,6 +66,8 @@ tests:
 ## Practical notes
 
 - `pde run` and `pde test` require compiled `.class` files in configured class roots.
+- `--report junit-xml:<path>` covers the whole run. When a run needs several platform instances,
+  their results are combined into that one file instead of each instance overwriting the previous.
 - `target.eclipseRuntimeCache` can pin where ad-hoc Eclipse runtime archives are cached.
 - `target.p2Repositories` can provide p2 source repositories used by runtime bootstrap provisioning.
 - `target.extraBundles` can add already-installed target/workspace bundles to `pde compile`,

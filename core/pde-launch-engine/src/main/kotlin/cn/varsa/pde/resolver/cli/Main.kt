@@ -9,6 +9,7 @@ import cn.varsa.pde.remoterunner.PortAllocator
 import cn.varsa.pde.remoterunner.RecordingRemoteTestListener
 import cn.varsa.pde.remoterunner.RemoteTestListener
 import cn.varsa.pde.remoterunner.RemoteTestProcessor
+import cn.varsa.pde.remoterunner.RemoteTestResult
 import cn.varsa.pde.remoterunner.RemoteTestSummary
 import cn.varsa.pde.remoterunner.ReportTarget
 import cn.varsa.pde.remoterunner.RunnerAnnouncement
@@ -3367,6 +3368,16 @@ private fun targetInstallApiBaselineMain(args: Array<String>): Int {
   return 0
 }
 
+/**
+ * Outcome of one platform launch. The results travel back to the caller so that a run made up of
+ * several launches can report on all of them instead of the last one overwriting the rest.
+ */
+internal data class TestLaunchOutcome(
+  val exitCode: Int,
+  val summary: RemoteTestSummary? = null,
+  val results: List<RemoteTestResult> = emptyList()
+)
+
 private fun runTestLaunch(
   configContext: LaunchConfigContext,
   targetArgs: TargetLaunchArgs?,
@@ -3379,14 +3390,14 @@ private fun runTestLaunch(
   quiet: Boolean,
   logFile: Path?,
   debug: Boolean
-): Int {
+): TestLaunchOutcome {
   val useColor = shouldUseColor()
   val allocator = PortAllocator(listenHost, listenPort, parsePortRange(portRangeSpec))
   val server = try {
     allocator.bind()
   } catch (ex: Exception) {
     logger.severe("Failed to bind server socket: ${ex.message}")
-    return 2
+    return TestLaunchOutcome(2)
   }
   server.soTimeout = timeoutSeconds.coerceAtLeast(1) * 1000
 
@@ -3409,7 +3420,7 @@ private fun runTestLaunch(
     .getOrElse { error ->
       server.close()
       logger.severe("Failed to build launch plan: ${error.message}")
-      return 2
+      return TestLaunchOutcome(2)
     }
 
   logPlanSummary(prepared.planResult)
@@ -3443,7 +3454,7 @@ private fun runTestLaunch(
     logger.severe("Timed out waiting for PDE connection after ${timeoutSeconds}s")
     server.close()
     process.destroy()
-    return 3
+    return TestLaunchOutcome(3)
   }
   logger.info("Connection established from ${client.inetAddress.hostAddress}:${client.port}")
 
@@ -3486,15 +3497,6 @@ private fun runTestLaunch(
     )
   }
 
-  reports.filterIsInstance<ReportTarget.JUnitXml>().forEach { target ->
-    try {
-      JUnitXmlReporter(target.path).write(summary, recorder.results)
-      logger.info("Wrote JUnit report to ${target.path}")
-    } catch (ex: Exception) {
-      logger.severe("Failed to write JUnit report: ${ex.message}")
-    }
-  }
-
   val processExit = process.waitFor()
   val testExit = if (summary.failures == 0 && summary.errors == 0 && !summary.stopped) 0 else 1
   val exitCode = when {
@@ -3505,7 +3507,39 @@ private fun runTestLaunch(
   if (exitCode != 0) {
     logger.severe("Remote tests reported failures=${summary.failures} errors=${summary.errors} stopped=${summary.stopped}; processExit=$processExit")
   }
-  return exitCode
+  return TestLaunchOutcome(exitCode, summary, recorder.results)
+}
+
+/**
+ * Fold the outcomes of every launch in a run into one summary and one result list, so a run split
+ * over several platform instances still produces a single complete report.
+ */
+internal fun aggregateTestOutcomes(outcomes: List<TestLaunchOutcome>): Pair<RemoteTestSummary, List<RemoteTestResult>>? {
+  val summaries = outcomes.mapNotNull { it.summary }
+  if (summaries.isEmpty()) return null
+  val aggregate = RemoteTestSummary(startedAt = summaries.minOf { it.startedAt })
+  aggregate.finishedTests = summaries.sumOf { it.finishedTests }
+  aggregate.failures = summaries.sumOf { it.failures }
+  aggregate.errors = summaries.sumOf { it.errors }
+  aggregate.stopped = summaries.any { it.stopped }
+  aggregate.endedAt = summaries.mapNotNull { it.endedAt }.maxOrNull()
+  val elapsed = summaries.mapNotNull { it.elapsedMillis }
+  aggregate.elapsedMillis = if (elapsed.isEmpty()) null else elapsed.sum()
+  return aggregate to outcomes.flatMap { it.results }
+}
+
+private fun writeJUnitReports(reports: List<ReportTarget>, outcomes: List<TestLaunchOutcome>) {
+  val targets = reports.filterIsInstance<ReportTarget.JUnitXml>()
+  if (targets.isEmpty()) return
+  val (summary, results) = aggregateTestOutcomes(outcomes) ?: return
+  targets.forEach { target ->
+    try {
+      JUnitXmlReporter(target.path).write(summary, results)
+      logger.info("Wrote JUnit report to ${target.path}")
+    } catch (ex: Exception) {
+      logger.severe("Failed to write JUnit report: ${ex.message}")
+    }
+  }
 }
 
 private fun writeOutputs(dir: Path, plan: LauncherPlan, ctx: LaunchContext, opts: LauncherOptions) {
@@ -4007,12 +4041,13 @@ private fun testMain(args: Array<String>): Int {
       return 2
     }
     var exitCode = 0
+    val outcomes = mutableListOf<TestLaunchOutcome>()
     for ((index, selectedTest) in loaded.config.tests.withIndex()) {
       logger.info("Running test ${index + 1}/${loaded.config.tests.size}: '${testLabel(selectedTest)}'.")
       val configContext = applyTestEntry(loaded, selectedTest, null, logSelection = false)
         .let { applyOsgiDebug(it, osgiDebug) }
       val targetArgs = resolveTargetArgs(configContext)
-      val testExit = runTestLaunch(
+      val outcome = runTestLaunch(
         configContext = configContext,
         targetArgs = targetArgs,
         listenHost = listenHost,
@@ -4025,14 +4060,17 @@ private fun testMain(args: Array<String>): Int {
         logFile = logFile,
         debug = debug
       )
-      if (testExit != 0 && exitCode == 0) {
-        exitCode = testExit
+      outcomes += outcome
+      if (outcome.exitCode != 0 && exitCode == 0) {
+        exitCode = outcome.exitCode
       }
     }
+    writeJUnitReports(reports, outcomes)
     return exitCode
   }
 
   var exitCode = 0
+  val outcomes = mutableListOf<TestLaunchOutcome>()
   for ((index, testName) in requestedTests.withIndex()) {
     val selected = selectTestConfig(loaded, testName)
     if (selected == null) return 2
@@ -4041,7 +4079,7 @@ private fun testMain(args: Array<String>): Int {
     }
     val configContext = applyOsgiDebug(selected, osgiDebug)
     val targetArgs = resolveTargetArgs(configContext)
-    val testExit = runTestLaunch(
+    val outcome = runTestLaunch(
       configContext = configContext,
       targetArgs = targetArgs,
       listenHost = listenHost,
@@ -4054,10 +4092,12 @@ private fun testMain(args: Array<String>): Int {
       logFile = logFile,
       debug = debug
     )
-    if (testExit != 0 && exitCode == 0) {
-      exitCode = testExit
+    outcomes += outcome
+    if (outcome.exitCode != 0 && exitCode == 0) {
+      exitCode = outcome.exitCode
     }
   }
+  writeJUnitReports(reports, outcomes)
   return exitCode
 }
 
