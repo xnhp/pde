@@ -142,6 +142,45 @@ class CompileServiceTest {
   }
 
   @Test
+  fun `own classpath excludes resolved dependencies`() {
+    val wsPath = Paths.get("/workspace/org.example.a")
+    val tpPath = Paths.get("/target/org.foo")
+    val wsDesc = WorkspaceBundleDescriptor(
+      path = wsPath,
+      manifest = dummyManifest("org.example.a", "1.0.0"),
+      classPathEntries = listOf(wsPath)
+    )
+    val selected = listOf(
+      ResolvedBundle(
+        bsn = "org.example.a",
+        version = Version.parseVersion("1.0.0"),
+        path = wsPath,
+        origin = cn.varsa.pde.resolver.algo.BundleOrigin.WORKSPACE,
+        classPathEntries = listOf(wsPath),
+        sourceEntries = emptyList()
+      ),
+      ResolvedBundle(
+        bsn = "org.foo",
+        version = Version.parseVersion("2.0.0"),
+        path = tpPath,
+        origin = cn.varsa.pde.resolver.algo.BundleOrigin.TARGET,
+        classPathEntries = listOf(tpPath),
+        sourceEntries = emptyList()
+      )
+    )
+    val plan = LaunchPlanner.PlanResult(
+      plan = LauncherPlan(emptyList(), null, emptyMap()),
+      context = LaunchContext(emptyMap(), emptyMap()),
+      selectedBundles = selected,
+      workspaceDependencies = emptyMap()
+    )
+
+    val spec = CompileService.buildSpecs(plan, listOf(wsDesc)).specs.first { it.bsn == "org.example.a" }
+
+    assertEquals(listOf(wsPath.toAbsolutePath().normalize().toString()), spec.ownClasspath)
+  }
+
+  @Test
   fun `workspace specs are ordered by dependencies`() {
     val aPath = Paths.get("/workspace/a")
     val bPath = Paths.get("/workspace/b")

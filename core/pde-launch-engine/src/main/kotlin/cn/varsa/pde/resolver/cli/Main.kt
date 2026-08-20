@@ -4513,10 +4513,9 @@ fun compileMain(args: Array<String>): Int {
       if (spec?.isWorkspace == true && result.success && !result.skipped) {
         logger.info("built ${result.bsn} in ${formatDuration(result.durationMillis)}")
       }
-      val classfileWarning = extractClassfileWarning(result.output)
-      if (classfileWarning != null) {
+      if (result.warnings.isNotEmpty()) {
         logger.warning("${result.bsn}:")
-        logger.warning(classfileWarning)
+        result.warnings.forEach { logger.warning(it) }
       }
     }
     val allOk = results.all { it.success }
@@ -4599,13 +4598,8 @@ private fun formatDuration(durationMillis: Long): String {
 private fun extractErrorBlocks(output: String): String? {
   val trimmed = output.trim()
   if (trimmed.isEmpty()) return null
-  if (!trimmed.contains("ERROR in")) {
-    val knownFailures = listOf(
-      "Classpath contains class files requiring a newer Java version",
-      "Annotation processors detected; javac fallback not implemented"
-    )
-    return if (knownFailures.any { trimmed.contains(it) }) trimmed else null
-  }
+  // No structured ECJ problem blocks: surface whatever the compiler said verbatim.
+  if (!trimmed.contains("ERROR in")) return trimmed
   val lines = output.lineSequence().toList()
   val blocks = mutableListOf<String>()
   var i = 0
@@ -4628,30 +4622,6 @@ private fun extractErrorBlocks(output: String): String? {
     blocks += sb.toString().trimEnd()
   }
   return blocks.joinToString("\n")
-}
-
-private fun extractClassfileWarning(output: String): String? {
-  val marker = "WARNING: Classpath contains class files requiring a newer Java version"
-  val lines = output.lineSequence().toList()
-  val startIndex = lines.indexOfFirst { it.startsWith(marker) }
-  if (startIndex < 0) return null
-  val warningLines = mutableListOf<String>()
-  for (i in startIndex until lines.size) {
-    val line = lines[i]
-    if (i != startIndex && line.isBlank()) break
-    if (
-      i != startIndex &&
-      !line.startsWith("Target: ") &&
-      !line.startsWith("- ") &&
-      !line.startsWith("... and ") &&
-      !line.startsWith("Use a target platform ") &&
-      !line.startsWith("WARNING:")
-    ) {
-      break
-    }
-    warningLines += line
-  }
-  return warningLines.joinToString("\n").trimEnd().ifEmpty { null }
 }
 
 fun main(args: Array<String>) {

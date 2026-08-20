@@ -71,9 +71,10 @@ object CompileService {
     allClassPathEntries: List<String>
   ): CompileSpec {
     val w = if (rb.isWorkspace) byPath[rb.path.toAbsolutePath().normalize()] else null
+    val ownClasspath = rb.classPathEntries.map { it.toAbsolutePath().normalize().toString() }
     val effectiveClasspath = linkedSetOf<String>().apply {
       // Prefer bundle-specific classPathEntries first (bin includes, Bundle-ClassPath)
-      addAll(rb.classPathEntries.map { it.toAbsolutePath().normalize().toString() })
+      addAll(ownClasspath)
       // Then add all resolved bundle locations (workspace + TP) for dependencies
       addAll(allClassPathEntries)
     }.toList()
@@ -83,6 +84,7 @@ object CompileService {
       origin = if (rb.isWorkspace) "workspace" else "target",
       bundlePath = rb.path.toString(),
       classpath = effectiveClasspath,
+      ownClasspath = ownClasspath,
       sourceRoots = w?.sourceRoots?.map { it.toString() } ?: emptyList(),
       resourceIncludes = w?.resourceIncludes ?: emptyList(),
       resourceExcludes = w?.resourceExcludes ?: emptyList(),
