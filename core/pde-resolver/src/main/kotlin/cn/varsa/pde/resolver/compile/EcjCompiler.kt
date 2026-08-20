@@ -12,7 +12,9 @@ import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 
 class EcjCompiler(
-  private val failOnProcessors: Boolean = true
+  // Processors are never executed (see -proc:none below), so their presence on the
+  // classpath is reported as a warning rather than failing the bundle.
+  private val failOnProcessors: Boolean = false
 ) : CompilerPort {
 
   private val logger = Logger.getLogger(EcjCompiler::class.java.name)
@@ -47,6 +49,15 @@ class EcjCompiler(
     }
 
     val processorReasons = detectAnnotationProcessors(bundleRoot, spec.classpath)
+    val processorWarning = if (processorReasons.isEmpty() || failOnProcessors) {
+      null
+    } else {
+      buildString {
+        append("WARNING: Annotation processors on the classpath are not run (-proc:none).\n")
+        processorReasons.forEach { append("- ").append(it).append('\n') }
+        append("Compilation only fails if this bundle needs the sources they would generate.")
+      }
+    }
     if (failOnProcessors && processorReasons.isNotEmpty()) {
       val msg = buildString {
         append("Annotation processors detected; javac fallback not implemented.\n")
@@ -113,6 +124,10 @@ class EcjCompiler(
     val success = compiler.compile(args.toTypedArray())
 
     val output = buildString {
+      processorWarning?.let {
+        append(it.trimEnd())
+        append("\n")
+      }
       classfileWarning?.let {
         append(it.trimEnd())
         append("\n")

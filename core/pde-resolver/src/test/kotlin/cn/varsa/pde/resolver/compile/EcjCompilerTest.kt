@@ -49,7 +49,7 @@ class EcjCompilerTest {
   }
 
   @Test
-  fun `fails fast when annotation processors present`() {
+  fun `warns but compiles when annotation processors present`() {
     val bundle = temp.newFolder("bundle2").toPath()
     val srcDir = bundle.resolve("src").also { it.toFile().mkdirs() }
     srcDir.resolve("Dummy.java").toFile().writeText("class Dummy {}")
@@ -79,7 +79,43 @@ class EcjCompilerTest {
 
     val result = EcjCompiler().compile(spec)
 
-    assertFalse(result.success, "Compile should fail fast when processors are detected")
+    assertTrue(result.success, "Processors on the classpath must not fail an otherwise valid bundle")
+    assertTrue(result.output.contains("Annotation processors"), "Output should mention processors")
+    assertTrue(result.output.contains("-proc:none"), "Warning should say the processors are not run")
+    assertTrue(bundle.resolve("bin/Dummy.class").toFile().exists(), "Class file should be emitted")
+  }
+
+  @Test
+  fun `fails fast when annotation processors present and configured to do so`() {
+    val bundle = temp.newFolder("bundle3").toPath()
+    val srcDir = bundle.resolve("src").also { it.toFile().mkdirs() }
+    srcDir.resolve("Dummy.java").toFile().writeText("class Dummy {}")
+
+    val procJar = temp.newFile("processor-strict.jar")
+    JarOutputStream(procJar.outputStream()).use { jar ->
+      jar.putNextEntry(JarEntry("META-INF/services/javax.annotation.processing.Processor"))
+      jar.write("com.example.Processor".toByteArray())
+      jar.closeEntry()
+    }
+
+    val spec = CompileSpec(
+      bsn = "demo.processor.strict",
+      version = "1.0.0",
+      origin = "workspace",
+      bundlePath = bundle.toString(),
+      classpath = listOf(procJar.absolutePath),
+      sourceRoots = listOf(srcDir.toString()),
+      resourceIncludes = emptyList(),
+      resourceExcludes = emptyList(),
+      compilerPrefs = emptyMap(),
+      executionEnvironment = null,
+      outputDirectory = bundle.resolve("bin").toString(),
+      isWorkspace = true
+    )
+
+    val result = EcjCompiler(failOnProcessors = true).compile(spec)
+
+    assertFalse(result.success, "Compile should fail fast when explicitly configured to")
     assertTrue(result.output.contains("Annotation processors"), "Output should mention processors")
   }
 }
