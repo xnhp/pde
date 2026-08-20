@@ -11,11 +11,7 @@ import java.util.logging.Logger
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 
-class EcjCompiler(
-  // Processors are never executed (see -proc:none below), so their presence on the
-  // classpath is reported as a warning rather than failing the bundle.
-  private val failOnProcessors: Boolean = false
-) : CompilerPort {
+class EcjCompiler : CompilerPort {
 
   private val logger = Logger.getLogger(EcjCompiler::class.java.name)
 
@@ -48,28 +44,18 @@ class EcjCompiler(
       )
     }
 
-    val processorReasons = detectAnnotationProcessors(bundleRoot, spec.classpath)
-    val processorWarning = if (processorReasons.isEmpty() || failOnProcessors) {
+    // Processors are never executed (see -proc:none below), so their presence is reported
+    // as a warning: the bundle only breaks if it needs the sources they would generate, and
+    // then it fails on its own with an unresolved-type error naming the generated type.
+    val processorReasons = detectAnnotationProcessors(bundleRoot, spec.ownClasspath)
+    val processorWarning = if (processorReasons.isEmpty()) {
       null
     } else {
       buildString {
-        append("WARNING: Annotation processors on the classpath are not run (-proc:none).\n")
+        append("WARNING: Annotation processors on this bundle's own classpath are not run (-proc:none).\n")
         processorReasons.forEach { append("- ").append(it).append('\n') }
         append("Compilation only fails if this bundle needs the sources they would generate.")
       }
-    }
-    if (failOnProcessors && processorReasons.isNotEmpty()) {
-      val msg = buildString {
-        append("Annotation processors detected; javac fallback not implemented.\n")
-        processorReasons.forEach { append("- ").append(it).append('\n') }
-      }
-      return BundleCompileResult(
-        spec.bsn,
-        success = false,
-        output = msg.trimEnd(),
-        durationMillis = 0,
-        skipped = false
-      )
     }
 
     val args = mutableListOf<String>()
@@ -123,24 +109,13 @@ class EcjCompiler(
     val compiler = Main(writer, writer, false, null, null)
     val success = compiler.compile(args.toTypedArray())
 
-    val output = buildString {
-      processorWarning?.let {
-        append(it.trimEnd())
-        append("\n")
-      }
-      classfileWarning?.let {
-        append(it.trimEnd())
-        append("\n")
-      }
-      append(baos.toString())
-    }
-
     return BundleCompileResult(
       spec.bsn,
       success = success,
-      output = output,
+      output = baos.toString(),
       durationMillis = 0,
-      skipped = false
+      skipped = false,
+      warnings = listOfNotNull(processorWarning, classfileWarning).map { it.trimEnd() }
     )
   }
 
@@ -168,12 +143,18 @@ class EcjCompiler(
     return "-g:" + parts.joinToString(",")
   }
 
-  private fun detectAnnotationProcessors(bundleRoot: Path, classpath: List<String>): List<String> {
+  /**
+   * Detects annotation processing configured *for this bundle*: a JDT APT factorypath in the
+   * bundle root, or a processor-declaring jar on the bundle's own classpath (its output dir and
+   * Bundle-ClassPath entries). Deliberately not the full resolved classpath: a processor jar
+   * shipped inside some unrelated required bundle says nothing about this bundle.
+   */
+  private fun detectAnnotationProcessors(bundleRoot: Path, ownClasspath: List<String>): List<String> {
     val reasons = mutableListOf<String>()
     if (Files.exists(bundleRoot.resolve(".factorypath")) || Files.exists(bundleRoot.resolve("factorypath.xml"))) {
       reasons += "factorypath file present in bundle root"
     }
-    classpath.forEach { entry ->
+    ownClasspath.forEach { entry ->
       val path = Path.of(entry)
       val name = path.fileName?.toString()?.lowercase() ?: ""
       if (name.contains("lombok")) {

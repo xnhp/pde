@@ -9,7 +9,10 @@ data class CompileSpec(
   val version: String,
   val origin: String,
   val bundlePath: String,
+  /** Full compile classpath handed to the compiler: own entries plus resolved dependencies. */
   val classpath: List<String>,
+  /** Only this bundle's own classpath entries (bin includes, Bundle-ClassPath, extra jars). */
+  val ownClasspath: List<String> = emptyList(),
   val sourceRoots: List<String>,
   val resourceIncludes: List<String>,
   val resourceExcludes: List<String>,
@@ -33,6 +36,7 @@ object CompileSpecBuilder {
       origin = if (rb.isWorkspace) "workspace" else "target",
       bundlePath = rb.path.toString(),
       classpath = rb.classPathEntries.map { it.toString() },
+      ownClasspath = rb.classPathEntries.map { it.toString() },
       sourceRoots = w?.sourceRoots?.map { it.toString() } ?: emptyList(),
       resourceIncludes = w?.resourceIncludes ?: emptyList(),
       resourceExcludes = w?.resourceExcludes ?: emptyList(),

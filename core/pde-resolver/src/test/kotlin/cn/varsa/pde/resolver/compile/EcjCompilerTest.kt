@@ -4,9 +4,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.nio.file.Path
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class EcjCompilerTest {
@@ -49,73 +49,101 @@ class EcjCompilerTest {
   }
 
   @Test
-  fun `warns but compiles when annotation processors present`() {
+  fun `warns but compiles when the bundle declares annotation processors`() {
     val bundle = temp.newFolder("bundle2").toPath()
     val srcDir = bundle.resolve("src").also { it.toFile().mkdirs() }
     srcDir.resolve("Dummy.java").toFile().writeText("class Dummy {}")
 
-    // Create a fake processor jar with service entry
-    val procJar = temp.newFile("processor.jar")
-    JarOutputStream(procJar.outputStream()).use { jar ->
-      jar.putNextEntry(JarEntry("META-INF/services/javax.annotation.processing.Processor"))
-      jar.write("com.example.Processor".toByteArray())
-      jar.closeEntry()
-    }
+    val procJar = processorJar("processor.jar")
 
-    val spec = CompileSpec(
+    val spec = specFor(
       bsn = "demo.processor",
-      version = "1.0.0",
-      origin = "workspace",
-      bundlePath = bundle.toString(),
+      bundle = bundle,
+      srcDir = srcDir,
       classpath = listOf(procJar.absolutePath),
-      sourceRoots = listOf(srcDir.toString()),
-      resourceIncludes = emptyList(),
-      resourceExcludes = emptyList(),
-      compilerPrefs = emptyMap(),
-      executionEnvironment = null,
-      outputDirectory = bundle.resolve("bin").toString(),
-      isWorkspace = true
+      ownClasspath = listOf(procJar.absolutePath)
     )
 
     val result = EcjCompiler().compile(spec)
 
     assertTrue(result.success, "Processors on the classpath must not fail an otherwise valid bundle")
-    assertTrue(result.output.contains("Annotation processors"), "Output should mention processors")
-    assertTrue(result.output.contains("-proc:none"), "Warning should say the processors are not run")
+    val warning = result.warnings.single()
+    assertTrue(warning.contains("Annotation processors"), "Warning should mention processors")
+    assertTrue(warning.contains("-proc:none"), "Warning should say the processors are not run")
+    assertTrue(warning.contains(procJar.absolutePath), "Warning should name the offending jar")
     assertTrue(bundle.resolve("bin/Dummy.class").toFile().exists(), "Class file should be emitted")
   }
 
   @Test
-  fun `fails fast when annotation processors present and configured to do so`() {
+  fun `does not warn when a processor jar comes only from a dependency`() {
     val bundle = temp.newFolder("bundle3").toPath()
     val srcDir = bundle.resolve("src").also { it.toFile().mkdirs() }
     srcDir.resolve("Dummy.java").toFile().writeText("class Dummy {}")
 
-    val procJar = temp.newFile("processor-strict.jar")
-    JarOutputStream(procJar.outputStream()).use { jar ->
+    // Mirrors the KNIME case: auto-value ships inside a required bundle's libs/, so it lands on
+    // the resolved compile classpath of every bundle in the plan without any of them using APT.
+    val procJar = processorJar("auto-value-1.11.0.jar")
+    val ownBin = bundle.resolve("bin").also { it.toFile().mkdirs() }
+
+    val spec = specFor(
+      bsn = "org.knime.email",
+      bundle = bundle,
+      srcDir = srcDir,
+      classpath = listOf(ownBin.toString(), procJar.absolutePath),
+      ownClasspath = listOf(ownBin.toString())
+    )
+
+    val result = EcjCompiler().compile(spec)
+
+    assertTrue(result.success, "A dependency's processor jar must not fail the bundle")
+    assertTrue(result.warnings.isEmpty(), "A dependency's processor jar must not warn: ${result.warnings}")
+    assertTrue(bundle.resolve("bin/Dummy.class").toFile().exists(), "Class file should be emitted")
+  }
+
+  @Test
+  fun `warns when a factorypath configures annotation processing`() {
+    val bundle = temp.newFolder("bundle4").toPath()
+    val srcDir = bundle.resolve("src").also { it.toFile().mkdirs() }
+    srcDir.resolve("Dummy.java").toFile().writeText("class Dummy {}")
+    bundle.resolve(".factorypath").toFile().writeText("<factorypath/>")
+
+    val result = EcjCompiler().compile(
+      specFor(bsn = "demo.apt", bundle = bundle, srcDir = srcDir, classpath = emptyList(), ownClasspath = emptyList())
+    )
+
+    assertTrue(result.success, "APT configuration must not fail the bundle")
+    assertTrue(result.warnings.single().contains("factorypath"), "Warning should name the factorypath")
+  }
+
+  private fun processorJar(name: String): File {
+    val jarFile = temp.newFile(name)
+    JarOutputStream(jarFile.outputStream()).use { jar ->
       jar.putNextEntry(JarEntry("META-INF/services/javax.annotation.processing.Processor"))
       jar.write("com.example.Processor".toByteArray())
       jar.closeEntry()
     }
-
-    val spec = CompileSpec(
-      bsn = "demo.processor.strict",
-      version = "1.0.0",
-      origin = "workspace",
-      bundlePath = bundle.toString(),
-      classpath = listOf(procJar.absolutePath),
-      sourceRoots = listOf(srcDir.toString()),
-      resourceIncludes = emptyList(),
-      resourceExcludes = emptyList(),
-      compilerPrefs = emptyMap(),
-      executionEnvironment = null,
-      outputDirectory = bundle.resolve("bin").toString(),
-      isWorkspace = true
-    )
-
-    val result = EcjCompiler(failOnProcessors = true).compile(spec)
-
-    assertFalse(result.success, "Compile should fail fast when explicitly configured to")
-    assertTrue(result.output.contains("Annotation processors"), "Output should mention processors")
+    return jarFile
   }
+
+  private fun specFor(
+    bsn: String,
+    bundle: Path,
+    srcDir: Path,
+    classpath: List<String>,
+    ownClasspath: List<String>
+  ) = CompileSpec(
+    bsn = bsn,
+    version = "1.0.0",
+    origin = "workspace",
+    bundlePath = bundle.toString(),
+    classpath = classpath,
+    ownClasspath = ownClasspath,
+    sourceRoots = listOf(srcDir.toString()),
+    resourceIncludes = emptyList(),
+    resourceExcludes = emptyList(),
+    compilerPrefs = emptyMap(),
+    executionEnvironment = null,
+    outputDirectory = bundle.resolve("bin").toString(),
+    isWorkspace = true
+  )
 }
