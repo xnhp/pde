@@ -4613,6 +4613,11 @@ fun compileMain(args: Array<String>): Int {
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
   val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
   val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
+  val showWarnings by parser.option(
+    ArgType.Boolean,
+    fullName = "warnings",
+    description = "Print full compiler warning and info text (default: one summary line per bundle)"
+  ).default(false)
   val configPos by parser.argument(
     ArgType.String,
     description = "YAML launch configuration (positional)"
@@ -4710,6 +4715,7 @@ fun compileMain(args: Array<String>): Int {
         logger.warning("${result.bsn}:")
         result.warnings.forEach { logger.warning(it) }
       }
+      logCompilerProblemCounts(result, showWarnings)
     }
     val allOk = results.all { it.success }
     val exitCode = if (allOk) 0 else 1
@@ -4788,18 +4794,46 @@ private fun formatDuration(durationMillis: Long): String {
   return String.format(Locale.US, "%.2fs", seconds)
 }
 
+/**
+ * Log one summary line with the bundle's compiler warning and info counts, followed by the full
+ * problem text when [showWarnings] is set. Logs nothing for a bundle without warnings or infos.
+ */
+private fun logCompilerProblemCounts(result: BundleCompileResult, showWarnings: Boolean) {
+  val counts = buildList {
+    if (result.warningCount > 0) add("${result.warningCount} warning" + if (result.warningCount > 1) "s" else "")
+    if (result.infoCount > 0) add("${result.infoCount} info" + if (result.infoCount > 1) "s" else "")
+  }
+  if (counts.isEmpty()) return
+  if (showWarnings) {
+    logger.warning("${result.bsn}: ${counts.joinToString(", ")}")
+    scanProblemBlocks(result.output, setOf("WARNING", "INFO"))?.let { logger.warning(it) }
+  } else {
+    logger.warning("${result.bsn}: ${counts.joinToString(", ")} (--warnings for full text)")
+  }
+}
+
 private fun extractErrorBlocks(output: String): String? {
   val trimmed = output.trim()
   if (trimmed.isEmpty()) return null
   // No structured ECJ problem blocks: surface whatever the compiler said verbatim.
   if (!trimmed.contains("ERROR in")) return trimmed
+  return scanProblemBlocks(output, setOf("ERROR"))
+}
+
+/**
+ * Collect the ECJ problem blocks whose header carries one of [severities] (ERROR, WARNING, INFO),
+ * in source order. Blocks run from their header line to the `----------` separator that precedes
+ * the next problem entry.
+ */
+internal fun scanProblemBlocks(output: String, severities: Set<String>): String? {
   val lines = output.lineSequence().toList()
   val blocks = mutableListOf<String>()
   var i = 0
   val entryRegex = Regex("""^\d+\.\s+(ERROR|WARNING|INFO)\s+in\b""")
+  val startMarkers = severities.map { "$it in" }
   while (i < lines.size) {
     val line = lines[i]
-    if (!line.contains("ERROR in")) {
+    if (startMarkers.none { line.contains(it) }) {
       i++
       continue
     }
@@ -4814,6 +4848,7 @@ private fun extractErrorBlocks(output: String): String? {
     }
     blocks += sb.toString().trimEnd()
   }
+  if (blocks.isEmpty()) return null
   return blocks.joinToString("\n")
 }
 

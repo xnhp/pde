@@ -82,6 +82,13 @@ tests:
 - If `bundles[].classRoots` is omitted, `pde run/test` first infers roots from
   bundle `build.properties` `output..`, then falls back to `bin`.
 - `pde compile` is the explicit ECJ-based compile step.
+- `pde compile` honors each bundle's `.settings/org.eclipse.jdt.core.prefs` diagnostic
+  configuration (problem severities, null analysis, task tags), so its warnings, infos, and
+  errors match what Eclipse shows for that bundle; a problem configured as `error` fails the
+  compile. Bundles with warnings or infos print one summary line each; `--warnings` prints the
+  full text, and `--results-json` carries per-bundle `warningCount`/`infoCount` plus the raw
+  compiler output. Language levels stay governed by the BREE and the prefs source/target keys,
+  never by the diagnostic pass-through.
 - `pde jdtls-init` generates metadata only; it does not compile sources.
 - `pde api-baseline check` reads workspace bundles from config and supports `--baseline-root` overrides.
 - `target.apiBaselineRoot` is used by `pde api-baseline check` when `--baseline-root` is omitted.
