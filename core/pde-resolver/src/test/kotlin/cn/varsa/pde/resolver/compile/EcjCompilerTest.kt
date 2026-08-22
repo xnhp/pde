@@ -7,6 +7,8 @@ import java.io.File
 import java.nio.file.Path
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class EcjCompilerTest {
@@ -146,4 +148,108 @@ class EcjCompilerTest {
     outputDirectory = bundle.resolve("bin").toString(),
     isWorkspace = true
   )
+
+  /** Bundle with one class containing a non-externalized string literal (ECJ default: ignore). */
+  private fun nlsSpec(name: String, extraPrefs: Map<String, String>): CompileSpec {
+    val bundle = temp.newFolder(name).toPath()
+    val srcDir = bundle.resolve("src").also { it.toFile().mkdirs() }
+    srcDir.resolve("Nls.java").toFile().writeText(
+      """
+        package demo;
+        public class Nls { public String greet() { return "hi"; } }
+      """.trimIndent()
+    )
+    return CompileSpec(
+      bsn = "demo.$name",
+      version = "1.0.0",
+      origin = "workspace",
+      bundlePath = bundle.toString(),
+      classpath = emptyList(),
+      sourceRoots = listOf(srcDir.toString()),
+      resourceIncludes = emptyList(),
+      resourceExcludes = emptyList(),
+      compilerPrefs = mapOf("org.eclipse.jdt.core.compiler.source" to "17") + extraPrefs,
+      executionEnvironment = "JavaSE-17",
+      outputDirectory = bundle.resolve("bin").toString(),
+      isWorkspace = true
+    )
+  }
+
+  private val nlsKey = "org.eclipse.jdt.core.compiler.problem.nonExternalizedStringLiteral"
+
+  @Test
+  fun `without prefs the ignored-by-default problem stays silent`() {
+    val result = EcjCompiler().compile(nlsSpec("nls-silent", emptyMap()))
+
+    assertTrue(result.success)
+    assertEquals(0, result.warningCount, "ECJ default for non-externalized strings is ignore")
+    assertEquals(0, result.infoCount)
+  }
+
+  @Test
+  fun `prefs severity warning is honored and counted`() {
+    val result = EcjCompiler().compile(nlsSpec("nls-warn", mapOf(nlsKey to "warning")))
+
+    assertTrue(result.success, "warnings must not fail the compile")
+    assertTrue(result.warningCount >= 1, "expected a warning, output: ${result.output}")
+    assertEquals(0, result.infoCount)
+    assertTrue(result.output.contains("WARNING in"), result.output)
+  }
+
+  @Test
+  fun `prefs severity info is honored and counted separately`() {
+    val result = EcjCompiler().compile(nlsSpec("nls-info", mapOf(nlsKey to "info")))
+
+    assertTrue(result.success, "infos must not fail the compile")
+    assertTrue(result.infoCount >= 1, "expected an info, output: ${result.output}")
+    assertEquals(0, result.warningCount)
+    assertTrue(result.output.contains("INFO in"), result.output)
+  }
+
+  @Test
+  fun `prefs severity error fails the compile`() {
+    val result = EcjCompiler().compile(nlsSpec("nls-error", mapOf(nlsKey to "error")))
+
+    assertFalse(result.success, "error severity must fail the compile")
+    assertTrue(result.output.contains("ERROR in"), result.output)
+  }
+
+
+  @Test
+  fun `diagnostic prefs coexist with the explicit language level`() {
+    // Java-17-only construct plus a diagnostic pref: the -properties file carries only diagnostic
+    // configuration, so the level keys in compilerPrefs cannot interfere with the explicit
+    // -source/-target while the problem severity still takes effect.
+    val bundle = temp.newFolder("levels").toPath()
+    val srcDir = bundle.resolve("src").also { it.toFile().mkdirs() }
+    srcDir.resolve("Rec.java").toFile().writeText(
+      """
+        package demo;
+        public record Rec(int x) { public String label() { return "x"; } }
+      """.trimIndent()
+    )
+    val spec = CompileSpec(
+      bsn = "demo.levels",
+      version = "1.0.0",
+      origin = "workspace",
+      bundlePath = bundle.toString(),
+      classpath = emptyList(),
+      sourceRoots = listOf(srcDir.toString()),
+      resourceIncludes = emptyList(),
+      resourceExcludes = emptyList(),
+      compilerPrefs = mapOf(
+        "org.eclipse.jdt.core.compiler.source" to "17",
+        "org.eclipse.jdt.core.compiler.compliance" to "17",
+        nlsKey to "warning"
+      ),
+      executionEnvironment = "JavaSE-17",
+      outputDirectory = bundle.resolve("bin").toString(),
+      isWorkspace = true
+    )
+
+    val result = EcjCompiler().compile(spec)
+
+    assertTrue(result.success, "record at level 17 should compile, output: ${result.output}")
+    assertTrue(result.warningCount >= 1, "diagnostic pref should fire, output: ${result.output}")
+  }
 }

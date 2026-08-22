@@ -96,5 +96,8 @@ and observe nice output:
 
 (Dont forget to compile first e.g. with `pde compile`)
 
+`pde compile` reports warnings and infos per the bundle's Eclipse compiler preferences: one
+summary line per bundle by default, full text with `pde compile --warnings`.
+
 JaCoCo coverage can be collected by adding a JaCoCo `-javaagent` entry to `vmArgs`.
 See [the coverage notes](coverage.md) for the report-generation command.

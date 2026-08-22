@@ -16,7 +16,11 @@ data class BundleCompileResult(
   val durationMillis: Long,
   val skipped: Boolean,
   /** Advisory diagnostics that do not fail the bundle; reported alongside the result. */
-  val warnings: List<String> = emptyList()
+  val warnings: List<String> = emptyList(),
+  /** Problems the compiler itself reported at WARNING severity. */
+  val warningCount: Int = 0,
+  /** Problems the compiler itself reported at INFO severity. */
+  val infoCount: Int = 0
 )
 
 object CompileExecutor {

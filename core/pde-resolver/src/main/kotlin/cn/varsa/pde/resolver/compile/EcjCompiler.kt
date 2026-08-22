@@ -6,6 +6,7 @@ import java.io.PrintWriter
 import java.nio.file.Files
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
 import java.nio.file.Path
+import java.util.Properties
 import java.util.jar.JarFile
 import java.util.logging.Logger
 import kotlin.io.path.exists
@@ -59,6 +60,8 @@ class EcjCompiler : CompilerPort {
     }
 
     val args = mutableListOf<String>()
+    val prefsFile = writeDiagnosticPrefs(spec.compilerPrefs)
+    prefsFile?.let { args += listOf("-properties", it.toString()) }
     args += listOf("-d", outDir.toString())
 
     val classpath = spec.classpath.filter { it.isNotBlank() }
@@ -107,7 +110,11 @@ class EcjCompiler : CompilerPort {
     val baos = ByteArrayOutputStream()
     val writer = PrintWriter(baos, true)
     val compiler = Main(writer, writer, false, null, null)
-    val success = compiler.compile(args.toTypedArray())
+    val success = try {
+      compiler.compile(args.toTypedArray())
+    } finally {
+      prefsFile?.let { Files.deleteIfExists(it) }
+    }
 
     return BundleCompileResult(
       spec.bsn,
@@ -115,8 +122,27 @@ class EcjCompiler : CompilerPort {
       output = baos.toString(),
       durationMillis = 0,
       skipped = false,
-      warnings = listOfNotNull(processorWarning, classfileWarning).map { it.trimEnd() }
+      warnings = listOfNotNull(processorWarning, classfileWarning).map { it.trimEnd() },
+      warningCount = compiler.globalWarningsCount,
+      infoCount = compiler.globalInfoCount
     )
+  }
+
+  /**
+   * Write the bundle's Eclipse compiler preferences (problem severities, null-analysis config,
+   * task tags, javadoc validation) to a temporary file for ECJ's `-properties`, so diagnostics match
+   * what the IDE shows for this bundle; null when there are none. Only diagnostic configuration is
+   * forwarded: language levels and debug flags are owned by the explicit -source/-target/-g
+   * arguments, and forwarding a compliance key would let the properties file contradict them.
+   */
+  private fun writeDiagnosticPrefs(compilerPrefs: Map<String, String>): Path? {
+    val entries = compilerPrefs.filterKeys { key -> DIAGNOSTIC_PREF_PREFIXES.any { key.startsWith(it) } }
+    if (entries.isEmpty()) return null
+    val file = Files.createTempFile("ecj-prefs-", ".properties")
+    val properties = Properties()
+    entries.forEach { (key, value) -> properties.setProperty(key, value) }
+    Files.newOutputStream(file).use { properties.store(it, null) }
+    return file
   }
 
   private fun compilerSourceLevel(spec: CompileSpec): String? =
@@ -173,5 +199,16 @@ class EcjCompiler : CompilerPort {
       }
     }
     return reasons
+  }
+
+  private companion object {
+    val DIAGNOSTIC_PREF_PREFIXES = listOf(
+      "org.eclipse.jdt.core.compiler.problem.",
+      "org.eclipse.jdt.core.compiler.annotation.",
+      "org.eclipse.jdt.core.compiler.taskTag",
+      "org.eclipse.jdt.core.compiler.taskPriorities",
+      "org.eclipse.jdt.core.compiler.taskCaseSensitive",
+      "org.eclipse.jdt.core.compiler.doc.comment.support"
+    )
   }
 }
