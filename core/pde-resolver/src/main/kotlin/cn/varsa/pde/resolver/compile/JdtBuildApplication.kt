@@ -1,8 +1,17 @@
 package cn.varsa.pde.resolver.compile
 
+import cn.varsa.pde.resolver.workspace.JdtBuildDiagnostic
+import cn.varsa.pde.resolver.workspace.JdtBuildInput
 import cn.varsa.pde.resolver.workspace.JdtBuildInputJson
+import cn.varsa.pde.resolver.workspace.JdtBuildReport
+import cn.varsa.pde.resolver.workspace.JdtBuildResult
+import cn.varsa.pde.resolver.workspace.JdtBuildResultJson
+import org.eclipse.core.resources.IMarker
+import org.eclipse.core.resources.IProject
+import org.eclipse.core.resources.IResource
 import org.eclipse.core.resources.IncrementalProjectBuilder
 import org.eclipse.core.resources.ResourcesPlugin
+import org.eclipse.core.runtime.CoreException
 import org.eclipse.core.runtime.NullProgressMonitor
 import org.eclipse.equinox.app.IApplication
 import org.eclipse.equinox.app.IApplicationContext
@@ -19,23 +28,61 @@ class JdtBuildApplication : IApplication {
 
         val workspace = ResourcesPlugin.getWorkspace()
         val monitor = NullProgressMonitor()
+        val projects = workspace.root.projects.filter { it.isOpen }
 
-        logger.info("Starting JDT build: ${input.projects.size} projects, fullRebuild=${input.fullRebuild}")
+        logger.info("Starting JDT build: ${projects.size} open projects, fullRebuild=${input.fullRebuild}")
 
         val buildKind = if (input.fullRebuild) IncrementalProjectBuilder.FULL_BUILD
                         else IncrementalProjectBuilder.INCREMENTAL_BUILD
 
-        workspace.build(buildKind, monitor)
+        val result = try {
+            workspace.build(buildKind, monitor)
+            JdtBuildResult.from(projects.size, collectDiagnostics(projects))
+        } catch (e: CoreException) {
+            logger.severe("JDT build threw: ${e.status}")
+            JdtBuildResult.from(projects.size, emptyList(), failure = e.message ?: e.status.message)
+        }
 
-        logger.info("JDT build complete")
+        report(result, input)
+        return if (result.success) IApplication.EXIT_OK else EXIT_BUILD_FAILED
+    }
 
-        return IApplication.EXIT_OK
+    private fun report(result: JdtBuildResult, input: JdtBuildInput) {
+        JdtBuildReport.renderStdout(result).forEach(::println)
+        System.out.flush()
+        input.resultPath?.let { JdtBuildResultJson.write(result, Path.of(it)) }
     }
 
     override fun stop() = Unit
 
     companion object {
         const val APPLICATION_ID = "cn.varsa.pde.jdt_build"
+        // Eclipse's launcher uses an Integer return value from IApplication#start as the process exit code.
+        internal val EXIT_BUILD_FAILED: Any = 1
+
+        internal fun collectDiagnostics(projects: List<IProject>): List<JdtBuildDiagnostic> =
+            projects.flatMap { project ->
+                project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)
+                    .mapNotNull { toDiagnostic(project, it) }
+            }
+
+        private fun toDiagnostic(project: IProject, marker: IMarker): JdtBuildDiagnostic? {
+            val severity = when (marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO)) {
+                IMarker.SEVERITY_ERROR -> JdtBuildDiagnostic.SEVERITY_ERROR
+                IMarker.SEVERITY_WARNING -> JdtBuildDiagnostic.SEVERITY_WARNING
+                else -> return null
+            }
+            val resource = marker.resource
+            val path = resource.location?.toOSString() ?: resource.fullPath.toString()
+            val line = marker.getAttribute(IMarker.LINE_NUMBER, -1).takeIf { it > 0 }
+            return JdtBuildDiagnostic(
+                severity = severity,
+                project = project.name,
+                path = path,
+                line = line,
+                message = marker.getAttribute(IMarker.MESSAGE, "")
+            )
+        }
 
         internal fun parseInputPath(args: Array<String>): Path {
             args.forEach { arg ->

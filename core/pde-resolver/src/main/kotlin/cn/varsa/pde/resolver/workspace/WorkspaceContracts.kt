@@ -46,7 +46,9 @@ object WorkspaceSetupInputJson {
 
 data class JdtBuildInput(
     val projects: List<String> = emptyList(),
-    val fullRebuild: Boolean = false
+    val fullRebuild: Boolean = false,
+    /** Where the application writes the [JdtBuildResult] JSON; null skips the file. */
+    val resultPath: String? = null
 )
 
 object JdtBuildInputJson {

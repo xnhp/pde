@@ -4396,7 +4396,9 @@ fun jdtBuildMain(args: Array<String>): Int {
     return 2
   }
 
-  val input = JdtBuildInput(fullRebuild = fullRebuild)
+  val resultPath = resolvedOutputRoot.resolve("results").resolve("jdt-build.json")
+  Files.deleteIfExists(resultPath)
+  val input = JdtBuildInput(fullRebuild = fullRebuild, resultPath = resultPath.toAbsolutePath().normalize().toString())
   val inputsDir = resolvedOutputRoot.resolve("inputs")
   Files.createDirectories(inputsDir)
   val inputPath = inputsDir.resolve("jdt-build.json")
@@ -4410,7 +4412,13 @@ fun jdtBuildMain(args: Array<String>): Int {
     applicationId = JDT_BUILD_APPLICATION_ID,
     args = listOf("--input", inputPath.toString())
   )
-  return runEquinoxApp(invocation)
+  // The app prints `path:line: error: message` lines plus a summary on inherited stdout and
+  // returns 1 when any ERROR marker remains; the same data lands in <output-root>/results/jdt-build.json.
+  val exitCode = runEquinoxApp(invocation)
+  if (exitCode != 0) {
+    logger.severe("JDT build failed (exit $exitCode). Details: ${resultPath.toAbsolutePath().normalize()}")
+  }
+  return exitCode
 }
 
 fun compileMain(args: Array<String>): Int {
