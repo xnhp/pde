@@ -196,7 +196,7 @@ private val apiBaselineCheckOptions = listOf(
   CliOption(listOf("--bundle"), "Analyze only the named workspace bundle BSN (repeatable; default: all workspace bundles)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--workspace-data"), "Path to workspace data directory from 'pde jdt-workspace init'; auto-detected at .jdtls/workspace/data, fails if absent (use --legacy to skip)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--legacy"), "Skip workspace-data / @since-tag detection; run the legacy binary-only analysis path"),
-  CliOption(listOf("--report"), "Write JSON problem report; with multiple bundles, written per-bundle to .api-baseline/reports/ (consumed by add-all-from-report / add-filter)", takesValue = true, valueLabel = "String")
+  CliOption(listOf("--report"), "Write JSON problem report; with multiple bundles, written per-bundle to .api-baseline/reports/ (consumed by filters add-all-from-report / add-filter / prune). Unused .api_filters entries appear as category \"usage\" problems", takesValue = true, valueLabel = "String")
 )
 
 private val apiBaselineAddAllFromReportPositionals = listOf(
@@ -528,7 +528,7 @@ internal val pdeCommand = CliCommandGroup(
             ),
             CliCommandLeaf(
               name = "prune",
-              description = "Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS",
+              description = "Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS (category \"usage\" in the check report; inspect the report to preview)",
               handler = forwardToLaunch(
                 "pde api-baseline filters prune",
                 "api-baseline", "filters", "prune"

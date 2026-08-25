@@ -1443,7 +1443,7 @@ private fun printApiBaselineFiltersHelp() {
   println("Subcommands:")
   println("  add-all-from-report       Add .api_filters entries for problems in report(s)")
   println("  add-filter <id>           Add a .api_filters entry for one problem reference")
-  println("  prune                     Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS")
+  println("  prune                     Remove .api_filters entries reported as UNUSED_PROBLEM_FILTERS (category \"usage\" in the check report; inspect the report to preview)")
   println()
   println("Examples:")
   println("  pde api-baseline filters add-all-from-report --all")
@@ -3948,7 +3948,7 @@ internal fun apiBaselineCheckMain(
   val reportOpt by parser.option(
     ArgType.String,
     fullName = "report",
-    description = "Write JSON problem report to this path; written per-bundle to .api-baseline/reports/<bsn> when multiple bundles are analyzed (consumed by add-all-from-report / add-filter)"
+    description = "Write JSON problem report to this path; written per-bundle to .api-baseline/reports/<bsn> when multiple bundles are analyzed (consumed by filters add-all-from-report / add-filter / prune). Unused .api_filters entries appear as category \"usage\" problems (\"The API problem filter for: '...' is no longer used\")"
   )
   val bundleFilters by parser.option(
     ArgType.String,
