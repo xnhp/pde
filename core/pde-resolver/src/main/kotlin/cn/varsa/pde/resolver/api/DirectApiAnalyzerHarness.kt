@@ -305,7 +305,7 @@ class DirectApiAnalyzerHarness(
     bundleSymbolicName = currentComponent.symbolicName,
     baselineComponentId = baselineComponent?.componentId(),
     currentComponentId = currentComponent.componentId(),
-    message = message,
+    message = renderProblemMessage(category, messageArguments.toList(), message),
     category = categoryName(category),
     apiFilterFile = apiFilterPath?.toAbsolutePath()?.normalize()?.toString()
   )
@@ -333,5 +333,26 @@ class DirectApiAnalyzerHarness(
 
   companion object {
     private val logger = Logger.getLogger(DirectApiAnalyzerHarness::class.java.name)
+
+    // Mirrored so tests without the PDE jar on their classpath can exercise the rendering.
+    internal const val CATEGORY_COMPATIBILITY: Int = IApiProblem.CATEGORY_COMPATIBILITY
+    internal const val CATEGORY_API_COMPONENT_RESOLUTION: Int = IApiProblem.CATEGORY_API_COMPONENT_RESOLUTION
+
+    /**
+     * PDE's own text for an unresolved-constraints problem is "API analysis aborted: {0} has
+     * unresolved constraints: {1}", which reads as if the whole run stopped. That text is written
+     * for the IDE builder, which really does return early. This harness calls
+     * `setContinueOnResolverError(true)`, so BaseApiAnalyzer#analyzeComponent records the problem
+     * and then runs the compatibility, version, usage, since-tag and unused-filter checks as
+     * usual. Reword so the reader knows the report is complete, and what is unreliable in it.
+     */
+    internal fun renderProblemMessage(category: Int, messageArguments: List<String>, original: String): String {
+      if (category != IApiProblem.CATEGORY_API_COMPONENT_RESOLUTION) return original
+      val bsn = messageArguments.getOrNull(0) ?: return original
+      val constraints = messageArguments.getOrNull(1) ?: return original
+      return "Component resolution incomplete for $bsn: unresolved constraints: $constraints. " +
+        "Compatibility, version, @since and usage analysis continued for the whole bundle; " +
+        "findings that involve types from the unresolved bundles may be missing or incomplete."
+    }
   }
 }
