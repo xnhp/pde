@@ -153,6 +153,22 @@ private val compileOptions = listOf(
   CliOption(listOf("--runtime-out"), "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory", takesValue = true, valueLabel = "String")
 )
 
+// Mirrors the kotlinx-cli parser in workspaceSetupMain (core/pde-launch-engine Main.kt).
+private val jdtWorkspaceInitOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--workspace", "-w"), "Workspace bundle directory (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
+  CliOption(listOf("--output-root"), "Output directory (default: .jdtls/workspace)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--data-dir"), "Workspace data directory for Eclipse projects (default: <output-root>/data)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--framework"), "Framework BSN", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.osgi")
+)
+
+// Mirrors the kotlinx-cli parser in jdtBuildMain (core/pde-launch-engine Main.kt).
+private val jdtWorkspaceBuildOptions = listOf(
+  CliOption(listOf("--data"), "Workspace data directory (default: <output-root>/data, matching 'pde jdt-workspace init')", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--full"), "Force full rebuild"),
+  CliOption(listOf("--output-root"), "Output directory (default: .jdtls/workspace)", takesValue = true, valueLabel = "String")
+)
+
 private val apiBaselineCheckPositionals = listOf(
   CliPositionalArg(0, "configPos", "Launch config YAML (auto-discovered if absent)", "0..1")
 )
@@ -285,7 +301,7 @@ internal val pdeCommand = CliCommandGroup(
           description = "Create Eclipse IProject/IJavaProject from resolver output",
           handler = { args -> workspaceSetupMain(args) },
           mixinStandardHelpOptions = true,
-          options = compileOptions,
+          options = jdtWorkspaceInitOptions,
           positionalArgs = compilePositionals
         ),
         CliCommandLeaf(
@@ -293,8 +309,7 @@ internal val pdeCommand = CliCommandGroup(
           description = "Run incremental JDT compilation in an Equinox workspace",
           handler = { args -> jdtBuildMain(args) },
           mixinStandardHelpOptions = true,
-          options = compileOptions,
-          positionalArgs = compilePositionals
+          options = jdtWorkspaceBuildOptions
         )
       )
     ),

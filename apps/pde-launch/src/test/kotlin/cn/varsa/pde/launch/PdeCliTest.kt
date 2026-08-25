@@ -325,6 +325,56 @@ class PdeCliTest {
   }
 
   @Test
+  fun `jdt-workspace build help advertises only the options jdtBuildMain accepts`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("jdt-workspace", "build", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde jdt-workspace build"))
+    assertTrue(output.contains("--data"))
+    assertTrue(output.contains("--full"))
+    assertTrue(output.contains("--output-root"))
+    assertTrue(output.contains(".jdtls/workspace"))
+    assertFalse(output.contains("--config"))
+    assertFalse(output.contains("--framework"))
+    assertFalse(output.contains("--json"))
+    assertFalse(output.contains("--results-json"))
+    assertFalse(output.contains("--bundles-info-out"))
+    assertFalse(output.contains("--runtime-out"))
+    assertFalse(output.contains("configPos"))
+  }
+
+  @Test
+  fun `jdt-workspace init help advertises only the options workspaceSetupMain accepts`() {
+    val out = ByteArrayOutputStream()
+    val savedOut = System.out
+    System.setOut(PrintStream(out))
+    try {
+      runPde(arrayOf("jdt-workspace", "init", "--help"))
+    } finally {
+      System.setOut(savedOut)
+    }
+
+    val output = out.toString()
+    assertTrue(output.contains("pde jdt-workspace init"))
+    assertTrue(output.contains("--config"))
+    assertTrue(output.contains("--workspace"))
+    assertTrue(output.contains("--output-root"))
+    assertTrue(output.contains("--data-dir"))
+    assertTrue(output.contains("--framework"))
+    assertFalse(output.contains("--json"))
+    assertFalse(output.contains("--results-json"))
+    assertFalse(output.contains("--bundles-info-out"))
+    assertFalse(output.contains("--runtime-out"))
+  }
+
+  @Test
   fun `validate config subcommand help uses command name`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out
