@@ -198,6 +198,7 @@ private val apiBaselineCheckOptions = listOf(
   CliOption(listOf("--bundle"), "Analyze only the named workspace bundle BSN (repeatable; default: all workspace bundles)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--workspace-data"), "Path to workspace data directory from 'pde jdt-workspace init'; auto-detected at .jdtls/workspace/data, fails if absent (use --legacy to skip)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--legacy"), "Skip workspace-data / @since-tag detection; run the legacy binary-only analysis path"),
+  CliOption(listOf("--no-sanity-check"), "Accept a result that looks degraded (many types 'no longer an API' plus most filters unused) instead of failing"),
   CliOption(listOf("--report"), "Write JSON problem report; with multiple bundles, written per-bundle to .api-baseline/reports/ (consumed by filters add-all-from-report / add-filter / prune). Unused .api_filters entries appear as category \"usage\" problems", takesValue = true, valueLabel = "String")
 )
 

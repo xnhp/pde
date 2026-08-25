@@ -301,10 +301,14 @@ class DirectApiAnalyzerHarness(
       }
       if (provided) null else "${constraint.name} ${constraint.versionRange ?: ""}".trim()
     }
+    // Warning, not a hard failure: compile-time-only bundles such as org.eclipse.jdt.annotation are
+    // routinely absent from the analyzer input while the analysis itself is complete (P000001 is
+    // reported for them either way). The coverage check and the degraded-result heuristic catch the
+    // case where the missing dependency actually breaks the API description.
     if (missing.isNotEmpty()) {
-      throw DegradedApiAnalysisException(
+      logger.warning(
         "${component.symbolicName}: component resolution aborted and ${missing.size} required dependenc(y/ies) are absent " +
-          "from the analyzer input: ${missing.joinToString(", ")}. References into them cannot be analyzed; not writing a report."
+          "from the analyzer input: ${missing.joinToString(", ")}. References into them cannot be analyzed."
       )
     }
   }
