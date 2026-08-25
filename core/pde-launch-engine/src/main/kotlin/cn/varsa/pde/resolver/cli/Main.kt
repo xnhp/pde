@@ -1448,6 +1448,7 @@ private fun printApiBaselineFiltersHelp() {
   println("Examples:")
   println("  pde api-baseline filters add-all-from-report --all")
   println("  pde api-baseline filters add-filter P000001")
+  println("  pde api-baseline filters prune --dry-run")
   println("  pde api-baseline filters prune")
   println()
   println("See also:")

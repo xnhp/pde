@@ -211,7 +211,9 @@ private val apiBaselineAddAllFromReportOptions = listOf(
   CliOption(listOf("--category"), "Narrow selection to specific problem categories (repeatable, case-insensitive)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--severity"), "Narrow selection to specific severities (repeatable, case-insensitive)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
   CliOption(listOf("--comment-template"), "Filter comment with {problemRef}, {bundleBsn}, {timestamp} placeholders", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--allow-empty-selection"), "Exit 0 when selection yields no problems (default: exit 3)")
+  CliOption(listOf("--allow-empty-selection"), "Exit 0 when selection yields no problems (default: exit 3)"),
+  CliOption(listOf("--allow-missing-fields"), "Skip problems with missing required fields instead of failing"),
+  CliOption(listOf("--dry-run"), "Print the filters that would be added or updated without writing .api_filters")
 )
 
 private val apiBaselineAddFilterPositionals = listOf(
@@ -230,7 +232,8 @@ private val apiBaselineFiltersPrunePositionals = listOf(
 private val apiBaselineFiltersPruneOptions = listOf(
   CliOption(listOf("--report"), "Path to a report JSON from 'pde api-baseline check'; auto-inferred from .api-baseline/reports/ when absent", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundle"), "Narrow to specific bundle BSNs (repeatable)", takesValue = true, valueLabel = "String", arity = "1", repeatable = true),
-  CliOption(listOf("--allow-empty-selection"), "Exit 0 when no unused filters are found (default: exit 3)")
+  CliOption(listOf("--allow-empty-selection"), "Exit 0 when no unused filters are found (default: exit 3)"),
+  CliOption(listOf("--dry-run"), "Print the filters that would be removed without writing .api_filters")
 )
 
 private val validateConfigPositionals = listOf(
