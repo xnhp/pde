@@ -14,8 +14,34 @@ data class BatchApiAnalyzerInput(
   val baselineArtifacts: List<AnalyzerBundleArtifact> = emptyList(),
   val preferences: Map<String, String> = emptyMap(),
   val workspaceDataDir: String? = null,
-  val applyApiFilters: Boolean = true
+  val applyApiFilters: Boolean = true,
+  /** Run the result-shape heuristic ([ApiAnalysisSanity.degradedResultMessage]) after each bundle. */
+  val sanityCheck: Boolean = true,
+  /** When set, the harness writes an [ApiAnalysisFailureSummary] here for every failed bundle. */
+  val failureSummaryPath: String? = null
 )
+
+/** One failed bundle analysis; written by the analyzer JVM so the CLI can print the reason. */
+data class ApiAnalysisFailure(
+  val bundleSymbolicName: String,
+  val message: String
+)
+
+data class ApiAnalysisFailureSummary(
+  val failures: List<ApiAnalysisFailure> = emptyList()
+)
+
+object ApiAnalysisFailureSummaryJson {
+  private val mapper = ObjectMapper()
+    .registerModule(KotlinModule.Builder().build())
+    .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+
+  fun write(summary: ApiAnalysisFailureSummary): String =
+    mapper.writerWithDefaultPrettyPrinter().writeValueAsString(summary)
+
+  fun read(path: Path): ApiAnalysisFailureSummary =
+    mapper.readValue(path.toFile(), ApiAnalysisFailureSummary::class.java)
+}
 
 data class ApiFilterRule(
   val typeName: String,

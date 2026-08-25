@@ -115,6 +115,95 @@ class ApiBaselineCheckCliTest {
   }
 
   @Test
+  fun `api baseline check passes sanity-check flag and failure summary path to the analyzer`() {
+    val baseDir = tmp.newFolder("cfg-sanity").toPath()
+    val workspace = tmp.newFolder("workspace-sanity").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val inputs = mutableListOf<BatchApiAnalyzerInput>()
+    val run = { extra: Array<String> ->
+      apiBaselineCheckMain(
+        args = arrayOf(
+          "--config", configFile.toString(),
+          "--legacy",
+          "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+        ) + extra,
+        analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+        analyzerRunner = { invocation ->
+          inputs += BatchApiAnalyzerInputJson.read(Path.of(invocation.valueAfter("--input")))
+          0
+        }
+      )
+    }
+
+    assertEquals(0, run(emptyArray()))
+    assertTrue(inputs.last().sanityCheck, "sanity check is on by default")
+    assertEquals(
+      baseDir.resolve(".api-baseline/results/api-baseline-failures.json").toAbsolutePath().normalize().toString(),
+      inputs.last().failureSummaryPath
+    )
+
+    assertEquals(0, run(arrayOf("--no-sanity-check")))
+    assertFalse(inputs.last().sanityCheck)
+  }
+
+  @Test
+  fun `api baseline check surfaces the analyzer's recorded failure reason and clears a stale summary`() {
+    val baseDir = tmp.newFolder("cfg-degraded").toPath()
+    val workspace = tmp.newFolder("workspace-degraded").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace, compiledOutput = true)
+    val configFile = writeConfigFile(baseDir, workspace)
+    val summaryPath = baseDir.resolve(".api-baseline/results/api-baseline-failures.json")
+    summaryPath.parent.createDirectories()
+    summaryPath.writeText(
+      cn.varsa.pde.resolver.api.ApiAnalysisFailureSummaryJson.write(
+        cn.varsa.pde.resolver.api.ApiAnalysisFailureSummary(
+          listOf(cn.varsa.pde.resolver.api.ApiAnalysisFailure("org.stale", "left over from an earlier run"))
+        )
+      )
+    )
+
+    var summaryExistedWhenAnalyzerStarted = true
+    val (exit, messages) = captureLogRecords {
+      apiBaselineCheckMain(
+        args = arrayOf(
+          "--config", configFile.toString(),
+          "--legacy",
+          "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+        ),
+        analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+        analyzerRunner = { invocation ->
+          val input = BatchApiAnalyzerInputJson.read(Path.of(invocation.valueAfter("--input")))
+          val path = Path.of(input.failureSummaryPath!!)
+          summaryExistedWhenAnalyzerStarted = Files.exists(path)
+          path.writeText(
+            cn.varsa.pde.resolver.api.ApiAnalysisFailureSummaryJson.write(
+              cn.varsa.pde.resolver.api.ApiAnalysisFailureSummary(
+                listOf(
+                  cn.varsa.pde.resolver.api.ApiAnalysisFailure(
+                    "org.example.api",
+                    "org.example.api: API description is incomplete; 2 exported package(s) with types resolve as non-API: a, b."
+                  )
+                )
+              )
+            )
+          )
+          1
+        }
+      )
+    }
+
+    assertEquals(1, exit)
+    assertFalse(summaryExistedWhenAnalyzerStarted, "stale failure summary must be deleted before launching the analyzer")
+    assertTrue(messages.any { it.contains("API analysis failed for org.example.api: org.example.api: API description is incomplete") }, messages.toString())
+    assertTrue(messages.any { it.contains("No API baseline report written for 1 bundle(s)") }, messages.toString())
+    assertFalse(messages.any { it.contains("org.stale") }, messages.toString())
+  }
+
+  @Test
   fun `api baseline check direct app writes input manifest for injected runner`() {
     val baseDir = tmp.newFolder("cfg-direct").toPath()
     val workspace = tmp.newFolder("workspace-direct").toPath()

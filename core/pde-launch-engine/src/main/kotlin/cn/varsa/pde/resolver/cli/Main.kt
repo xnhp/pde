@@ -20,6 +20,7 @@ import cn.varsa.pde.remoterunner.startForwarders
 import cn.varsa.pde.resolver.algo.ResolveOptions
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.api.AnalyzerBundleArtifact
+import cn.varsa.pde.resolver.api.ApiAnalysisFailureSummaryJson
 import cn.varsa.pde.resolver.api.BatchApiAnalyzerInput
 import cn.varsa.pde.resolver.api.BatchApiAnalyzerInputJson
 import cn.varsa.pde.resolver.api.CurrentBundleInfo
@@ -1426,6 +1427,7 @@ private fun printApiBaselineHelp() {
   println("  pde api-baseline check")
   println("  pde api-baseline check --report .api-baseline/custom-report.json")
   println("  pde api-baseline check --no-filters")
+  println("  pde api-baseline check --no-sanity-check")
   println("  pde api-baseline filters add-all-from-report --all")
   println("  pde api-baseline filters prune")
   println("  pde target install api-baseline --baseline-root .target/p2")
@@ -4000,6 +4002,11 @@ internal fun apiBaselineCheckMain(
     fullName = "no-filters",
     description = "Disable .api_filters suppression; show all problems"
   ).default(false)
+  val noSanityCheckOpt by parser.option(
+    ArgType.Boolean,
+    fullName = "no-sanity-check",
+    description = "Accept a result that looks degraded (many types 'no longer an API' plus most existing filters unused) instead of failing"
+  ).default(false)
   val configPosOpt by parser.argument(
     ArgType.String,
     description = "Launch config YAML (auto-discovered if absent)"
@@ -4269,6 +4276,11 @@ internal fun apiBaselineCheckMain(
     ?: reportOpt?.let { outputRoot.resolve("report-logs").resolve("batch.log") }
 
   val workspaceDataDirString = workspaceDataPath?.toAbsolutePath()?.normalize()?.toString()
+  // The analyzer JVM's own log goes to batchLogFile (when set), so a hard failure inside it would
+  // otherwise surface here only as "exited with code 1". The harness writes the per-bundle reason
+  // to this file; delete any previous one so a stale summary is never attributed to this run.
+  val failureSummaryPath = outputRoot.resolve("results").resolve("api-baseline-failures.json")
+  Files.deleteIfExists(failureSummaryPath)
   val invocation = writeBatchApiAnalyzerLaunchPlan(
     launcherExecutable = launcherExecutable,
     configurationDir = configurationDirOverride,
@@ -4280,7 +4292,9 @@ internal fun apiBaselineCheckMain(
       dependencyArtifacts = batchDependencyArtifacts,
       baselineArtifacts = batchBaselineArtifacts,
       workspaceDataDir = workspaceDataDirString,
-      applyApiFilters = !noFiltersOpt
+      applyApiFilters = !noFiltersOpt,
+      sanityCheck = !noSanityCheckOpt,
+      failureSummaryPath = failureSummaryPath.toAbsolutePath().normalize().toString()
     ),
     logFile = batchLogFile
   ).invocation
@@ -4290,8 +4304,37 @@ internal fun apiBaselineCheckMain(
     currentBundleInfos.forEach { info ->
       println("Wrote API baseline report: ${info.outputReportPath.toAbsolutePath().normalize()}")
     }
+  } else {
+    reportApiAnalysisFailures(failureSummaryPath, batchLogFile)
   }
   return exitCode
+}
+
+/**
+ * Prints the reasons the analyzer JVM recorded for each failed bundle. No report was written for
+ * those bundles (a stale one from an earlier run is deleted by the harness).
+ */
+internal fun reportApiAnalysisFailures(failureSummaryPath: Path, logFile: Path?) {
+  val summary = if (Files.isRegularFile(failureSummaryPath)) {
+    try {
+      ApiAnalysisFailureSummaryJson.read(failureSummaryPath)
+    } catch (e: Exception) {
+      logger.warning("Could not read analyzer failure summary ${failureSummaryPath.toAbsolutePath().normalize()}: ${e.message}")
+      null
+    }
+  } else null
+  if (summary == null || summary.failures.isEmpty()) {
+    logger.severe(
+      "API analysis failed without a recorded per-bundle reason" +
+        (logFile?.let { "; see ${it.toAbsolutePath().normalize()}" } ?: "") + "."
+    )
+    return
+  }
+  summary.failures.forEach { failure ->
+    logger.severe("API analysis failed for ${failure.bundleSymbolicName}: ${failure.message}")
+  }
+  logger.severe("No API baseline report written for ${summary.failures.size} bundle(s)" +
+    (logFile?.let { "; analyzer log: ${it.toAbsolutePath().normalize()}" } ?: "") + ".")
 }
 
 private fun resolvePackagedWorkspaceSetupRuntime(outputRoot: Path): EquinoxAppRuntime? =

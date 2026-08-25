@@ -5,17 +5,27 @@ import org.eclipse.core.resources.IResource
 import org.eclipse.core.resources.IWorkspaceRoot
 import org.eclipse.core.resources.ResourcesPlugin
 import org.eclipse.core.runtime.NullProgressMonitor
+import org.eclipse.core.runtime.jobs.Job
 import org.eclipse.jdt.core.JavaCore
+import org.eclipse.osgi.service.resolver.BundleSpecification
+import org.eclipse.osgi.service.resolver.ImportPackageSpecification
 import org.eclipse.pde.api.tools.internal.ApiBaselineManager
+import org.eclipse.pde.api.tools.internal.ApiDescriptionManager
 import org.eclipse.pde.api.tools.internal.builder.BaseApiAnalyzer
 import org.eclipse.pde.api.tools.internal.builder.BuildContext
 import org.eclipse.pde.api.tools.internal.model.ApiBaseline
 import org.eclipse.pde.api.tools.internal.model.BundleComponent
 import org.eclipse.pde.api.tools.internal.model.ProjectComponent
 import org.eclipse.pde.api.tools.internal.model.WorkspaceBaseline
+import org.eclipse.pde.api.tools.internal.problems.ApiProblemFactory
 import org.eclipse.pde.api.tools.internal.provisional.ApiPlugin
+import org.eclipse.pde.api.tools.internal.provisional.Factory
+import org.eclipse.pde.api.tools.internal.provisional.VisibilityModifiers
+import org.eclipse.pde.api.tools.internal.provisional.comparator.IDelta
 import org.eclipse.pde.api.tools.internal.provisional.model.IApiComponent
+import org.eclipse.pde.api.tools.internal.provisional.model.IApiElement
 import org.eclipse.pde.api.tools.internal.provisional.problems.IApiProblem
+import org.osgi.framework.Constants
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -89,12 +99,26 @@ class DirectApiAnalyzerHarness(
     referenceBaseline.addApiComponents(createComponents(referenceBaseline, referenceArtifacts).toTypedArray())
     try {
       val outcomes = input.currentBundles.map { bundleInfo ->
-        analyzeOneComponent(bundleInfo, input.preferences, currentBaseline, referenceBaseline, input.applyApiFilters)
+        analyzeOneComponent(bundleInfo, input.preferences, currentBaseline, referenceBaseline, input.applyApiFilters, input.sanityCheck)
       }
+      writeFailureSummary(input, outcomes)
       return BatchAnalysisResult(outcomes)
     } finally {
       currentBaseline.dispose()
       referenceBaseline.dispose()
+    }
+  }
+
+  private fun writeFailureSummary(input: BatchApiAnalyzerInput, outcomes: List<BundleAnalysisOutcome>) {
+    val path = input.failureSummaryPath?.let { Path.of(it) } ?: return
+    val failures = outcomes.filterNot { it.succeeded }.map { outcome ->
+      ApiAnalysisFailure(outcome.bundleSymbolicName, outcome.failure?.message ?: outcome.failure.toString())
+    }
+    try {
+      path.parent?.let { Files.createDirectories(it) }
+      Files.writeString(path, ApiAnalysisFailureSummaryJson.write(ApiAnalysisFailureSummary(failures)))
+    } catch (e: Exception) {
+      logger.log(Level.WARNING, "Failed to write API analysis failure summary to $path", e)
     }
   }
 
@@ -103,7 +127,8 @@ class DirectApiAnalyzerHarness(
     preferences: Map<String, String>,
     currentBaseline: ApiBaseline,
     referenceBaseline: ApiBaseline,
-    applyApiFilters: Boolean = true
+    applyApiFilters: Boolean = true,
+    sanityCheck: Boolean = true
   ): BundleAnalysisOutcome {
     val bsn = bundleInfo.currentBundle.bundleSymbolicName
     val analyzer = BaseApiAnalyzer()
@@ -138,6 +163,15 @@ class DirectApiAnalyzerHarness(
         }
       }
 
+      // Hard failures instead of silent degradation (see ApiAnalysisSanity): an API description
+      // that treats exported packages as private, or a dependency that no component in the
+      // analyzer input provides, makes every downstream problem list meaningless.
+      verifyApiDescriptionCoverage(currentComponent)
+      verifyResolverErrors(currentComponent, currentBaseline)
+
+      // PDE emits the "API analysis aborted: unresolved constraints" problem whenever the
+      // component's BundleDescription has resolver errors; with continue-on-error it still analyzes
+      // through the ApiBaseline (package-based resolution), so the warning alone is not fatal.
       analyzer.setContinueOnResolverError(true)
       analyzer.analyzeComponent(
         null,
@@ -149,11 +183,17 @@ class DirectApiAnalyzerHarness(
         NullProgressMonitor()
       )
 
-      val filterRules = if (applyApiFilters && bundleInfo.apiFilterPath != null) {
-        ApiFilterRule.load(bundleInfo.apiFilterPath)
-      } else emptyList()
+      val existingFilterRules = bundleInfo.apiFilterPath?.let { ApiFilterRule.load(it) } ?: emptyList()
+      val filterRules = if (applyApiFilters) existingFilterRules else emptyList()
 
       val allProblems = analyzer.getProblems().toList()
+      if (sanityCheck) {
+        ApiAnalysisSanity.degradedResultMessage(
+          noLongerApiTypeCount = allProblems.count { it.isNoLongerApiType() },
+          unusedFilterCount = allProblems.count { it.isUnusedFilter() },
+          totalFilterCount = existingFilterRules.size
+        )?.let { throw DegradedApiAnalysisException("$bsn: $it") }
+      }
       val filteredProblems = if (filterRules.isNotEmpty()) {
         allProblems.filter { problem ->
           filterRules.none { rule ->
@@ -185,11 +225,98 @@ class DirectApiAnalyzerHarness(
       BundleAnalysisOutcome(bsn, report = report)
     } catch (failure: Throwable) {
       logger.log(Level.SEVERE, "API analysis failed for bundle $bsn", failure)
+      // A report from an earlier run at the same path would otherwise be mistaken for this run's
+      // result by add-filter / add-all-from-report.
+      if (Files.deleteIfExists(bundleInfo.outputReportPath)) {
+        logger.warning("Deleted stale API baseline report ${bundleInfo.outputReportPath} because this run failed.")
+      }
       BundleAnalysisOutcome(bsn, failure = failure)
     } finally {
       analyzer.dispose()
     }
   }
+
+  /**
+   * Every exported, non-internal package the current component has types for must resolve as API
+   * in its API description. When the description is missing or incomplete (see
+   * prepareWorkspaceProject), PDE reports every type in the affected packages as "no longer an API"
+   * and every filter as unused instead of failing.
+   */
+  private fun verifyApiDescriptionCoverage(component: IApiComponent) {
+    if (component !is ProjectComponent) return
+    val description = component.apiDescription
+    val exportedApiPackages = component.bundleDescription.exportPackages
+      .filterNot { export ->
+        export.getDirective("x-internal") == true || (export.getDirective("x-friends") as? Array<*>)?.isNotEmpty() == true
+      }
+      .map { it.name }
+      .toSet()
+    val packagesWithTypes = component.apiTypeContainers
+      .filter { container ->
+        (container.getAncestor(IApiElement.COMPONENT) as? IApiComponent)?.symbolicName == component.symbolicName
+      }
+      .flatMap { it.packageNames.asList() }
+      .toSet()
+    if (exportedApiPackages.isNotEmpty() && packagesWithTypes.isEmpty()) {
+      throw DegradedApiAnalysisException(
+        "${component.symbolicName}: the workspace project exposes no types to API Tools (no API type containers; " +
+          "check build.properties source./output. entries and that the output folder is compiled). " +
+          "Since-tag and compatibility analysis would be wrong; not writing a report."
+      )
+    }
+    val packagesResolvedAsApi = exportedApiPackages.filter { name ->
+      val annotations = description.resolveAnnotations(Factory.packageDescriptor(name))
+      annotations != null && VisibilityModifiers.isAPI(annotations.visibility)
+    }.toSet()
+    val missing = ApiAnalysisSanity.missingApiPackages(exportedApiPackages, packagesWithTypes, packagesResolvedAsApi)
+    if (missing.isNotEmpty()) {
+      throw DegradedApiAnalysisException(
+        "${component.symbolicName}: API description is incomplete; ${missing.size} exported package(s) with types resolve as " +
+          "non-API: ${missing.sorted().joinToString(", ")}. PDE would report every type in them as 'no longer an API'; " +
+          "not writing a report."
+      )
+    }
+  }
+
+  /**
+   * Resolver errors on the current component are tolerated (continue-on-error) as long as every
+   * unsatisfied mandatory constraint is provided by some component in the analyzer input; API Tools
+   * resolves references through the baseline by package, not through the OSGi state. A dependency
+   * that is absent entirely means references into it cannot be resolved at all.
+   */
+  private fun verifyResolverErrors(component: IApiComponent, baseline: ApiBaseline) {
+    val errors = component.errors ?: return
+    val missing = errors.mapNotNull { error ->
+      val constraint = error.unsatisfiedConstraint ?: return@mapNotNull null
+      val provided = when (constraint) {
+        is ImportPackageSpecification -> {
+          if (constraint.getDirective(Constants.RESOLUTION_DIRECTIVE) == ImportPackageSpecification.RESOLUTION_OPTIONAL) return@mapNotNull null
+          baseline.resolvePackage(component, constraint.name).isNotEmpty()
+        }
+        is BundleSpecification -> {
+          if (constraint.isOptional) return@mapNotNull null
+          baseline.getApiComponent(constraint.name) != null
+        }
+        else -> baseline.getApiComponent(constraint.name) != null
+      }
+      if (provided) null else "${constraint.name} ${constraint.versionRange ?: ""}".trim()
+    }
+    if (missing.isNotEmpty()) {
+      throw DegradedApiAnalysisException(
+        "${component.symbolicName}: component resolution aborted and ${missing.size} required dependenc(y/ies) are absent " +
+          "from the analyzer input: ${missing.joinToString(", ")}. References into them cannot be analyzed; not writing a report."
+      )
+    }
+  }
+
+  private fun IApiProblem.isNoLongerApiType(): Boolean =
+    category == IApiProblem.CATEGORY_COMPATIBILITY &&
+      ApiProblemFactory.getProblemKind(id) == IDelta.REMOVED &&
+      ApiProblemFactory.getProblemFlags(id) == IDelta.API_TYPE
+
+  private fun IApiProblem.isUnusedFilter(): Boolean =
+    category == IApiProblem.CATEGORY_USAGE &&
+      ApiProblemFactory.getProblemKind(id) == IApiProblem.UNUSED_PROBLEM_FILTERS
 
   private fun mergeWithSharedDependencyArtifacts(
     scopeOwnArtifacts: List<AnalyzerBundleArtifact>,
@@ -222,6 +349,7 @@ class DirectApiAnalyzerHarness(
           } catch (e: Exception) {
             logger.log(Level.WARNING, "JavaCore.initializeAfterLoad failed for project ${project.name}", e)
           }
+          prepareWorkspaceProject(project)
           // ApiDescriptionManager only builds a real (export-aware) ProjectApiDescription when the
           // project carries the API Tools nature; without it the description is a
           // NonApiProjectDescription that treats every package as non-API, so the analyzed type is
@@ -246,6 +374,49 @@ class DirectApiAnalyzerHarness(
           }
         }
       }
+
+  /**
+   * Make the JDT view of the project deterministic before API Tools looks at it.
+   *
+   * The workspace `-data` dir is reused across CLI runs, and the analyzer saves the workspace on
+   * exit, which lets ApiDescriptionManager persist the project's API description
+   * (.metadata/.plugins/org.eclipse.pde.api.tools/<project>/.api_description). On the next run
+   * that description is RESTORED instead of rebuilt: each package node is pinned to the exact
+   * IPackageFragments it was created with -- including a fragment in the bundle's own compiled
+   * output folder, which JDT models as an external class folder (linked into
+   * .org.eclipse.jdt.core.external.folders and populated by a background refresh job).
+   * ProjectApiDescription.PackageNode.refresh() drops the whole package as soon as ANY of its
+   * fragments does not exist yet, and never rebuilds it, so every type in that package becomes
+   * "no longer an API" and every since-tag filter unused. Which packages lose the race against the
+   * refresh job depends on machine load, which is the run-to-run variance seen in the reports.
+   * A description built from scratch (first run against a fresh workspace) only records fragments
+   * that exist at that moment and is therefore robust; make every run behave like the first one.
+   */
+  private fun prepareWorkspaceProject(project: IProject) {
+    val javaProject = JavaCore.create(project)
+    try {
+      ApiDescriptionManager.getManager().clean(javaProject, true, true)
+    } catch (e: Exception) {
+      logger.log(Level.WARNING, "Failed to discard persisted API description for project ${project.name}", e)
+    }
+    // Bring the resource tree in line with disk synchronously (the setup process may have been a
+    // different JVM), then force classpath resolution so JDT creates its external class-folder
+    // links, and wait for the refresh jobs those trigger instead of racing them.
+    project.refreshLocal(IResource.DEPTH_INFINITE, NullProgressMonitor())
+    try {
+      javaProject.getResolvedClasspath(true)
+      javaProject.packageFragmentRoots
+    } catch (e: Exception) {
+      logger.log(Level.WARNING, "Classpath resolution failed for project ${project.name}", e)
+    }
+    listOf(ResourcesPlugin.FAMILY_AUTO_REFRESH, ResourcesPlugin.FAMILY_MANUAL_REFRESH).forEach { family ->
+      try {
+        Job.getJobManager().join(family, NullProgressMonitor())
+      } catch (e: Exception) {
+        logger.log(Level.WARNING, "Waiting for workspace refresh jobs failed for project ${project.name}", e)
+      }
+    }
+  }
 
   private fun createWorkspaceProjectComponent(
     baseline: ApiBaseline,
