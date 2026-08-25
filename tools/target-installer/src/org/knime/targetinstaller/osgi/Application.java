@@ -9,6 +9,7 @@ import org.knime.targetinstaller.utils.ReadProperties;
 import org.knime.targetinstaller.utils.Repository;
 import org.knime.targetinstaller.utils.TargetFileParser;
 import org.knime.targetinstaller.utils.Arguments;
+import org.knime.targetinstaller.utils.Utils;
 import org.eclipse.equinox.p2.engine.ProvisioningContext;
 import java.net.URI;
 import org.tinylog.Logger;
@@ -34,6 +35,7 @@ public class Application implements IApplication{
                 "Missing installer configuration. Pass -profileId, -p2Path, -targetDefinition, -install, -bundlePool."
         ));
         var arguments = new Arguments(context);
+        Utils.setInteractiveProgress(arguments.isInteractive());
         Logger.info("Using configuration from program arguments.");
         Logger.info("Using TP definition: " + resolvedConfig.targetDefinition());
 

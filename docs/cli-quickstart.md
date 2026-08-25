@@ -19,6 +19,9 @@ Set `target.installer` in `pde.yaml` or `-Dpde.targetInstaller=/path/to/target-i
 debugging or testing a different launcher. Relative target paths such as `target.definition`, `target.install`,
 `target.p2Path`, and `target.bundlePool` are resolved against the `pde.yaml` directory.
 
+By default the installer prints coarse progress only (one `started`/`done` line per step). Pass `--interactive` to
+get the live per-artifact download view, which redraws the terminal and is unsuitable for log files.
+
 ## Compile your sources: `pde compile`
 
 <details>

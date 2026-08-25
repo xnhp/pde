@@ -293,25 +293,65 @@ public class Utils {
         }
     }
 
+    /**
+     * Whether progress monitors may redraw the terminal (carriage returns, clear-screen, per-artifact download
+     * lines). Off by default: only coarse, line-oriented progress is printed, which is what you want when the
+     * output ends up in a log file or a non-TTY. Enabled via {@code -interactive} (see {@link Arguments}).
+     */
+    private static volatile boolean interactiveProgress = false;
+
+    public static void setInteractiveProgress(boolean interactive) {
+        interactiveProgress = interactive;
+    }
+
+    public static boolean isInteractiveProgress() {
+        return interactiveProgress;
+    }
+
     public static class ProvisioningJobProgressMonitor extends NullProgressMonitor implements AutoCloseable {
+        /** In non-interactive mode, print a summary line every this many newly seen artifacts. */
+        private static final int QUIET_REPORT_EVERY = 50;
 
         private boolean done;
-
         private Map<ProvisioningJobUpdateLineParser.BundleId, ProvisioningJobUpdateLineParser.ProvisioningJobUpdate> mostRecentUpdates = new ConcurrentHashMap<>();
+        private int totalWork;
+        private String taskName = "Provisioning";
+
+        @Override
+        public void beginTask(String name, int totalWork) {
+            this.totalWork = totalWork;
+            if (name != null && !name.isBlank()) {
+                this.taskName = name;
+            }
+            if (!interactiveProgress) {
+                System.out.println(taskName + ": started");
+            }
+        }
 
         @Override
         public void subTask(String name) {
+            var update = ProvisioningJobUpdateLineParser.parseUpdateLine(name);
+            if (update.bundleId() == null) {
+                return;
+            }
+            var previouslySeen = mostRecentUpdates.put(update.bundleId(), update) != null;
+            if (!interactiveProgress) {
+                if (!previouslySeen && mostRecentUpdates.size() % QUIET_REPORT_EVERY == 0) {
+                    System.out.println(taskName + ": " + mostRecentUpdates.size() + " artifacts fetched so far");
+                }
+                return;
+            }
             // different fetches / downloads run in parallel, this would switch
             System.out.print("\r");
-            var update = ProvisioningJobUpdateLineParser.parseUpdateLine(name);
-            if (update.bundleId() != null) {
-                mostRecentUpdates.put(update.bundleId(), update);
-            }
             clearScreenAnsi();
             printMostRecentUpdates();
         }
 
+        /** Clears the terminal. No-op unless interactive progress is enabled. */
         public static void clearScreenAnsi() {
+            if (!interactiveProgress) {
+                return;
+            }
             System.out.print("\u001b[2J\u001b[H"); // or "\033[2J\033[H"
             System.out.flush();
         }
@@ -327,8 +367,13 @@ public class Utils {
         @Override
         public void done() {
             this.done = true;
-            System.out.print("\r");
-            System.out.print(green("done") + "\n");
+            if (interactiveProgress) {
+                System.out.print("\r");
+                System.out.print(green("done") + "\n");
+            } else {
+                System.out.println(taskName + ": " + green("done")
+                        + (mostRecentUpdates.isEmpty() ? "" : " (" + mostRecentUpdates.size() + " artifacts fetched)"));
+            }
         }
 
         @Override
@@ -337,7 +382,6 @@ public class Utils {
                 done();
             }
         }
-
     }
 
     public static class StdOutProgressMonitor extends NullProgressMonitor implements AutoCloseable {
@@ -346,6 +390,9 @@ public class Utils {
 
         @Override
         public void subTask(String name) {
+            if (!interactiveProgress) {
+                return;
+            }
             // different fetches / downloads run in parallel, this would switch
             System.out.print("\r");
             printLabel();
@@ -362,18 +409,22 @@ public class Utils {
         public void beginTask(String name, int totalWork) {
             this.totalWork = totalWork;
             printLabel();
-            System.out.print("starting");
+            if (interactiveProgress) {
+                System.out.print("starting");
+            } else {
+                System.out.println("started");
+            }
         }
 
         private void printLabel() {
             System.out.printf("%s: ", label);
-//            if (!name.trim().isEmpty()) {
-//                System.out.printf(" " + name);
-//            }
         }
 
         @Override
         public void worked(int work) {
+            if (!interactiveProgress) {
+                return;
+            }
             System.out.print("\r");
             printLabel();
             System.out.print(work + " / " + totalWork );
@@ -382,7 +433,9 @@ public class Utils {
         @Override
         public void done() {
             this.done = true;
-            System.out.print("\r");
+            if (interactiveProgress) {
+                System.out.print("\r");
+            }
             printLabel();
             System.out.print(green("done") + "\n");
         }

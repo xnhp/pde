@@ -110,6 +110,8 @@ internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.arti
 internal const val DEFAULT_TEST_DEBUG_PORT = 5005
 internal const val DEFAULT_WORKSPACE_OUTPUT_ROOT = ".jdtls/workspace"
 private const val TARGET_INSTALLER_LAUNCHER_JAR = "target-installer-launcher.jar"
+/** Installer-side switch (see target-installer Arguments.java) that turns on live per-artifact progress output. */
+internal const val TARGET_INSTALLER_INTERACTIVE_FLAG = "-interactive"
 private const val API_BASELINE_RUNTIME_ARCHIVE = "api-baseline-runtime.zip"
 private const val TARGET_INSTALLER_OVERRIDE_PROPERTY = "pde.targetInstaller"
 private val jsonMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
@@ -3413,6 +3415,11 @@ internal fun targetMain(
     fullName = "copy-path",
     description = "Copy target profile path to clipboard after successful install"
   ).default(false)
+  val interactive by parser.option(
+    ArgType.Boolean,
+    fullName = "interactive",
+    description = "Show live per-artifact download/install progress (redraws the terminal)"
+  ).default(false)
   parser.parse(normalizedArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
 
@@ -3460,9 +3467,11 @@ internal fun targetMain(
       return 2
     }
   val logFile = logFileOpt?.let { Paths.get(it) }
+  // The installer JVM is quiet by default (coarse progress only); -interactive re-enables the live redraw.
+  val installerArgs = installInputs.installerArgs() + (if (interactive) listOf(TARGET_INSTALLER_INTERACTIVE_FLAG) else emptyList())
   val exit = runInstallerLauncher(
     installInputs.installerJar,
-    installInputs.installerArgs(),
+    installerArgs,
     issueContext.baseDir,
     logFile,
     targetConfig.trustAllAuthorities == true
