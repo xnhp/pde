@@ -21,7 +21,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Unlike ci.yml this builds the real artifacts, so it needs the pinned bundle cache too.
       - name: Setup Eclipse SDK
