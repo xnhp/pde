@@ -19,8 +19,21 @@ import kotlin.system.exitProcess
 
 private fun forwardToLaunch(commandName: String, vararg prefix: String): (Array<String>) -> Int = { args ->
   launchMain((prefix.toList() + args).toTypedArray(), commandName = commandName)
-  0
 }
+
+private val ideInitOptions = listOf(
+  CliOption(listOf("--issue-dir"), "Issue directory containing pde.yaml and repos", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--config"), "YAML launch configuration path", takesValue = true, valueLabel = "String")
+)
+
+private val ideInitPositionals = listOf(
+  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1")
+)
+
+private val addTestPositionals = listOf(
+  CliPositionalArg(0, "pluginName", "Test plugin name (bundle ID)", "1"),
+  CliPositionalArg(1, "className", "Fully-qualified test class name", "1")
+)
 
 private val launchPositionals = listOf(
   CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1"),
@@ -235,12 +248,21 @@ internal val pdeCommand = CliCommandGroup(
         CliCommandLeaf(
           name = "idea",
           description = "Generate IntelliJ project",
-          handler = { args -> IjInit.main(args) }
+          handler = { args -> IjInit.main(args) },
+          mixinStandardHelpOptions = true,
+          options = ideInitOptions,
+          positionalArgs = ideInitPositionals
         ),
         CliCommandLeaf(
           name = "vscode",
           description = "Generate VS Code multi-root workspace (run 'pde lsp init' for JDT LS project files)",
-          handler = { args -> VscodeInit.main(args) }
+          handler = { args -> VscodeInit.main(args) },
+          mixinStandardHelpOptions = true,
+          options = ideInitOptions + CliOption(
+            listOf("--out"), "Destination .code-workspace file (defaults to <issue-dir>/pde.code-workspace)",
+            takesValue = true, valueLabel = "String"
+          ),
+          positionalArgs = ideInitPositionals
         )
       )
     ),
@@ -324,7 +346,9 @@ internal val pdeCommand = CliCommandGroup(
     CliCommandLeaf(
       name = "add-test",
       description = "Append a test entry to launch config",
-      handler = { args -> AddTestCommand.main(args) }
+      handler = { args -> AddTestCommand.main(args) },
+      mixinStandardHelpOptions = true,
+      positionalArgs = addTestPositionals
     ),
     CliCommandLeaf(
       name = "fetch-jars",

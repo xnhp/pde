@@ -1,5 +1,6 @@
 package cn.varsa.pde.launch
 
+import org.junit.Rule
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -7,6 +8,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PdeCliTest {
+  @get:Rule
+  val failOnJvmExit = FailOnJvmExitRule()
+
 
   @Test
   fun `help is printed when no args are provided`() {
@@ -59,15 +63,19 @@ class PdeCliTest {
     val lines = output.lines()
 
     // Nodes are prefixed with unicode box-drawing tree guides (├──/└──/│), indented under their
-    // parent's guide column rather than plain spaces.
-    assertTrue(lines.any { it == "├── target                   Target platform commands (install, mirror, inspect)" })
-    assertTrue(lines.any { it == "│   ├── install              Resolve/prepare target platform state" })
-    assertTrue(lines.any { it == "│   ├── repair               Repair reusable target bundle-pool state" })
-    assertTrue(lines.any { it == "│   │   ├── re-fetch         Re-run target install to fetch currently required artifacts" })
-    assertTrue(lines.any { it == "│   └── inspect              Inspect target profile state and health" })
-    assertTrue(lines.any { it == "│       ├── profile          Show profile location and bundle-pool basics" })
-    assertTrue(lines.any { it == "├── ide-init                 Generate IDE project files" })
-    assertTrue(lines.any { it == "│   ├── idea                 Generate IntelliJ project" })
+    // parent's guide column rather than plain spaces. The description column is aligned to the
+    // longest command name, so only the guide prefix and description are asserted, not the padding.
+    fun hasTreeLine(prefix: String, description: String) =
+      lines.any { it.startsWith(prefix) && it.substring(prefix.length).trim() == description }
+
+    assertTrue(hasTreeLine("├── target ", "Target platform commands (install, mirror, inspect)"))
+    assertTrue(hasTreeLine("│   ├── install ", "Resolve/prepare target platform state"))
+    assertTrue(hasTreeLine("│   ├── repair ", "Repair reusable target bundle-pool state"))
+    assertTrue(hasTreeLine("│   │   ├── re-fetch ", "Re-run target install to fetch currently required artifacts"))
+    assertTrue(hasTreeLine("│   └── inspect ", "Inspect target profile state and health"))
+    assertTrue(hasTreeLine("│       ├── profile ", "Show profile location and bundle-pool basics"))
+    assertTrue(hasTreeLine("├── ide-init ", "Generate IDE project files"))
+    assertTrue(hasTreeLine("│   ├── idea ", "Generate IntelliJ project"))
   }
 
   @Test
@@ -258,7 +266,7 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("Usage: pde target repair"))
-    assertTrue(output.contains("Usage: pde target install"))
+    assertTrue(output.contains("Usage: pde target repair re-fetch"))
     assertTrue(output.contains("Usage: pde target repair quarantine"))
     assertTrue(output.contains("Usage: pde target repair rebuild-index"))
   }
@@ -303,8 +311,9 @@ class PdeCliTest {
     assertTrue(output.contains("--report=String"))
     assertTrue(!output.contains("--all"))
     assertTrue(!output.contains("--include"))
-    assertTrue(output.contains("[testPos]"))
-    assertTrue(output.contains("defaults to all configured tests"))
+    assertTrue(output.contains("[testPos...]"))
+    // picocli wraps long descriptions across lines; compare with whitespace collapsed.
+    assertTrue(output.replace(Regex("\\s+"), " ").contains("defaults to all configured tests"))
   }
 
   @Test
@@ -429,18 +438,18 @@ class PdeCliTest {
   }
 
   @Test
-  fun `api filters add-from-report subcommand is routed through pde launcher`() {
+  fun `api baseline filters add-all-from-report subcommand is routed through pde launcher`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      runPde(arrayOf("api-filters", "add-from-report", "--help"))
+      runPde(arrayOf("api-baseline", "filters", "add-all-from-report", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains("Usage: pde api-filters add-from-report"))
+    assertTrue(output.contains("Usage: pde api-baseline filters add-all-from-report"))
     assertTrue(output.contains("--report=String"))
     assertTrue(output.contains("--problem=String"))
   }
@@ -495,18 +504,19 @@ class PdeCliTest {
   }
 
   @Test
-  fun `ide-init jdtls subcommand is routed through pde launcher`() {
+  fun `ide-init vscode subcommand is routed through pde launcher`() {
     val out = ByteArrayOutputStream()
     val savedOut = System.out
     System.setOut(PrintStream(out))
     try {
-      runPde(arrayOf("ide-init", "jdtls", "--help"))
+      runPde(arrayOf("ide-init", "vscode", "--help"))
     } finally {
       System.setOut(savedOut)
     }
 
     val output = out.toString()
-    assertTrue(output.contains("pde ide-init jdtls"))
+    assertTrue(output.contains("pde ide-init vscode"))
+    assertTrue(output.contains("--out=String"))
   }
 
   @Test

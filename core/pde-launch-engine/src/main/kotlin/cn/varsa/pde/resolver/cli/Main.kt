@@ -389,13 +389,13 @@ private fun buildCompilePlanForWarning(
   return LaunchPlanner.build(env, options)
 }
 
-fun launchMain(args: Array<String>, commandName: String = "pde run") {
+fun launchMain(args: Array<String>, commandName: String = "pde run"): Int {
   if (args.isNotEmpty() && args[0] == "target") {
     val subcommand = args.getOrNull(1)
     when {
       subcommand == null || subcommand == "-h" || subcommand == "--help" || subcommand == "help" -> {
         printTargetHelp()
-        return
+        return 0
       }
       subcommand == "install" -> {
         val installArgs = args.drop(2)
@@ -404,26 +404,26 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
         } else {
           targetMain(installArgs.toTypedArray())
         }
-        exitProcess(exit)
+        return exit
       }
       subcommand == "mirror" -> {
         val exit = targetMirrorMain(args.drop(2).toTypedArray())
-        exitProcess(exit)
+        return exit
       }
-      subcommand == "health" -> exitProcess(targetHealthMain(args.drop(2).toTypedArray()))
+      subcommand == "health" -> return targetHealthMain(args.drop(2).toTypedArray())
       subcommand == "repair" -> {
         val repairSubcommand = args.getOrNull(2)
         when {
           repairSubcommand == null || repairSubcommand == "-h" || repairSubcommand == "--help" || repairSubcommand == "help" -> {
             printTargetRepairHelp()
-            return
+            return 0
           }
-          repairSubcommand == "re-fetch" -> exitProcess(targetRepairRefetchMain(args.drop(3).toTypedArray()))
-          repairSubcommand == "quarantine" -> exitProcess(targetRepairQuarantineMain(args.drop(3).toTypedArray()))
-          repairSubcommand == "rebuild-index" -> exitProcess(targetRepairRebuildIndexMain(args.drop(3).toTypedArray()))
+          repairSubcommand == "re-fetch" -> return targetRepairRefetchMain(args.drop(3).toTypedArray())
+          repairSubcommand == "quarantine" -> return targetRepairQuarantineMain(args.drop(3).toTypedArray())
+          repairSubcommand == "rebuild-index" -> return targetRepairRebuildIndexMain(args.drop(3).toTypedArray())
           else -> {
             logger.severe("Unknown target repair subcommand '$repairSubcommand'. Use 'pde target repair --help'.")
-            exitProcess(2)
+            return 2
           }
         }
       }
@@ -432,28 +432,28 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
         when {
           inspectSubcommand == null || inspectSubcommand == "-h" || inspectSubcommand == "--help" || inspectSubcommand == "help" -> {
             printTargetInspectHelp()
-            return
+            return 0
           }
-          inspectSubcommand == "profile" -> exitProcess(targetInspectProfileMain(args.drop(3).toTypedArray()))
-          inspectSubcommand == "ius" -> exitProcess(targetInspectIusMain(args.drop(3).toTypedArray()))
-          inspectSubcommand == "diff" -> exitProcess(targetInspectDiffMain(args.drop(3).toTypedArray()))
-          inspectSubcommand == "health" -> exitProcess(targetInspectHealthMain(args.drop(3).toTypedArray()))
-          inspectSubcommand == "snapshots" -> exitProcess(targetInspectSnapshotsMain(args.drop(3).toTypedArray()))
+          inspectSubcommand == "profile" -> return targetInspectProfileMain(args.drop(3).toTypedArray())
+          inspectSubcommand == "ius" -> return targetInspectIusMain(args.drop(3).toTypedArray())
+          inspectSubcommand == "diff" -> return targetInspectDiffMain(args.drop(3).toTypedArray())
+          inspectSubcommand == "health" -> return targetInspectHealthMain(args.drop(3).toTypedArray())
+          inspectSubcommand == "snapshots" -> return targetInspectSnapshotsMain(args.drop(3).toTypedArray())
           else -> {
             logger.severe("Unknown target inspect subcommand '$inspectSubcommand'. Use 'pde target inspect --help'.")
-            exitProcess(2)
+            return 2
           }
         }
       }
       else -> {
         logger.severe("Unknown target subcommand '$subcommand'. Use 'pde target --help'.")
-        exitProcess(2)
+        return 2
       }
     }
   }
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
-    exitProcess(exit)
+    return exit
   }
   if (args.isNotEmpty() && args[0] == "api-baseline") {
     val subcommand = args.getOrNull(1)
@@ -482,7 +482,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
       }
       else -> apiBaselineCheckMain(args.drop(1).toTypedArray())
     }
-    exitProcess(exit)
+    return exit
   }
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, launchOptionsRequiringValue)
 
@@ -560,7 +560,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig).copy(clean = clean)
     val selected = selectLaunchConfig(configContext, launchName, debug)
-    if (selected == null) return
+    if (selected == null) return 0
     val osgiContext = applyOsgiDebug(selected, osgiDebug)
     val targetDefinition = resolveTargetDefinition(osgiContext)
     val targetArgs = resolveTargetArgs(osgiContext, targetDefinition)
@@ -568,16 +568,16 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
     describeConfig(osgiContext, targetDefinition, profilePath, targetArgs)
     if (dryRun) {
       logger.info("Dry run: validation only. Exiting.")
-      return
+      return 0
     }
     val logFile = logFileOpt?.let { Paths.get(it) }
     executeLaunch(osgiContext, targetArgs, showLogPathWhenDebugging = debug, logFile = logFile)
-    return
+    return 0
   }
 
   if (targetRoots.isEmpty()) {
     logger.severe("No --target-root specified")
-    return
+    return 0
   }
 
   val targetPaths = targetRoots.map { Paths.get(it) }
@@ -607,6 +607,7 @@ fun launchMain(args: Array<String>, commandName: String = "pde run") {
   } else {
     logger.info("Framework: ${planResult.plan.framework?.bsn ?: "<none>"}; bundles=${planResult.plan.bundles.size}")
   }
+  return 0
 }
 
 private fun printTargetHelp() {
@@ -4643,8 +4644,7 @@ private fun extractErrorBlocks(output: String): String? {
 
 fun main(args: Array<String>) {
   if (args.isNotEmpty() && args[0] == "launch") {
-    launchMain(args.drop(1).toTypedArray())
-    return
+    exitProcess(launchMain(args.drop(1).toTypedArray()))
   }
   if (args.isNotEmpty() && args[0] == "test") {
     val exit = testMain(args.drop(1).toTypedArray())
