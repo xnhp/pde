@@ -22,6 +22,12 @@ debugging or testing a different launcher. Relative target paths such as `target
 By default the installer prints coarse progress only (one `started`/`done` line per step). Pass `--interactive` to
 get the live per-artifact download view, which redraws the terminal and is unsuitable for log files.
 
+Before starting p2, `pde target install` (also `pde target install api-baseline`, `pde target repair re-fetch` and
+`pde target mirror`) sends one HEAD request to every remote `<repository location>` of the `.target` file. If a host
+cannot be reached (DNS, connect, timeout - typically because you are not on the VPN), the command exits with code 2
+and lists the unreachable sites instead of letting p2 retry for minutes. Any HTTP response, including 401/403/404,
+counts as reachable; `file:` repositories are not probed. Pass `--skip-reachability-check` to bypass the probe.
+
 ## Compile your sources: `pde compile`
 
 <details>

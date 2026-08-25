@@ -87,7 +87,8 @@ private val targetInstallOptions = listOf(
   CliOption(listOf("--copy-path"), "Copy installed profile path to the clipboard"),
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),
   CliOption(listOf("--debug"), "Enable DEBUG logging"),
-  CliOption(listOf("--baseline-root"), "Baseline source for 'api-baseline' install mode (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String")
+  CliOption(listOf("--baseline-root"), "Baseline source for 'api-baseline' install mode (target root, profile path, or .target file; defaults from target config)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--skip-reachability-check"), "Do not probe remote update sites before running p2")
 )
 
 private val targetMirrorPositionals = listOf(
@@ -100,6 +101,7 @@ private val targetMirrorOptions = listOf(
   CliOption(listOf("--write-mode"), "Write mode (clean)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--metadata-only"), "Mirror metadata only"),
   CliOption(listOf("--artifacts-only"), "Mirror artifacts only"),
+  CliOption(listOf("--skip-reachability-check"), "Do not probe remote update sites before running p2"),
   CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log"), "Write application stdout/stderr to log file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging"),

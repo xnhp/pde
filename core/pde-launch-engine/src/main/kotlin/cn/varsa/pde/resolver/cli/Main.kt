@@ -124,7 +124,9 @@ internal data class TargetInstallInputs(
   val installRoot: Path,
   val bundlePool: Path,
   val installerJar: Path,
-  val includeConfigurePhase: Boolean
+  val includeConfigurePhase: Boolean,
+  /** `<repository location>` entries of the .target file, verbatim - the URLs the installer JVM will download from. */
+  val repositories: List<URI> = emptyList()
 ) {
   fun installerArgs(): List<String> = buildTargetInstallerArgs(
     profileId = profileId,
@@ -2949,7 +2951,8 @@ internal fun buildTargetInstallInputs(
     installRoot = resolvedInstall,
     bundlePool = resolvedBundlePool,
     installerJar = installerJar.toAbsolutePath().normalize(),
-    includeConfigurePhase = targetContents.includeConfigurePhase
+    includeConfigurePhase = targetContents.includeConfigurePhase,
+    repositories = targetContents.repositories
   )
 }
 
@@ -3025,7 +3028,8 @@ private fun provisionBaselineTargetProfile(
   context: LaunchConfigContext,
   outputRoot: Path,
   baselineTargetDefinition: Path,
-  logFile: Path?
+  logFile: Path?,
+  skipReachabilityCheck: Boolean = false
 ): Path? {
   val targetConfig = context.config.target
   if (targetConfig == null) {
@@ -3057,6 +3061,9 @@ private fun provisionBaselineTargetProfile(
       logger.severe("Failed to parse baseline target definition $baselineTargetDefinition: ${error.message}")
       return null
     }
+  if (!UpdateSiteReachability.check(baselineTargetContents.repositories, skipReachabilityCheck, "pde target install api-baseline")) {
+    return null
+  }
 
   val installerArgs = buildTargetInstallerArgs(
     profileId = baselineProfileId,
@@ -3183,6 +3190,11 @@ private fun targetInstallApiBaselineMain(args: Array<String>): Int {
     fullName = "baseline-root",
     description = "Baseline target root, profile path, or .target file (defaults to target.apiBaselineRoot, target.install, target.p2Path, or target profile)"
   )
+  val skipReachabilityCheck by parser.option(
+    ArgType.Boolean,
+    fullName = SKIP_REACHABILITY_CHECK_FLAG,
+    description = SKIP_REACHABILITY_CHECK_DESCRIPTION
+  ).default(false)
   val configPosOpt by parser.argument(
     ArgType.String,
     description = "Launch config YAML"
@@ -3225,7 +3237,8 @@ private fun targetInstallApiBaselineMain(args: Array<String>): Int {
     context = apiContext,
     outputRoot = outputRoot,
     baselineTargetDefinition = baselineTargetDefinition,
-    logFile = logFileOpt?.let { Paths.get(it) }
+    logFile = logFileOpt?.let { Paths.get(it) },
+    skipReachabilityCheck = skipReachabilityCheck
   ) ?: return 2
   logger.info("Provisioned baseline profile: ${provisioned.toAbsolutePath().normalize()}")
   return 0
@@ -3422,6 +3435,11 @@ internal fun targetMain(
     fullName = "interactive",
     description = "Show live per-artifact download/install progress (redraws the terminal)"
   ).default(false)
+  val skipReachabilityCheck by parser.option(
+    ArgType.Boolean,
+    fullName = SKIP_REACHABILITY_CHECK_FLAG,
+    description = SKIP_REACHABILITY_CHECK_DESCRIPTION
+  ).default(false)
   parser.parse(normalizedArgs)
   configureLogging(resolveLogLevel(logLevelOpt, verbose, debug), shouldUseColor())
 
@@ -3468,6 +3486,9 @@ internal fun targetMain(
       logger.severe("Failed to parse target.definition $targetDefinition: ${error.message}")
       return 2
     }
+  if (!UpdateSiteReachability.check(installInputs.repositories, skipReachabilityCheck, "pde target install")) {
+    return 2
+  }
   val logFile = logFileOpt?.let { Paths.get(it) }
   // The installer JVM is quiet by default (coarse progress only); -interactive re-enables the live redraw.
   val installerArgs = installInputs.installerArgs() + (if (interactive) listOf(TARGET_INSTALLER_INTERACTIVE_FLAG) else emptyList())
@@ -3538,6 +3559,11 @@ internal fun targetMirrorMain(
     ArgType.Boolean,
     fullName = "artifacts-only",
     description = "Mirror artifacts only"
+  ).default(false)
+  val skipReachabilityCheck by parser.option(
+    ArgType.Boolean,
+    fullName = SKIP_REACHABILITY_CHECK_FLAG,
+    description = SKIP_REACHABILITY_CHECK_DESCRIPTION
   ).default(false)
   val logLevelOpt by parser.option(
     ArgType.String,
@@ -3641,6 +3667,9 @@ internal fun targetMirrorMain(
     return 2
   }
 
+  if (!UpdateSiteReachability.check(repositories, skipReachabilityCheck, "pde target mirror")) {
+    return 2
+  }
   val logFileBase = logFileOpt?.let { Paths.get(it) }
   if (includeMetadata) {
     val exit = mirrorRepositories(
