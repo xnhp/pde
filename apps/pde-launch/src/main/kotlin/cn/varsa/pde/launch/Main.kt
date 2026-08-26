@@ -359,7 +359,7 @@ internal val pdeCommand = CliCommandGroup(
     ),
     CliCommandLeaf(
       name = "fetch-jars",
-      description = "Run 'mvn clean package' in every fetch_jars directory under configured bundles",
+      description = "Run 'mvn clean package' in every fetch-jars helper directory (fetch_jars, fetch_v422_jars, ...) under configured bundles",
       handler = { args -> FetchJarsCommand.main(args) },
       options = listOf(
         CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String")

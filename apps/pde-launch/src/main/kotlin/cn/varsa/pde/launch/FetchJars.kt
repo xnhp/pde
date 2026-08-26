@@ -55,7 +55,7 @@ private fun runFetchJars(context: LaunchConfigContext) {
   val bundleDirs = resolveBundleDirs(context.baseDir, config)
   val fetchJarsDirs = bundleDirs.flatMap { discoverRunnableFetchJarsDirs(it) }.distinct().sortedBy { it.toString() }
   if (fetchJarsDirs.isEmpty()) {
-    println("No fetch_jars directories with pom.xml found.")
+    println("No fetch-jars helper directories (fetch_jars, fetch_v*_jars, ... with a maven-dependency-plugin pom.xml) found.")
     return
   }
 

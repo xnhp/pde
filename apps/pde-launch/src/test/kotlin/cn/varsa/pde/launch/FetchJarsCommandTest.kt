@@ -17,9 +17,12 @@ class FetchJarsCommandTest {
     val configPath = baseDir.resolve("pde.yaml")
     val bundleDir = Files.createDirectories(baseDir.resolve("repo/org.example.bundle"))
     val fetchJarsDir = Files.createDirectories(bundleDir.resolve("lib/fetch_jars"))
-    Files.writeString(fetchJarsDir.resolve("pom.xml"), "<project/>")
+    Files.writeString(fetchJarsDir.resolve("pom.xml"), dependencyPluginPom())
     // A fetch_jars-named dir without a pom.xml should be ignored.
     Files.createDirectories(bundleDir.resolve("other/fetch_jars"))
+    // A versioned helper dir must be picked up too.
+    val versionedDir = Files.createDirectories(bundleDir.resolve("lib/postgresql/fetch_v422_jars"))
+    Files.writeString(versionedDir.resolve("pom.xml"), dependencyPluginPom())
 
     Files.writeString(
       configPath,
@@ -47,7 +50,11 @@ class FetchJarsCommandTest {
     }
 
     val normalizedFetchJarsDir = fetchJarsDir.toAbsolutePath().normalize()
-    assertEquals(listOf(normalizedFetchJarsDir to listOf("mvn", "clean", "package")), invocations)
+    val normalizedVersionedDir = versionedDir.toAbsolutePath().normalize()
+    assertEquals(
+      listOf(normalizedFetchJarsDir, normalizedVersionedDir).sortedBy { it.toString() }.map { it to listOf("mvn", "clean", "package") },
+      invocations
+    )
     assertTrue(out.toString().contains(normalizedFetchJarsDir.toString()))
   }
 
@@ -80,7 +87,7 @@ class FetchJarsCommandTest {
       fetchJarsCommandRunner = originalRunner
     }
 
-    assertTrue(out.toString().contains("No fetch_jars directories with pom.xml found."))
+    assertTrue(out.toString().contains("No fetch-jars helper directories"))
   }
 
   @Test
@@ -90,7 +97,7 @@ class FetchJarsCommandTest {
     val configPath = baseDir.resolve("pde.yaml")
     val bundleDir = Files.createDirectories(baseDir.resolve("repo/org.example.bundle"))
     val fetchJarsDir = Files.createDirectories(bundleDir.resolve("lib/fetch_jars"))
-    Files.writeString(fetchJarsDir.resolve("pom.xml"), "<project/>")
+    Files.writeString(fetchJarsDir.resolve("pom.xml"), dependencyPluginPom())
 
     Files.writeString(
       configPath,
