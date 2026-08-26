@@ -36,15 +36,31 @@ class JdtBuildApplication : IApplication {
                         else IncrementalProjectBuilder.INCREMENTAL_BUILD
 
         val result = try {
-            workspace.build(buildKind, monitor)
-            JdtBuildResult.from(projects.size, collectDiagnostics(projects))
-        } catch (e: CoreException) {
-            logger.severe("JDT build threw: ${e.status}")
-            JdtBuildResult.from(projects.size, emptyList(), failure = e.message ?: e.status.message)
+            try {
+                workspace.build(buildKind, monitor)
+                JdtBuildResult.from(projects.size, collectDiagnostics(projects))
+            } catch (e: CoreException) {
+                logger.severe("JDT build threw: ${e.status}")
+                JdtBuildResult.from(projects.size, emptyList(), failure = e.message ?: e.status.message)
+            }
+        } finally {
+            // JavaBuilder persists its incremental state (state.dat) only on a full workspace save;
+            // without it every invocation is a full build.
+            saveWorkspace(monitor)
         }
 
         report(result, input)
         return if (result.success) IApplication.EXIT_OK else EXIT_BUILD_FAILED
+    }
+
+    private fun saveWorkspace(monitor: NullProgressMonitor) {
+        val started = System.nanoTime()
+        try {
+            ResourcesPlugin.getWorkspace().save(true, monitor)
+            logger.info("Saved workspace state in ${(System.nanoTime() - started) / 1_000_000} ms")
+        } catch (e: CoreException) {
+            logger.severe("Saving workspace state failed (next build will be a full build): ${e.status}")
+        }
     }
 
     private fun report(result: JdtBuildResult, input: JdtBuildInput) {

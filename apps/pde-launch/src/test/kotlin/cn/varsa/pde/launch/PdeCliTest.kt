@@ -348,6 +348,7 @@ class PdeCliTest {
     assertTrue(output.contains("pde jdt-workspace build"))
     assertTrue(output.contains("--data"))
     assertTrue(output.contains("--full"))
+    assertTrue(output.contains("--clean-runtime"))
     assertTrue(output.contains("--output-root"))
     assertTrue(output.contains(".jdtls/workspace"))
     assertFalse(output.contains("--config"))

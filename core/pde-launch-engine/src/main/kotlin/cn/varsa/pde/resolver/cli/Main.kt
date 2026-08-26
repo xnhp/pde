@@ -2074,21 +2074,29 @@ private fun findPackagedRuntimeArchive(archiveName: String, outputRoot: Path): P
     .firstOrNull(Files::isRegularFile)
 }
 
-private fun resolvePackagedEquinoxAppRuntime(outputRoot: Path, runtimeArchiveName: String, applicationId: String): EquinoxAppRuntime? {
+private fun resolvePackagedEquinoxAppRuntime(
+  outputRoot: Path,
+  runtimeArchiveName: String,
+  applicationId: String,
+  cleanRuntime: Boolean = false
+): EquinoxAppRuntime? {
   val archive = findPackagedRuntimeArchive(runtimeArchiveName, outputRoot)
   if (archive == null) {
     logger.severe("Missing $runtimeArchiveName next to the pde CLI libraries.")
     return null
   }
   val runtimeRoot = outputRoot.resolve("runtime-$runtimeArchiveName")
-  recreateDirectory(runtimeRoot)
-  extractZipArchive(archive, runtimeRoot)
+  val extracted = ensureExtractedEquinoxAppRuntime(archive, runtimeRoot, force = cleanRuntime)
   val plugins = runtimeRoot.resolve("plugins")
   if (!Files.isDirectory(plugins)) {
     logger.severe("Runtime archive does not contain a plugins/ directory: ${archive.toAbsolutePath().normalize()}")
     return null
   }
-  val configurationDir = ensureEquinoxAppRuntimeConfiguration(runtimeRoot, applicationId)
+  val configurationDir = if (extracted || !Files.isRegularFile(runtimeRoot.resolve("configuration").resolve("config.ini"))) {
+    ensureEquinoxAppRuntimeConfiguration(runtimeRoot, applicationId)
+  } else {
+    runtimeRoot.resolve("configuration")
+  }
   val launcher = findRuntimeBundle(plugins, "org.eclipse.equinox.launcher")
   if (launcher == null) {
     logger.severe("Runtime archive does not contain org.eclipse.equinox.launcher: ${archive.toAbsolutePath().normalize()}")
@@ -2103,6 +2111,48 @@ private fun resolvePackagedApiAnalyzerRuntime(outputRoot: Path): ApiAnalyzerRunt
   resolvePackagedEquinoxAppRuntime(outputRoot, API_BASELINE_RUNTIME_ARCHIVE, DIRECT_API_ANALYZER_APPLICATION_ID)?.let {
     ApiAnalyzerRuntime(it.launcherExecutable, it.configurationDir, it.dataDir)
   }
+
+internal const val EQUINOX_RUNTIME_STAMP_FILE = ".runtime-stamp"
+
+/**
+ * Extracts [archive] into [runtimeRoot] unless a previous extraction of the same archive is already there.
+ *
+ * A stamp file ([EQUINOX_RUNTIME_STAMP_FILE]) records the archive's path, size, mtime and the CLI version that
+ * extracted it. When the stamp matches, nothing is touched — in particular `configuration/` survives, so the OSGi
+ * configuration area (bundle caches, resolver state) is reused across invocations. A mismatch, a missing stamp
+ * or [force] wipes [runtimeRoot] and extracts again.
+ *
+ * @return true when the archive was extracted, false when the existing extraction was reused.
+ */
+internal fun ensureExtractedEquinoxAppRuntime(archive: Path, runtimeRoot: Path, force: Boolean = false): Boolean {
+  val stamp = equinoxRuntimeStamp(archive)
+  val stampFile = runtimeRoot.resolve(EQUINOX_RUNTIME_STAMP_FILE)
+  if (!force && Files.isRegularFile(stampFile) && Files.isDirectory(runtimeRoot.resolve("plugins")) &&
+    runCatching { Files.readString(stampFile, StandardCharsets.UTF_8) }.getOrNull() == stamp
+  ) {
+    logger.fine("Reusing extracted runtime at ${runtimeRoot.toAbsolutePath().normalize()}")
+    return false
+  }
+  val started = System.nanoTime()
+  recreateDirectory(runtimeRoot)
+  extractZipArchive(archive, runtimeRoot)
+  Files.writeString(stampFile, stamp, StandardCharsets.UTF_8)
+  logger.info(
+    "Extracted ${archive.fileName} to ${runtimeRoot.toAbsolutePath().normalize()} in " +
+      "${(System.nanoTime() - started) / 1_000_000} ms" + if (force) " (--clean-runtime)" else ""
+  )
+  return true
+}
+
+private fun equinoxRuntimeStamp(archive: Path): String {
+  val cliVersion = EquinoxAppInvocation::class.java.`package`?.implementationVersion ?: "unversioned"
+  return listOf(
+    "archive=${archive.toAbsolutePath().normalize()}",
+    "size=${Files.size(archive)}",
+    "mtime=${Files.getLastModifiedTime(archive).toMillis()}",
+    "cli=$cliVersion"
+  ).joinToString("\n") + "\n"
+}
 
 private fun recreateDirectory(path: Path) {
   if (Files.exists(path)) {
@@ -4458,6 +4508,7 @@ fun jdtBuildMain(args: Array<String>): Int {
   val parser = ArgParser("pde jdt-workspace build ${maturityTag("WIP")}")
   val dataDir by parser.option(ArgType.String, fullName = "data", description = "Workspace data directory (default: <output-root>/data, matching 'pde jdt-workspace init')")
   val fullRebuild by parser.option(ArgType.Boolean, fullName = "full", description = "Force full rebuild").default(false)
+  val cleanRuntime by parser.option(ArgType.Boolean, fullName = "clean-runtime", description = "Re-extract the packaged Equinox runtime instead of reusing the previous extraction").default(false)
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Output directory (default: .jdtls/workspace)")
   parser.parse(args)
   configureLogging(Level.INFO, shouldUseColor())
@@ -4478,7 +4529,7 @@ fun jdtBuildMain(args: Array<String>): Int {
   val inputPath = inputsDir.resolve("jdt-build.json")
   Files.writeString(inputPath, JdtBuildInputJson.write(input))
 
-  val runtime = resolvePackagedEquinoxAppRuntime(resolvedOutputRoot, JDT_BUILD_RUNTIME_ARCHIVE, JDT_BUILD_APPLICATION_ID) ?: return 2
+  val runtime = resolvePackagedEquinoxAppRuntime(resolvedOutputRoot, JDT_BUILD_RUNTIME_ARCHIVE, JDT_BUILD_APPLICATION_ID, cleanRuntime) ?: return 2
   val invocation = EquinoxAppInvocation(
     launcherExecutable = runtime.launcherExecutable,
     configurationDir = runtime.configurationDir.toString(),

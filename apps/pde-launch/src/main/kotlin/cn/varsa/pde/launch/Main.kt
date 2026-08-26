@@ -181,6 +181,7 @@ private val jdtWorkspaceInitOptions = listOf(
 private val jdtWorkspaceBuildOptions = listOf(
   CliOption(listOf("--data"), "Workspace data directory (default: <output-root>/data, matching 'pde jdt-workspace init')", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--full"), "Force full rebuild"),
+  CliOption(listOf("--clean-runtime"), "Re-extract the packaged Equinox runtime instead of reusing the previous extraction"),
   CliOption(listOf("--output-root"), "Output directory (default: .jdtls/workspace)", takesValue = true, valueLabel = "String")
 )
 
