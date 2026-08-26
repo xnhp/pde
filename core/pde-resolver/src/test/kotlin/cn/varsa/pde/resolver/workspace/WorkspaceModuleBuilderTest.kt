@@ -64,11 +64,32 @@ class WorkspaceModuleBuilderTest {
         "Bundle-SymbolicName: test.module\n" +
         "Bundle-Version: 1.0.0\n\n"
     )
+    File(moduleDir.toFile(), "src").mkdirs()
     val outDir = File(moduleDir.toFile(), "bin")
     outDir.mkdirs()
 
-    // Output directory exists but contains no .class files; should fail fast
+    // Sources exist but output directory contains no .class files; should fail fast
     WorkspaceModuleBuilder.build(listOf(WorkspaceModuleDefinition(moduleDir)))
+  }
+
+  @Test
+  fun `accepts bundle without java sources and without class files`() {
+    val moduleDir = temp.newFolder("module-resources-only").toPath()
+    val metaInf = File(moduleDir.toFile(), "META-INF")
+    metaInf.mkdirs()
+    File(metaInf, "MANIFEST.MF").writeText(
+      "Bundle-ManifestVersion: 2\n" +
+        "Bundle-SymbolicName: test.module.resources\n" +
+        "Bundle-Version: 1.0.0\n\n"
+    )
+    // No source.. entry and no src/ folder: nothing to compile, so an empty bin/ is fine.
+    File(moduleDir.toFile(), "build.properties").writeText("bin.includes = META-INF/,dist/\n")
+    File(moduleDir.toFile(), "bin").mkdirs()
+
+    val inputs = WorkspaceModuleBuilder.build(listOf(WorkspaceModuleDefinition(moduleDir)))
+
+    assertEquals(1, inputs.descriptors.size)
+    assertEquals(listOf("bin"), inputs.devProperties["test.module.resources"])
   }
 
   @Test

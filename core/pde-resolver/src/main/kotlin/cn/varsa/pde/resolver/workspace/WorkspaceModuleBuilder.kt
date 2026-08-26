@@ -43,7 +43,9 @@ object WorkspaceModuleBuilder {
 
       val effectiveClassPath = when {
         devClassPaths.isNotEmpty() -> {
-          if (!allowMissingClasses && moduleDir.toFile().isDirectory && !containsClasses(devClassPaths)) {
+          // Bundles without Java sources (e.g. pure resource/JS bundles) legitimately have no .class files.
+          val hasSources = descriptor.sourceRoots.isNotEmpty()
+          if (!allowMissingClasses && hasSources && moduleDir.toFile().isDirectory && !containsClasses(devClassPaths)) {
             val requested = classRoots.joinToString(", ") { moduleDir.resolve(it).toString() }
             throw WorkspaceModuleException(
               "No compiled classes found for workspace bundle $bsn. Checked: $requested"
