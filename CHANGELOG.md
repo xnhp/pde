@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.1 - 2026-08-26
+
+### Bug Fixes
+- **fetch-jars**: recognise shade and assembly plugin helpers as jar fetchers (4eb35f5)
+
 ## v0.3.0 - 2026-08-26
 
 ### Features
