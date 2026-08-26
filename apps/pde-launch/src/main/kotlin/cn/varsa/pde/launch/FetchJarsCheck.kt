@@ -16,9 +16,17 @@ private val fetchJarsScanSkipDirs = setOf(".git", "node_modules", "bin", "target
 /** Matches `fetch_jars`, `fetch-jars`, `fetch_v422_jars`, ... */
 private val fetchJarsDirNamePattern = Regex("(?i)^fetch[_-].*jars$")
 
-private val dependencyPluginGoals = setOf("copy-dependencies", "copy", "unpack")
+/**
+ * Maven plugins (by artifactId) whose listed goals mark a pom as a jar fetcher, with the
+ * directory the plugin writes to when no `outputDirectory` is configured.
+ */
+private val fetcherPlugins: Map<String, FetcherPlugin> = listOf(
+  FetcherPlugin("maven-dependency-plugin", setOf("copy-dependencies", "copy", "unpack"), "target/dependency"),
+  FetcherPlugin("maven-shade-plugin", setOf("shade"), "target"),
+  FetcherPlugin("maven-assembly-plugin", setOf("single"), "target"),
+).associateBy { it.artifactId }
 
-private const val DEFAULT_OUTPUT_DIR = "target/dependency"
+private data class FetcherPlugin(val artifactId: String, val goals: Set<String>, val defaultOutputDir: String)
 
 private val fetchJarsLogger: Logger = Logger.getLogger("cn.varsa.pde.launch.FetchJarsCheck")
 
@@ -33,7 +41,8 @@ internal data class FetchJarsProject(val dir: Path, val outputDirs: List<Path>)
 /**
  * Finds fetch-jars helper directories under [bundlePath]: directories whose name matches
  * `fetch[_-]*jars` (case-insensitive) and whose `pom.xml` configures the `maven-dependency-plugin`
- * with a `copy-dependencies`, `copy` or `unpack` execution. Candidates whose pom does not confirm
+ * (`copy-dependencies`/`copy`/`unpack`), `maven-shade-plugin` (`shade`) or `maven-assembly-plugin`
+ * (`single`). Candidates whose pom does not confirm
  * are logged at FINE and ignored.
  */
 internal fun discoverFetchJarsProjects(bundlePath: Path): List<FetchJarsProject> {
@@ -49,7 +58,7 @@ internal fun discoverFetchJarsProjects(bundlePath: Path): List<FetchJarsProject>
         if (!Files.isRegularFile(pom)) return FileVisitResult.SKIP_SUBTREE
         val outputDirs = readDependencyPluginOutputDirs(pom)
         if (outputDirs == null) {
-          fetchJarsLogger.fine("Ignoring ${dir}: pom.xml has no maven-dependency-plugin copy/copy-dependencies/unpack execution")
+          fetchJarsLogger.fine("Ignoring ${dir}: pom.xml has no maven-dependency-plugin copy/unpack, maven-shade-plugin shade or maven-assembly-plugin single execution")
         } else {
           projects.add(FetchJarsProject(dir, outputDirs))
         }
@@ -69,9 +78,8 @@ internal fun discoverRunnableFetchJarsDirs(bundlePath: Path): List<Path> =
   discoverFetchJarsProjects(bundlePath).map { it.dir }
 
 /**
- * Parses [pom] and returns the output directories of the `maven-dependency-plugin` (resolved
- * against the pom's directory), or `null` if the pom does not configure that plugin with a
- * jar-fetching goal. Poms that cannot be parsed are treated as non-confirming.
+ * Parses [pom] and returns the output directories of its jar-fetching plugins (resolved against
+ * the pom's directory), or `null` if the pom configures none of them with a jar-producing goal. Poms that cannot be parsed are treated as non-confirming.
  */
 internal fun readDependencyPluginOutputDirs(pom: Path): List<Path>? {
   val document = try {
@@ -84,26 +92,26 @@ internal fun readDependencyPluginOutputDirs(pom: Path): List<Path>? {
     return null
   }
 
-  val plugins = document.documentElement.descendants("plugin").filter { plugin ->
-    plugin.childText("artifactId") == "maven-dependency-plugin"
-  }
   val outputDirs = linkedSetOf<String>()
   var confirmed = false
-  for (plugin in plugins) {
+  for (plugin in document.documentElement.descendants("plugin")) {
+    val fetcher = fetcherPlugins[plugin.childText("artifactId")] ?: continue
     val executions = plugin.childElement("executions")?.childElements("execution").orEmpty()
     val matching = executions.filter { execution ->
       execution.childElement("goals")?.childElements("goal").orEmpty()
-        .any { it.textContent.trim() in dependencyPluginGoals }
+        .any { it.textContent.trim() in fetcher.goals }
     }
     if (matching.isEmpty()) continue
     confirmed = true
+    val pluginOutputDirs = linkedSetOf<String>()
     matching.forEach { execution ->
-      execution.childElement("configuration")?.childText("outputDirectory")?.let(outputDirs::add)
+      execution.childElement("configuration")?.childText("outputDirectory")?.let(pluginOutputDirs::add)
     }
-    plugin.childElement("configuration")?.childText("outputDirectory")?.let(outputDirs::add)
+    plugin.childElement("configuration")?.childText("outputDirectory")?.let(pluginOutputDirs::add)
+    if (pluginOutputDirs.isEmpty()) pluginOutputDirs.add(fetcher.defaultOutputDir)
+    outputDirs.addAll(pluginOutputDirs)
   }
   if (!confirmed) return null
-  if (outputDirs.isEmpty()) outputDirs.add(DEFAULT_OUTPUT_DIR)
 
   val fetchDir = pom.toAbsolutePath().parent
   return outputDirs.map { raw -> fetchDir.resolve(expandProjectBasedir(raw)).normalize() }

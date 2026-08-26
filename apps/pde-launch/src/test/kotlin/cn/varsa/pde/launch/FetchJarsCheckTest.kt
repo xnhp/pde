@@ -39,6 +39,20 @@ internal fun dependencyPluginPom(outputDirectory: String? = null, goal: String =
   """.trimIndent()
 }
 
+/** A pom.xml that builds a shaded uber jar into `../` (knime-sparkling-water style). */
+private const val SHADE_PLUGIN_POM = """
+  <project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.example</groupId><artifactId>fetch-jars</artifactId><version>1</version>
+    <build><plugins><plugin>
+      <artifactId>maven-shade-plugin</artifactId>
+      <executions><execution><phase>package</phase><goals><goal>shade</goal></goals>
+        <configuration><finalName>uber</finalName><outputDirectory>../</outputDirectory></configuration>
+      </execution></executions>
+    </plugin></plugins></build>
+  </project>
+"""
+
 private const val POM_WITHOUT_DEPENDENCY_PLUGIN = """
   <project xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
@@ -48,6 +62,15 @@ private const val POM_WITHOUT_DEPENDENCY_PLUGIN = """
 """
 
 class FetchJarsCheckTest {
+  @Test
+  fun `shade plugin pom is a fetcher with its configured output dir`() {
+    val bundle = Files.createTempDirectory("fetch-jars-shade")
+    val dir = fetchDir(bundle, "lib/fetch_jars", SHADE_PLUGIN_POM)
+    val projects = discoverFetchJarsProjects(bundle)
+    assertEquals(listOf(dir), projects.map { it.dir })
+    assertEquals(listOf(bundle.resolve("lib").toAbsolutePath().normalize()), projects.single().outputDirs)
+  }
+
   private fun fetchDir(bundleDir: Path, relative: String, pom: String = dependencyPluginPom()): Path {
     val dir = Files.createDirectories(bundleDir.resolve(relative))
     Files.writeString(dir.resolve("pom.xml"), pom)
