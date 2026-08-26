@@ -9,6 +9,7 @@ import org.eclipse.core.runtime.IProgressMonitor
 import org.eclipse.core.runtime.NullProgressMonitor
 import org.eclipse.core.runtime.Path as EclipsePath
 import org.eclipse.jdt.core.IClasspathEntry
+import org.eclipse.jdt.core.IJavaProject
 import org.eclipse.jdt.core.JavaCore
 import org.eclipse.jdt.launching.JavaRuntime
 import java.util.logging.Logger
@@ -41,6 +42,7 @@ class WorkspaceSetupService {
             val project = root.getProject(projectName)
             if (project.exists()) {
                 project.open(IResource.NONE, monitor)
+                updateProject(project, projectSpec, input.targetClasspath, knownBsns, monitor)
             } else {
                 createProject(project, projectSpec, input.targetClasspath, knownBsns, monitor)
             }
@@ -49,6 +51,49 @@ class WorkspaceSetupService {
         workspace.save(true, monitor)
         logger.info("Workspace setup complete: ${input.projects.size} projects")
     }
+
+    /**
+     * Re-init of an existing project: bring natures, referenced projects and the `.classpath` in
+     * line with the current input. The `.project` builder set is left as is, and files are only
+     * rewritten when they differ, so an unchanged re-init leaves timestamps alone.
+     */
+    private fun updateProject(
+        project: IProject,
+        spec: WorkspaceProjectSpec,
+        targetClasspath: List<String>,
+        knownBsns: Set<String>,
+        monitor: IProgressMonitor
+    ) {
+        val referencedProjectNames = referencedProjectNames(spec, knownBsns)
+        val desc = project.description
+        var descChanged = false
+        if (!desc.natureIds.contains(JavaCore.NATURE_ID)) {
+            desc.natureIds = desc.natureIds + JavaCore.NATURE_ID
+            descChanged = true
+        }
+        val currentRefs = desc.referencedProjects.map { it.name }
+        if (currentRefs != referencedProjectNames) {
+            desc.referencedProjects = referencedProjectNames.map { ResourcesPlugin.getWorkspace().root.getProject(it) }.toTypedArray()
+            descChanged = true
+        }
+        if (descChanged) {
+            logger.info("Updating .project natures/references for ${project.name}")
+            project.setDescription(desc, monitor)
+        }
+
+        val javaProject = JavaCore.create(project)
+        val entries = buildClasspathEntries(project, spec, targetClasspath, knownBsns, referencedProjectNames)
+        if (!javaProject.rawClasspath.contentEquals(entries)) {
+            logger.info("Updating .classpath for ${project.name}")
+            javaProject.setRawClasspath(entries, monitor)
+        }
+    }
+
+    // `dependencies` includes ALL of this bundle's dependency BSNs (workspace projects and
+    // target-platform bundles alike) for build-order purposes; only ones with a corresponding
+    // workspace project actually become referenced projects.
+    private fun referencedProjectNames(spec: WorkspaceProjectSpec, knownBsns: Set<String>): List<String> =
+        spec.dependencies.filter { it in knownBsns }.map { depBsn -> projectName(depBsn) }
 
     private fun createProject(
         project: IProject,
@@ -62,10 +107,7 @@ class WorkspaceSetupService {
         desc.natureIds = arrayOf(JavaCore.NATURE_ID)
         desc.buildSpec = arrayOf(createBuildCommand(desc, "org.eclipse.jdt.core.javabuilder"))
 
-        // `dependencies` includes ALL of this bundle's dependency BSNs (workspace projects and
-        // target-platform bundles alike) for build-order purposes; only ones with a corresponding
-        // workspace project actually become referenced projects here.
-        val referencedProjectNames = spec.dependencies.filter { it in knownBsns }.map { depBsn -> projectName(depBsn) }
+        val referencedProjectNames = referencedProjectNames(spec, knownBsns)
         if (referencedProjectNames.isNotEmpty()) {
             desc.referencedProjects = referencedProjectNames.map { ResourcesPlugin.getWorkspace().root.getProject(it) }.toTypedArray()
         }
@@ -74,7 +116,18 @@ class WorkspaceSetupService {
         project.open(IResource.NONE, monitor)
 
         val javaProject = JavaCore.create(project)
+        javaProject.setRawClasspath(buildClasspathEntries(project, spec, targetClasspath, knownBsns, referencedProjectNames), monitor)
+        writeBuildProperties(project, spec, monitor)
+        applyCompilerPrefs(javaProject, spec)
+    }
 
+    private fun buildClasspathEntries(
+        project: IProject,
+        spec: WorkspaceProjectSpec,
+        targetClasspath: List<String>,
+        knownBsns: Set<String>,
+        referencedProjectNames: List<String>
+    ): Array<IClasspathEntry> {
         val classpathEntries = mutableListOf<IClasspathEntry>()
 
         for (srcRoot in spec.sourceRoots) {
@@ -136,8 +189,10 @@ class WorkspaceSetupService {
             }
         }
 
-        javaProject.setRawClasspath(classpathEntries.toTypedArray(), monitor)
+        return classpathEntries.toTypedArray()
+    }
 
+    private fun writeBuildProperties(project: IProject, spec: WorkspaceProjectSpec, monitor: IProgressMonitor) {
         // PDE API Tools' ProjectComponent.createApiTypeContainers() discovers a project's API types
         // for since-tag analysis by reading build.properties (via PluginRegistry.createBuildModel):
         // each source.<jar> entry is resolved with project.findMember() and mapped to that source
@@ -157,7 +212,9 @@ class WorkspaceSetupService {
                 buildPropsFile.create(buildProps.byteInputStream(), IResource.NONE, monitor)
             }
         }
+    }
 
+    private fun applyCompilerPrefs(javaProject: IJavaProject, spec: WorkspaceProjectSpec) {
         if (spec.compilerPrefs.isNotEmpty()) {
             val options = javaProject.getOptions(false)
             spec.compilerPrefs.forEach { (key, value) ->

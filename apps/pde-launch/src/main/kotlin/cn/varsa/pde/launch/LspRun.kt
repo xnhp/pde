@@ -1,5 +1,6 @@
 package cn.varsa.pde.launch
 
+import cn.varsa.pde.resolver.cli.WorkspaceLiveMarker
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
@@ -46,6 +47,23 @@ object LspRunCommand {
     val cwd = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
     val issueDir = issueDirOpt?.let { Paths.get(it).toAbsolutePath().normalize() } ?: cwd
 
+    // JDT LS and the pde Equinox apps (`pde jdt-workspace init/build`, `pde api-baseline check`)
+    // must never share a `-data` directory: headless Equinox takes no .metadata/.lock, so two
+    // writers silently corrupt the workspace. JDT LS gets <issue-dir>/.lsp, the Equinox apps get
+    // <output-root>/data (default .jdtls/workspace/data).
+    val dataDir = dataDirOpt?.let { Paths.get(it).toAbsolutePath().normalize() }
+      ?: issueDir.resolve(".lsp")
+    val configParents = listOfNotNull(configOpt, configPos).mapNotNull { Paths.get(it).toAbsolutePath().normalize().parent }
+    val equinoxDataDirs = (listOf(issueDir) + configParents).map { it.resolve(".jdtls/workspace/data") }
+    equinoxDataDirs.firstOrNull { sameDirectory(it, dataDir) }?.let { clash ->
+      System.err.println(refusedDataDirMessage(dataDir, clash))
+      return 2
+    }
+    WorkspaceLiveMarker.liveOwner(dataDir)?.let { owner ->
+      System.err.println(WorkspaceLiveMarker.inUseMessage("pde lsp run", dataDir, owner, WorkspaceLiveMarker.HINT_OTHER_DATA_DIR))
+      return 2
+    }
+
     val initArgs = mutableListOf<String>()
     configOpt?.let { initArgs += listOf("--config", it) }
     configPos?.let { initArgs += it }
@@ -58,8 +76,6 @@ object LspRunCommand {
     }
     if (initExit != 0) return initExit
 
-    val dataDir = dataDirOpt?.let { Paths.get(it).toAbsolutePath().normalize() }
-      ?: issueDir.resolve(".lsp")
     Files.createDirectories(dataDir)
 
     val home = jdtlsHomeOpt?.let { Paths.get(it).toAbsolutePath().normalize() }
@@ -72,11 +88,32 @@ object LspRunCommand {
       return 1
     }
 
-    val process = ProcessBuilder(buildCommand(launcherJar, configDir, dataDir))
-      .directory(issueDir.toFile())
-      .inheritIO()
-      .start()
-    return process.waitFor()
+    WorkspaceLiveMarker.liveOwner(dataDir)?.let { owner ->
+      System.err.println(WorkspaceLiveMarker.inUseMessage("pde lsp run", dataDir, owner, WorkspaceLiveMarker.HINT_OTHER_DATA_DIR))
+      return 2
+    }
+    return WorkspaceLiveMarker.hold(dataDir, "pde lsp run").use {
+      val process = ProcessBuilder(buildCommand(launcherJar, configDir, dataDir))
+        .directory(issueDir.toFile())
+        .inheritIO()
+        .start()
+      process.waitFor()
+    }
+  }
+
+  internal fun refusedDataDirMessage(dataDir: Path, equinoxDataDir: Path): String =
+    "pde lsp run: --data-dir $dataDir is the pde Equinox workspace ($equinoxDataDir, used by " +
+      "'pde jdt-workspace init/build' and 'pde api-baseline check'). Headless Equinox takes no workspace lock, " +
+      "so JDT LS and those commands would write the same .metadata and corrupt it. Pass a different --data-dir " +
+      "(default: <issue-dir>/.lsp)."
+
+  private fun sameDirectory(a: Path, b: Path): Boolean {
+    if (a.toAbsolutePath().normalize() == b.toAbsolutePath().normalize()) return true
+    return try {
+      Files.exists(a) && Files.exists(b) && Files.isSameFile(a, b)
+    } catch (_: java.io.IOException) {
+      false
+    }
   }
 
   private fun resolveJdtlsHome(download: Boolean): Path? {

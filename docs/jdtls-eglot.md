@@ -71,6 +71,34 @@ pde lsp run --jdtls-home ~/tools/jdt-language-server-1.56.0   # skip cache entir
 Options: `--config`, `--issue-dir`, `--data-dir` (defaults to `<issue-dir>/.lsp`),
 `--jdtls-home`, `--download`.
 
+### Two workspaces, one writer each
+
+Two Eclipse workspace data directories (`-data`) live under an issue dir, and they must stay
+separate:
+
+- `<issue-dir>/.lsp` — the JDT LS workspace, opened by `pde lsp run` (or the editor's own
+  JDT LS launch).
+- `<issue-dir>/.jdtls/workspace/data` — the workspace the pde Equinox apps open:
+  `pde jdt-workspace init`, `pde jdt-workspace build`, and `pde api-baseline check` in
+  workspace mode.
+
+Headless Equinox takes no `.metadata/.lock` (only the IDE does), so two processes on one
+`-data` would silently corrupt its `.metadata` (last writer wins). The CLI therefore provides
+the mutual exclusion itself:
+
+- `pde lsp run` refuses (exit 2) a `--data-dir` that resolves to the Equinox workspace.
+- Every command that opens a workspace writes `<data-dir>/.pde-live` (`pid=`, `start=`,
+  `command=`) for the duration of the run and deletes it on exit. A marker whose pid is gone,
+  or whose process start time differs (pid reuse), is stale and overwritten. A live marker
+  from another process makes the command exit 2 with
+  `<command>: workspace <dir> is in use by <command> (pid N); build via the editor or stop it`
+  (for `pde lsp run`: `stop the other process or pass a different --data-dir`).
+
+Both workspaces point at the same `.project`/`.classpath` files in the bundle directories;
+those files are plain inputs and are safe to share. Re-running `pde jdt-workspace init` (or
+`pde lsp init`) updates the `.classpath`, referenced projects and natures of existing
+projects from the current config; the `.project` builder list is left as is.
+
 ### Live reimport
 
 JDT LS registers a file watcher for `**/.project`, `**/.classpath`, and
@@ -84,10 +112,9 @@ change; you (or your editor tooling) need to re-run it.
 
 ### What JDT LS diagnostics do *not* cover
 
-JDT LS ships without the PDE plugin (`org.eclipse.pde.core`), so the
-`org.eclipse.pde.ManifestBuilder`/`org.eclipse.pde.SchemaBuilder` build commands
-in the generated `.project` are inert — Eclipse silently no-ops build commands
-it can't resolve. In practice this means editing under JDT LS gives you real
+The generated `.project` lists only `org.eclipse.jdt.core.javabuilder` (no PDE
+builders), and JDT LS ships without the PDE plugin (`org.eclipse.pde.core`)
+anyway. In practice this means editing under JDT LS gives you real
 Java-level diagnostics (types, compile errors) but no OSGi/PDE-level diagnostics
 (unresolved `Require-Bundle`, singleton conflicts, `Import-Package` version-range
 mismatches, `plugin.xml` extension-point schema errors). Those stay the domain

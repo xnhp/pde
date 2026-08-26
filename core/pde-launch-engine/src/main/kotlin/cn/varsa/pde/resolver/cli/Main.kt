@@ -4127,6 +4127,12 @@ internal fun apiBaselineCheckMain(
     )
     return 2
   }
+  if (workspaceDataPath != null) {
+    WorkspaceLiveMarker.liveOwner(workspaceDataPath)?.let { owner ->
+      logger.severe(WorkspaceLiveMarker.inUseMessage("pde api-baseline check", workspaceDataPath, owner, WorkspaceLiveMarker.HINT_BUILD_VIA_EDITOR))
+      return 2
+    }
+  }
 
   val targetDefinition = resolveTargetDefinition(apiContext)
   if (targetDefinition != null) {
@@ -4349,7 +4355,15 @@ internal fun apiBaselineCheckMain(
     logFile = batchLogFile
   ).invocation
   logger.info("Launching one analyzer JVM for ${currentBundleInfos.size} bundle(s): ${currentBsns.sorted().joinToString(", ")}")
-  val exitCode = analyzerRunner(invocation)
+  val exitCode = if (workspaceDataPath != null) {
+    WorkspaceLiveMarker.liveOwner(workspaceDataPath)?.let { owner ->
+      logger.severe(WorkspaceLiveMarker.inUseMessage("pde api-baseline check", workspaceDataPath, owner, WorkspaceLiveMarker.HINT_BUILD_VIA_EDITOR))
+      return 2
+    }
+    WorkspaceLiveMarker.hold(workspaceDataPath, "pde api-baseline check").use { analyzerRunner(invocation) }
+  } else {
+    analyzerRunner(invocation)
+  }
   if (exitCode == 0) {
     currentBundleInfos.forEach { info ->
       println("Wrote API baseline report: ${info.outputReportPath.toAbsolutePath().normalize()}")
@@ -4489,6 +4503,10 @@ fun workspaceSetupMain(
   Files.writeString(inputPath, WorkspaceSetupInputJson.write(input))
 
   val dataDir = dataDirOpt?.let { Paths.get(it) } ?: resolvedOutputRoot.resolve("data")
+  WorkspaceLiveMarker.liveOwner(dataDir)?.let { owner ->
+    logger.severe(WorkspaceLiveMarker.inUseMessage("pde jdt-workspace init", dataDir, owner, WorkspaceLiveMarker.HINT_BUILD_VIA_EDITOR))
+    return 2
+  }
   val runtime = equinoxRuntimeResolver(resolvedOutputRoot) ?: return 2
   val invocation = EquinoxAppInvocation(
     launcherExecutable = runtime.launcherExecutable,
@@ -4497,14 +4515,21 @@ fun workspaceSetupMain(
     applicationId = WORKSPACE_SETUP_APPLICATION_ID,
     args = listOf("--input", inputPath.toString())
   )
-  val exitCode = equinoxAppRunner(invocation)
+  val exitCode = WorkspaceLiveMarker.hold(dataDir, "pde jdt-workspace init").use { equinoxAppRunner(invocation) }
   if (exitCode == 0) {
     logger.info("Workspace setup complete. Data dir: ${dataDir.toAbsolutePath()}")
   }
   return exitCode
 }
 
-fun jdtBuildMain(args: Array<String>): Int {
+private fun resolvePackagedJdtBuildRuntime(outputRoot: Path, cleanRuntime: Boolean): EquinoxAppRuntime? =
+  resolvePackagedEquinoxAppRuntime(outputRoot, JDT_BUILD_RUNTIME_ARCHIVE, JDT_BUILD_APPLICATION_ID, cleanRuntime)
+
+fun jdtBuildMain(
+  args: Array<String>,
+  equinoxRuntimeResolver: (outputRoot: Path, cleanRuntime: Boolean) -> EquinoxAppRuntime? = ::resolvePackagedJdtBuildRuntime,
+  equinoxAppRunner: (EquinoxAppInvocation) -> Int = ::runEquinoxApp
+): Int {
   val parser = ArgParser("pde jdt-workspace build ${maturityTag("WIP")}")
   val dataDir by parser.option(ArgType.String, fullName = "data", description = "Workspace data directory (default: <output-root>/data, matching 'pde jdt-workspace init')")
   val fullRebuild by parser.option(ArgType.Boolean, fullName = "full", description = "Force full rebuild").default(false)
@@ -4520,6 +4545,10 @@ fun jdtBuildMain(args: Array<String>): Int {
     logger.severe("Run 'pde jdt-workspace init' first to create the JDT workspace.")
     return 2
   }
+  WorkspaceLiveMarker.liveOwner(resolvedDataDir)?.let { owner ->
+    logger.severe(WorkspaceLiveMarker.inUseMessage("pde jdt-workspace build", resolvedDataDir, owner, WorkspaceLiveMarker.HINT_BUILD_VIA_EDITOR))
+    return 2
+  }
 
   val resultPath = resolvedOutputRoot.resolve("results").resolve("jdt-build.json")
   Files.deleteIfExists(resultPath)
@@ -4529,7 +4558,7 @@ fun jdtBuildMain(args: Array<String>): Int {
   val inputPath = inputsDir.resolve("jdt-build.json")
   Files.writeString(inputPath, JdtBuildInputJson.write(input))
 
-  val runtime = resolvePackagedEquinoxAppRuntime(resolvedOutputRoot, JDT_BUILD_RUNTIME_ARCHIVE, JDT_BUILD_APPLICATION_ID, cleanRuntime) ?: return 2
+  val runtime = equinoxRuntimeResolver(resolvedOutputRoot, cleanRuntime) ?: return 2
   val invocation = EquinoxAppInvocation(
     launcherExecutable = runtime.launcherExecutable,
     configurationDir = runtime.configurationDir.toString(),
@@ -4539,7 +4568,7 @@ fun jdtBuildMain(args: Array<String>): Int {
   )
   // The app prints `path:line: error: message` lines plus a summary on inherited stdout and
   // returns 1 when any ERROR marker remains; the same data lands in <output-root>/results/jdt-build.json.
-  val exitCode = runEquinoxApp(invocation)
+  val exitCode = WorkspaceLiveMarker.hold(resolvedDataDir, "pde jdt-workspace build").use { equinoxAppRunner(invocation) }
   if (exitCode != 0) {
     logger.severe("JDT build failed (exit $exitCode). Details: ${resultPath.toAbsolutePath().normalize()}")
   }
