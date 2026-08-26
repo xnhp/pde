@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.0 - 2026-08-26
+
+### Features
+- **fetch-jars**: detect versioned fetch_*_jars helpers via their pom (c18a035)
+
 ## v0.2.0 - 2026-08-26
 
 ### Bug Fixes
