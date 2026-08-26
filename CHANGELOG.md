@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.2.0 - 2026-08-26
+
+### Bug Fixes
+- **jdt-workspace**: refresh the workspace from disk before the incremental build (2744520)
+- **api-baseline**: report absent non-optional dependencies as a warning, not a hard failure (6436d1d)
+- **api-baseline**: fail loudly instead of degrading when the API description is incomplete (65c6b83)
+- **api-baseline**: reword unresolved-constraints problem so it does not claim the analysis aborted (a8d7725)
+- **cli-tests**: keep exitProcess out of the test JVM so PdeCliTest runs to completion (42e638c)
+- **cli**: advertise only the options jdt-workspace build/init accept (140f13c)
+- **pde-resolver**: compile org.eclipse.pde.api.tools against the pinned runtime jar (402af3a)
+- **compile**: warn instead of failing when annotation processors are on the classpath (#160) (bc30be6)
+- collapse CI/build/chore changelog sections, exclude merge commits, reclassify v0.1.0 entries (4cfc9ea)
+
+### Documentation
+- **api-baseline**: mention unused-filter (usage) findings in check --report and prune help (26626a0)
+
+### Features
+- **jdt-workspace**: refuse to open a JDT workspace another pde process is using (00e01d8)
+- **target-install**: fail early when update sites are unreachable (9d28bd5)
+- **api-filters**: edit .api_filters in place and add --dry-run to prune/add-all-from-report (2231c52)
+- **jdt-workspace**: report compile errors on stdout and fail the build (13bdf71)
+- **target-install**: print coarse progress by default, live redraw only with --interactive (3283299)
+- migrate `issue fetch_jars` to `pde fetch-jars` (357f10d)
+- **ide-init**: emit module-library orderEntries for Bundle-ClassPath jars (b5d2da8)
+
+### Performance
+- **jdt-workspace**: save workspace state after build and reuse the extracted runtime (d4b6b7f)
+
 ## v0.1.0 - 2026-07-27
 
 ### Breaking Changes
