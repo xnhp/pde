@@ -37,6 +37,11 @@ class JdtBuildApplication : IApplication {
 
         val result = try {
             try {
+                // The resource tree persisted by the previous run does not know about edits made on
+                // disk since then; without a refresh the incremental builder sees no changes.
+                val refreshStart = System.nanoTime()
+                workspace.root.refreshLocal(IResource.DEPTH_INFINITE, monitor)
+                logger.info("Refreshed workspace in ${(System.nanoTime() - refreshStart) / 1_000_000} ms")
                 workspace.build(buildKind, monitor)
                 JdtBuildResult.from(projects.size, collectDiagnostics(projects))
             } catch (e: CoreException) {
