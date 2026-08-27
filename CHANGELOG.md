@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.2 - 2026-08-27
+
+### Bug Fixes
+- **launch**: accept workspace bundles without Java sources (0569a42)
+
 ## v0.3.1 - 2026-08-26
 
 ### Bug Fixes
