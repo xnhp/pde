@@ -32,7 +32,11 @@ object WorkspaceModuleResolver {
       val modulePath = (if (path.isAbsolute) path else context.baseDir.resolve(path)).toAbsolutePath().normalize()
       val normalized = modulePath.toString()
       if (!seen.add(normalized)) return@mapNotNull null
-      WorkspaceModuleDefinition(moduleDir = modulePath, classRoots = bundle.classRoots)
+      WorkspaceModuleDefinition(
+        moduleDir = modulePath,
+        classRoots = bundle.classRoots,
+        compilerArgs = bundle.compilerArgs
+      )
     }
   }
 }
