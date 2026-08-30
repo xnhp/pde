@@ -23,7 +23,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # tools/*/src compiles against a fileTree of the SDK's plugins/, so even a test-only
       # build needs the SDK -- but not the pinned bundle cache, which -PskipEclipseRuntimes
