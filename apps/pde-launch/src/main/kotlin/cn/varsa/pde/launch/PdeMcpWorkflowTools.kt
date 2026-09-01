@@ -26,13 +26,18 @@ internal val pdeMcpWorkflowCommand = CliCommandGroup(
       tool = CliToolBinding(
         id = "pde_compile_workspace",
         title = "Compile PDE workspace",
-        description = "Compile PDE Java bundles from a pde.yaml launch configuration. Workspace bundles must be configured via the config's bundles entries.",
+        description = "Compile PDE Java bundles from a pde.yaml launch configuration. Workspace bundles must be configured via the config's bundles entries. Diagnostics follow each bundle's Eclipse compiler preferences: bundles with findings report their warning and info counts, and 'warnings' adds the full problem text.",
         inputSchema = workflowSchema(
-          "config" to stringProperty("Path to pde.yaml or equivalent launch config.")
+          "config" to stringProperty("Path to pde.yaml or equivalent launch config."),
+          "warnings" to booleanProperty(
+            "Print the full text of compiler warnings and infos instead of one summary line per bundle.",
+            default = false
+          )
         ),
         decodeArguments = { arguments ->
           buildArgs {
             addOptional("--config", arguments.string("config"))
+            addFlag("--warnings", arguments.boolean("warnings"))
           }
         }
       ),
