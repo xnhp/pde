@@ -103,6 +103,36 @@ class IjInitTest {
   }
 
   @Test
+  fun `initIjProjectFromConfig uses capitalised profile directory when it exists`() {
+    val issueDir = Files.createTempDirectory("ij-init-issue-case")
+    Files.writeString(issueDir.resolve("issue.yaml"), "id: EX-9\n")
+    val repoDir = issueDir.resolve("knime-core").resolve("org.knime.core")
+    Files.createDirectories(repoDir.resolve("src"))
+    val configPath = issueDir.resolve("pde.yaml")
+    Files.writeString(
+      configPath,
+      """
+        target: {}
+        bundles:
+          - path: knime-core/org.knime.core
+      """.trimIndent()
+    )
+    val profileDir = issueDir
+      .resolve(".target")
+      .resolve("p2")
+      .resolve("org.eclipse.equinox.p2.engine")
+      .resolve("profileRegistry")
+      .resolve("profile.Profile")
+    Files.createDirectories(profileDir)
+
+    IjInit.initIjProjectFromConfig(configPath, issueDir)
+
+    val eclipsePartial = Files.readString(issueDir.resolve("ij-project/.idea/eclipse-partial.xml"))
+    val expected = "\$PROJECT_DIR\$/../.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.Profile"
+    assertTrue(eclipsePartial.contains("location=\"${expected}\""))
+  }
+
+  @Test
   fun `initIjProjectFromConfig writes module files`() {
     val baseDir = Files.createTempDirectory("ij-init-config")
     Files.writeString(baseDir.resolve("issue.yaml"), "id: EX-9\n")
@@ -167,7 +197,7 @@ class IjInitTest {
 
     val projectDir = issueDir.resolve("ij-project")
     val eclipsePartial = Files.readString(projectDir.resolve(".idea/eclipse-partial.xml"))
-    assertTrue(eclipsePartial.contains("location=\"\$PROJECT_DIR\$/../.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile\""))
+    assertTrue(eclipsePartial.contains("location=\"\$PROJECT_DIR\$/../.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.Profile\""))
     assertTrue(eclipsePartial.contains("launcherJar=\"\$PROJECT_DIR\$/../../bundle-pool/plugins/org.eclipse.equinox.launcher_1.0.0.jar\""))
 
     val formatter = Files.readString(projectDir.resolve(".idea/eclipseCodeFormatter.xml"))

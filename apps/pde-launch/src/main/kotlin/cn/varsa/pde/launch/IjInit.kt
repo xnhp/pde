@@ -263,7 +263,13 @@ object IjInit {
       ?.let { resolvePath(baseDir, it) }
       ?: issueDir.resolve(".target").resolve("p2")
     val registry = p2Path.resolve("org.eclipse.equinox.p2.engine").resolve("profileRegistry")
-    return registry.resolve("${profileId}.profile").toAbsolutePath().normalize()
+    // The installer writes `<id>.Profile`; older installs used `<id>.profile`. The path must match
+    // the on-disk casing exactly — the IJ plugin resolves it on a case-sensitive filesystem.
+    val preferred = registry.resolve("${profileId}.Profile").toAbsolutePath().normalize()
+    if (Files.isDirectory(preferred)) return preferred
+    val lowercase = registry.resolve("${profileId}.profile").toAbsolutePath().normalize()
+    if (Files.isDirectory(lowercase)) return lowercase
+    return preferred
   }
 
   private fun resolveLauncherJar(context: LaunchConfigContext): Path? {
