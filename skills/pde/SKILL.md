@@ -32,6 +32,8 @@ tests:
 ```
 
 
+Each issue directory gets its own `pde.yaml`, referencing the shared `../target.yaml` (KNIME AP target definition plus a shared `bundlePool`) and the bundles touched. Leave it uncommitted (see hygiene below).
+
 # Basic PDE flow
 
 Run PDE commands as separate steps for clearer diagnostics:
@@ -46,6 +48,7 @@ Do not chain these commands unless you intentionally want a single combined fail
 # Target Install
 
 `pde target install`: This installs dependencies into the p2 profile in the issue dir.
+First run in a new issue dir is slow (downloads the target platform into the shared bundle pool) and needs VPN for the internal p2 site `jenkins.devops.knime.com`. On a timeout, start the VPN yourself (`vpn-start`, alias for `openvpn3 session-start --config knime`, usually no interactive auth) and retry once before asking.
 
 ## Troubleshooting
 
@@ -101,6 +104,12 @@ Basic usage:
 - `Launch plan has unresolved bundles/dependencies; continuing anyway`
 
 These warnings do not always block test execution.
+
+`WARNING: Classpath contains class files requiring a newer Java version than the bundle target` is noise from pre-existing dependency jars (Java 21 class files against a Java 17 BREE) and predates your change.
+
+# How much to run locally
+
+`pde compile` is fast and catches real problems. A full integration suite locally is rarely worth it: CI runs the tests on the PR. Compile, run `pde test` only when it is cheap and targeted, then push. Report the real `pde compile` and `pde test` results; never claim a build you did not run.
 
 # Configuring tests
 
