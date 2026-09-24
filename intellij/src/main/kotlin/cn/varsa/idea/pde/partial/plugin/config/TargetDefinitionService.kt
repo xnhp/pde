@@ -3,6 +3,7 @@ package cn.varsa.idea.pde.partial.plugin.config
 import cn.varsa.idea.pde.partial.common.*
 import cn.varsa.idea.pde.partial.common.support.*
 import cn.varsa.idea.pde.partial.plugin.domain.*
+import cn.varsa.idea.pde.partial.plugin.helper.*
 import cn.varsa.idea.pde.partial.plugin.listener.*
 import cn.varsa.idea.pde.partial.plugin.openapi.provider.*
 import cn.varsa.idea.pde.partial.plugin.support.*
@@ -120,9 +121,23 @@ class TargetLocationDefinition(_location: String = "") : BackgroundResolvable {
     indicator.text = "Resolving location $location"
     indicator.checkCanceled()
 
-    val directory = File(location)
-    if (!directory.isDirectory) return
-    if (!directory.exists()) return
+    var directory = File(location)
+    if (!directory.isDirectory) {
+      // Recover from a case mismatch in the last path segment, e.g. a generated config pointing at
+      // `profileRegistry/profile.profile` while the installer created `profile.Profile`.
+      val recovered = directory.parentFile?.listFiles()
+        ?.firstOrNull { it.isDirectory && it.name.equals(directory.name, ignoreCase = true) }
+      if (recovered != null) {
+        location = recovered.path
+        directory = recovered
+      } else {
+        PdeNotifier.important(
+          "Target location not found",
+          "Target location does not exist and was skipped: $location"
+        ).notify(project)
+        return
+      }
+    }
 
     when {
       SystemInfo.isMac -> File(directory.parentFile, "MacOS/eclipse").takeIf(File::exists)
