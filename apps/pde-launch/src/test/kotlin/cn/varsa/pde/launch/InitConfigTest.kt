@@ -62,6 +62,44 @@ class InitConfigTest {
     assertNull(InitConfig.findBundleRoot(worktree, src))
   }
 
+  // ── findAllBundles ────────────────────────────────────────────────────────
+
+  private fun createBundle(dir: Path): Path {
+    Files.createDirectories(dir.resolve("META-INF"))
+    Files.createFile(dir.resolve("META-INF/MANIFEST.MF"))
+    return dir.toAbsolutePath().normalize()
+  }
+
+  @Test
+  fun `findAllBundles returns nested bundles sorted by path`() {
+    val worktree = Files.createTempDirectory("init-config-all-sorted")
+    val zeta = createBundle(worktree.resolve("org.example.zeta"))
+    val alpha = createBundle(worktree.resolve("group/org.example.alpha"))
+    val beta = createBundle(worktree.resolve("org.example.beta"))
+
+    assertEquals(listOf(alpha, beta, zeta), InitConfig.findAllBundles(worktree))
+  }
+
+  @Test
+  fun `findAllBundles skips hidden and build output directories`() {
+    val worktree = Files.createTempDirectory("init-config-all-skip")
+    val kept = createBundle(worktree.resolve("org.example.kept"))
+    for (skipped in listOf(".hidden", "target", "bin", "build", "node_modules")) {
+      createBundle(worktree.resolve("$skipped/org.example.skipped"))
+    }
+
+    assertEquals(listOf(kept), InitConfig.findAllBundles(worktree))
+  }
+
+  @Test
+  fun `findAllBundles does not descend into a bundle`() {
+    val worktree = Files.createTempDirectory("init-config-all-nested")
+    val outer = createBundle(worktree.resolve("org.example.outer"))
+    createBundle(outer.resolve("inner"))
+
+    assertEquals(listOf(outer), InitConfig.findAllBundles(worktree))
+  }
+
   // ── discoverIncludes ──────────────────────────────────────────────────────
 
   @Test
@@ -185,6 +223,34 @@ class InitConfigTest {
     // No subdirs with .git
     val exitCode = InitConfig.main(arrayOf(issueDir.toString()))
     assertEquals(2, exitCode)
+  }
+
+  @Test
+  fun `main with all lists every bundle of every worktree without diffing`() {
+    val issueDir = Files.createTempDirectory("init-config-all-main")
+    for (name in listOf("repo-b", "repo-a")) {
+      val worktree = Files.createDirectories(issueDir.resolve(name))
+      Files.writeString(worktree.resolve(".git"), "gitdir: ../.git/worktrees/$name\n")
+      createBundle(worktree.resolve("org.example.two"))
+      createBundle(worktree.resolve("org.example.one"))
+    }
+
+    var diffCalls = 0
+    InitConfig.gitDiffRunner = { _, _ ->
+      diffCalls++
+      emptyList()
+    }
+
+    val exitCode = InitConfig.main(arrayOf("--all", "--base", "does-not-exist", issueDir.toString()))
+    assertEquals(0, exitCode)
+    assertEquals(0, diffCalls, "--all must not run git diff")
+
+    val content = Files.readString(issueDir.resolve("pde.yaml"))
+    val paths = content.lines().filter { it.startsWith("  - path: ") }.map { it.removePrefix("  - path: ") }
+    assertEquals(
+      listOf("repo-a/org.example.one", "repo-a/org.example.two", "repo-b/org.example.one", "repo-b/org.example.two"),
+      paths
+    )
   }
 
   @Test

@@ -4,13 +4,19 @@ import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.default
 import kotlinx.cli.optional
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.logging.Logger
 
 object InitConfig {
   private val logger = Logger.getLogger(InitConfig::class.java.name)
+
+  /** Build output and tooling directories that [findAllBundles] does not descend into. */
+  private val skippedDirNames = setOf("target", "bin", "build", "node_modules")
 
   /**
    * Injectable git diff runner for testing. Defaults to the real implementation.
@@ -30,8 +36,13 @@ object InitConfig {
     val baseRefOpt by parser.option(
       ArgType.String,
       fullName = "base",
-      description = "Git base ref for diff to detect modified bundles (default: origin/master)"
+      description = "Git base ref for diff to detect modified bundles (default: origin/master; ignored with --all)"
     ).default("origin/master")
+    val allOpt by parser.option(
+      ArgType.Boolean,
+      fullName = "all",
+      description = "Include every OSGi bundle in each worktree instead of only those changed against --base"
+    ).default(false)
     val dryRunOpt by parser.option(
       ArgType.Boolean,
       fullName = "dry-run",
@@ -66,20 +77,24 @@ object InitConfig {
     }
     logger.info("Found ${worktrees.size} worktree(s): ${worktrees.map { it.fileName }.joinToString(", ")}")
 
-    // For each worktree, diff against base ref and find touched OSGi bundles
+    // For each worktree, collect all OSGi bundles (--all) or those touched by the diff against base ref
     val bundlePaths = LinkedHashSet<String>()
     for (worktree in worktrees) {
-      val changedFiles = gitDiffRunner(worktree, baseRefOpt)
-      if (changedFiles == null) {
-        logger.warning("Could not diff ${worktree.fileName} against $baseRefOpt; skipping")
-        continue
+      val bundles = if (allOpt) {
+        findAllBundles(worktree)
+      } else {
+        val changedFiles = gitDiffRunner(worktree, baseRefOpt)
+        if (changedFiles == null) {
+          logger.warning("Could not diff ${worktree.fileName} against $baseRefOpt; skipping")
+          continue
+        }
+        if (changedFiles.isEmpty()) {
+          logger.info("${worktree.fileName}: no changes vs $baseRefOpt")
+          continue
+        }
+        logger.info("${worktree.fileName}: ${changedFiles.size} changed file(s)")
+        findTouchedBundles(worktree, changedFiles)
       }
-      if (changedFiles.isEmpty()) {
-        logger.info("${worktree.fileName}: no changes vs $baseRefOpt")
-        continue
-      }
-      logger.info("${worktree.fileName}: ${changedFiles.size} changed file(s)")
-      val bundles = findTouchedBundles(worktree, changedFiles)
       for (bundle in bundles) {
         val relPath = issueDir.relativize(bundle).toString().replace('\\', '/')
         bundlePaths.add(relPath)
@@ -88,7 +103,8 @@ object InitConfig {
     }
 
     if (bundlePaths.isEmpty()) {
-      logger.warning("No OSGi bundles (META-INF/MANIFEST.MF) found among changed files")
+      val scope = if (allOpt) "in the worktrees" else "among changed files"
+      logger.warning("No OSGi bundles (META-INF/MANIFEST.MF) found $scope")
     }
 
     // Auto-discover shared includes in parent directories
@@ -167,6 +183,30 @@ object InitConfig {
       }
     }
     return bundles.toList()
+  }
+
+  /**
+   * Find every OSGi bundle root (directory containing META-INF/MANIFEST.MF) under [worktree],
+   * sorted by path. Hidden directories and build output ([skippedDirNames]) are skipped, and
+   * the walk does not descend into a directory already identified as a bundle.
+   */
+  internal fun findAllBundles(worktree: Path): List<Path> {
+    val root = worktree.toAbsolutePath().normalize()
+    val bundles = mutableListOf<Path>()
+    Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
+      override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+        if (dir != root) {
+          val name = dir.fileName.toString()
+          if (name.startsWith(".") || name in skippedDirNames) return FileVisitResult.SKIP_SUBTREE
+        }
+        if (Files.isRegularFile(dir.resolve("META-INF").resolve("MANIFEST.MF"))) {
+          bundles.add(dir)
+          return FileVisitResult.SKIP_SUBTREE
+        }
+        return FileVisitResult.CONTINUE
+      }
+    })
+    return bundles.sorted()
   }
 
   /**

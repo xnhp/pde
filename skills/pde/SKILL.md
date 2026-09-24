@@ -13,6 +13,13 @@ Set up `pde.yaml` if not present. See the schema file at the path returned
 by `pde schema`. Place it either in the issue root or the repo root. Use includes
 from `~/Desktop/issues/`.
 
+`pde init-config [issue-dir]` generates the issue-root `pde.yaml`: it lists the bundles
+(directories with `META-INF/MANIFEST.MF`) containing files changed against `--base`
+(default `origin/master`) in each git worktree of the issue dir, plus shared includes
+found in the parent directory. With `--all` it skips the diff and lists every bundle
+in each worktree (hidden directories, `target`, `bin`, `build` and `node_modules` are
+skipped). `--dry-run` prints the result instead of writing it.
+
 Issue-root example `pde.yaml`:
 ```yaml
 bundles:
