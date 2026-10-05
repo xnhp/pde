@@ -38,7 +38,7 @@ class JUnitXmlReporter(private val target: Path) {
       append(" tests=\"${summary.finishedTests}\"")
       append(" failures=\"${summary.failures}\"")
       append(" errors=\"${summary.errors}\"")
-      append(" skipped=\"0\"")
+      append(" skipped=\"${summary.skipped}\"")
       append(" time=\"${"%.3f".format(timeSeconds)}\"")
       append(" timestamp=\"$timestamp\"")
       appendLine(">")
@@ -51,7 +51,8 @@ class JUnitXmlReporter(private val target: Path) {
         when (result.status) {
           RemoteTestStatus.FAILED -> appendFailureTag("failure", result)
           RemoteTestStatus.ERROR -> appendFailureTag("error", result)
-          else -> Unit
+          RemoteTestStatus.SKIPPED -> appendSkippedTag(result)
+          RemoteTestStatus.PASSED -> Unit
         }
         appendLine("  </testcase>")
       }
@@ -70,6 +71,11 @@ class JUnitXmlReporter(private val target: Path) {
     append("    <$tag message=\"${xmlEscape(message)}\">")
     append(xmlEscape(bodyLines.joinToString("\n")))
     appendLine("</$tag>")
+  }
+
+  private fun StringBuilder.appendSkippedTag(result: RemoteTestResult) {
+    val message = result.trace?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+    appendLine("    <skipped message=\"${xmlEscape(message)}\"/>")
   }
 
   private fun xmlEscape(text: String): String {

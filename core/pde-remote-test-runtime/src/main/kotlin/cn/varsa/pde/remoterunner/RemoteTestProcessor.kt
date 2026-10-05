@@ -6,7 +6,7 @@ import java.net.SocketException
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
 
-enum class RemoteTestStatus { PASSED, FAILED, ERROR }
+enum class RemoteTestStatus { PASSED, FAILED, ERROR, SKIPPED }
 
 data class RemoteTestDescriptor(
   val id: String,
@@ -33,6 +33,7 @@ data class RemoteTestSummary(
   var finishedTests: Int = 0,
   var failures: Int = 0,
   var errors: Int = 0,
+  var skipped: Int = 0,
   var elapsedMillis: Long? = null,
   var stopped: Boolean = false,
   val startedAt: Instant = Instant.now(),
@@ -74,6 +75,7 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
           rawLine.startsWith(MessageIds.TEST_START) -> {
             val descriptor = parseDescriptor(rawLine, displayNames)
             val case = ActiveTest(descriptor)
+            if (rawTestName(rawLine).startsWith(MessageIds.IGNORED_TEST_PREFIX)) case.status = RemoteTestStatus.SKIPPED
             active[descriptor.id] = case
             currentTestId = descriptor.id
             listener.testStarted(descriptor)
@@ -81,7 +83,12 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
           rawLine.startsWith(MessageIds.TEST_FAILED) -> {
             val descriptor = parseDescriptor(rawLine, displayNames)
             val case = active.getOrPut(descriptor.id) { ActiveTest(descriptor) }
-            case.status = RemoteTestStatus.FAILED
+            // An aborted test (failed assumption) arrives as TEST_FAILED with a name prefix; JUnit counts it as skipped.
+            case.status = if (rawTestName(rawLine).startsWith(MessageIds.ASSUMPTION_FAILED_TEST_PREFIX)) {
+              RemoteTestStatus.SKIPPED
+            } else {
+              RemoteTestStatus.FAILED
+            }
             currentTestId = descriptor.id
           }
           rawLine.startsWith(MessageIds.TEST_ERROR) -> {
@@ -112,7 +119,8 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
               when (result.status) {
                 RemoteTestStatus.FAILED -> summary.failures++
                 RemoteTestStatus.ERROR -> summary.errors++
-                else -> Unit
+                RemoteTestStatus.SKIPPED -> summary.skipped++
+                RemoteTestStatus.PASSED -> Unit
               }
               listener.testFinished(result)
             }
@@ -142,7 +150,8 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
         when (result.status) {
           RemoteTestStatus.FAILED -> summary.failures++
           RemoteTestStatus.ERROR -> summary.errors++
-          else -> Unit
+          RemoteTestStatus.SKIPPED -> summary.skipped++
+          RemoteTestStatus.PASSED -> Unit
         }
         listener.testFinished(result)
       }
@@ -200,6 +209,9 @@ class RemoteTestProcessor(private val listener: RemoteTestListener) {
       printableName = printable
     )
   }
+
+  private fun rawTestName(line: String): String =
+    line.substring(MessageIds.MSG_HEADER_LENGTH).substringAfter(',')
 
   private fun normalizeTestName(name: String): String {
     return name

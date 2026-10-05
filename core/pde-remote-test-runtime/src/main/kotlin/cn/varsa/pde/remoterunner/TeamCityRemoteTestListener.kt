@@ -15,7 +15,12 @@ class TeamCityRemoteTestListener(private val out: PrintStream) : RemoteTestListe
   }
 
   override fun testFinished(result: RemoteTestResult) {
-    if (result.status != RemoteTestStatus.PASSED) {
+    if (result.status == RemoteTestStatus.SKIPPED) {
+      out.println(teamCityMessage("testIgnored", mapOf(
+        "name" to result.descriptor.printableName,
+        "message" to (result.trace?.lineSequence()?.firstOrNull()?.trim().orEmpty())
+      )))
+    } else if (result.status != RemoteTestStatus.PASSED) {
       val message = if (result.status == RemoteTestStatus.ERROR) "Error" else "Failure"
       val details = buildFailureDetails(result)
       out.println(teamCityMessage("testFailed", mapOf(

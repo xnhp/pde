@@ -120,7 +120,7 @@ class RemoteRunnerApp {
 
     val exitCode = if (summary.failures == 0 && summary.errors == 0 && !summary.stopped) 0 else 1
     if (exitCode != 0) {
-      System.err.println("${ConsoleTags.error(useColor)} Remote tests reported failures=${summary.failures} errors=${summary.errors} stopped=${summary.stopped}")
+      System.err.println("${ConsoleTags.error(useColor)} Remote tests reported failures=${summary.failures} errors=${summary.errors} skipped=${summary.skipped} stopped=${summary.stopped}")
     }
     return exitCode
   }

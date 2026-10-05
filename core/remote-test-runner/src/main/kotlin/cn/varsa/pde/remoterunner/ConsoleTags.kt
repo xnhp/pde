@@ -16,6 +16,7 @@ object ConsoleTags {
   fun test(color: Boolean): String = paint("[TEST]", cyan, color)
   fun pass(color: Boolean): String = paint("[PASS]", green, color)
   fun fail(color: Boolean): String = paint("[FAIL]", red, color)
+  fun skip(color: Boolean): String = paint("[SKIP]", yellow, color)
   fun label(label: String, color: Boolean): String = paint("[$label]", cyan, color)
   fun success(label: String, color: Boolean): String = paint("[$label]", green, color)
   fun danger(label: String, color: Boolean): String = paint("[$label]", red, color)

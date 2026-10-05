@@ -32,9 +32,12 @@ class LoggingRemoteTestListener(
       RemoteTestStatus.PASSED -> ConsoleTags.pass(color)
       RemoteTestStatus.FAILED -> ConsoleTags.fail(color)
       RemoteTestStatus.ERROR -> ConsoleTags.error(color)
+      RemoteTestStatus.SKIPPED -> ConsoleTags.skip(color)
     }
     out.println("$prefix ${result.descriptor.printableName} (${duration}ms)")
-    if (result.status != RemoteTestStatus.PASSED) {
+    if (result.status == RemoteTestStatus.SKIPPED) {
+      skipReason(result)?.let { out.println("  reason: $it") }
+    } else if (result.status != RemoteTestStatus.PASSED) {
       result.expected?.let { out.println("  expected: $it") }
       result.actual?.let { out.println("  actual: $it") }
       result.trace?.let {
@@ -47,13 +50,16 @@ class LoggingRemoteTestListener(
   override fun runEnded(summary: RemoteTestSummary) {
     val elapsed = summary.elapsedMillis ?: summary.endedAt?.let { Duration.between(summary.startedAt, it).toMillis() }
     out.println("${ConsoleTags.info(color)} Remote test session finished at ${summary.endedAt?.atZone(ZoneOffset.UTC)?.let(isoFormatter::format) ?: "unknown"}")
-    out.println("${ConsoleTags.info(color)} Tests=${summary.finishedTests} failed=${summary.failures} errors=${summary.errors} elapsedMs=${elapsed ?: -1}")
+    out.println("${ConsoleTags.info(color)} Tests=${summary.finishedTests} failed=${summary.failures} errors=${summary.errors} skipped=${summary.skipped} elapsedMs=${elapsed ?: -1}")
   }
 
   override fun runStopped(summary: RemoteTestSummary) {
     out.println("${ConsoleTags.warn(color)} Remote test session stopped before completion")
     runEnded(summary)
   }
+
+  private fun skipReason(result: RemoteTestResult): String? =
+    result.trace?.lineSequence()?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
 
   private fun shouldLog(name: String): Boolean {
     val includeOk = includes.isEmpty() || includes.any { it.containsMatchIn(name) }

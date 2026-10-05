@@ -3432,7 +3432,7 @@ private fun runTestLaunch(
     else -> 0
   }
   if (exitCode != 0) {
-    logger.severe("Remote tests reported failures=${summary.failures} errors=${summary.errors} stopped=${summary.stopped}; processExit=$processExit")
+    logger.severe("Remote tests reported failures=${summary.failures} errors=${summary.errors} skipped=${summary.skipped} stopped=${summary.stopped}; processExit=$processExit")
   }
   return exitCode
 }

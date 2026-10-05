@@ -35,4 +35,31 @@ class RemoteTestProcessorTest {
     assertEquals(RemoteTestStatus.FAILED, failed.status)
     assertTrue(failed.trace!!.contains("AssertionError"))
   }
+
+  @Test
+  fun `reports aborted and ignored tests as skipped`() {
+    val stream = """
+      %TESTC  2 1
+      %TESTS  @1,testAborted(com.example.SampleTest)
+      %FAILED @1,@AssumptionFailure: testAborted(com.example.SampleTest)
+      %TRACES 
+      org.opentest4j.TestAbortedException: Assumption failed
+      at line
+      %TRACEE 
+      %TESTE  @1,testAborted(com.example.SampleTest)
+      %TESTS  @2,@Ignore: testIgnored(com.example.SampleTest)
+      %TESTE  @2,@Ignore: testIgnored(com.example.SampleTest)
+      %RUNTIME00012
+    """.trimIndent()
+
+    val recorder = RecordingRemoteTestListener()
+    val processor = RemoteTestProcessor(CompositeRemoteTestListener(listOf(recorder)))
+    val summary = processor.process(stream.reader().buffered())
+
+    assertEquals(2, summary.finishedTests)
+    assertEquals(0, summary.failures)
+    assertEquals(2, summary.skipped)
+    assertEquals(listOf(RemoteTestStatus.SKIPPED, RemoteTestStatus.SKIPPED), recorder.results.map { it.status })
+    assertEquals("com.example.SampleTest.testAborted", recorder.results.first().descriptor.printableName)
+  }
 }
