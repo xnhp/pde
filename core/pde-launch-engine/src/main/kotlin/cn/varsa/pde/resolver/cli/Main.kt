@@ -1757,7 +1757,10 @@ private fun executeLaunch(
   if (outputLog != null) {
     outputLog.parent?.let { Files.createDirectories(it) }
     processBuilder.redirectErrorStream(true)
-    processBuilder.redirectOutput(outputLog.toFile())
+    // Truncate once, then append: sidecars append to the same file, and two writers
+    // with independent offsets would overwrite each other.
+    Files.write(outputLog, ByteArray(0))
+    processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(outputLog.toFile()))
   } else {
     processBuilder.redirectErrorStream(true)
   }

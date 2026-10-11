@@ -39,7 +39,7 @@ class SidecarRunner private constructor(
         process.destroyForcibly()
         process.waitFor(graceMillis, TimeUnit.MILLISECONDS)
       }
-      logger.info("[${sidecar.entry.name}] stopped")
+      announce("[${sidecar.entry.name}] stopped")
     }
     for (sidecar in running) {
       sidecar.reader.join(graceMillis)
@@ -50,6 +50,16 @@ class SidecarRunner private constructor(
   companion object {
     const val DEFAULT_GRACE_MILLIS = 5_000L
     private val logger: Logger = Logger.getLogger(SidecarRunner::class.java.name)
+
+    /**
+     * Lifecycle lines (starting, ready, stopped) are the launch's key output, so they go to
+     * pde's stdout regardless of the log level, and to the logger for the `--log` file.
+     */
+    private fun announce(message: String) {
+      System.out.println(message)
+      System.out.flush()
+      logger.info(message)
+    }
 
     /**
      * Starts [entries]. Relative `cwd` values resolve against [baseDir]. The environment of each
@@ -102,7 +112,7 @@ class SidecarRunner private constructor(
         .redirectErrorStream(true)
       builder.environment().putAll(launchEnv)
       builder.environment().putAll(entry.env)
-      logger.info("[${entry.name}] starting: ${entry.command.joinToString(" ")} (cwd $cwd)")
+      announce("[${entry.name}] starting: ${entry.command.joinToString(" ")} (cwd $cwd)")
       val process = try {
         builder.start()
       } catch (ex: Exception) {
@@ -125,7 +135,7 @@ class SidecarRunner private constructor(
             if (matcher.find()) {
               readyReported = true
               val value = if (matcher.groupCount() >= 1) matcher.group(1) ?: line else line
-              logger.info("[$name] ready: $value")
+              announce("[$name] ready: $value")
             }
           }
         }
