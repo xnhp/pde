@@ -1594,7 +1594,8 @@ private fun selectLaunchConfig(
     dataDir = selected.dataDir,
     configDir = selected.configDir,
     workDir = selected.workDir,
-    env = env
+    env = env,
+    sidecars = selected.sidecars
   )
   if (launchName == null) {
     logger.info("Using default launch '${selected.name}'.")
@@ -1756,7 +1757,10 @@ private fun executeLaunch(
   if (outputLog != null) {
     outputLog.parent?.let { Files.createDirectories(it) }
     processBuilder.redirectErrorStream(true)
-    processBuilder.redirectOutput(outputLog.toFile())
+    // Truncate once, then append: sidecars append to the same file, and two writers
+    // with independent offsets would overwrite each other.
+    Files.write(outputLog, ByteArray(0))
+    processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(outputLog.toFile()))
   } else {
     processBuilder.redirectErrorStream(true)
   }
@@ -1773,7 +1777,17 @@ private fun executeLaunch(
   } else {
     null
   }
-  val exit = process.waitFor()
+  val sidecars = SidecarRunner.start(
+    entries = context.runtime.sidecars,
+    baseDir = context.baseDir,
+    launchEnv = context.runtime.env,
+    logFile = outputLog
+  )
+  val exit = try {
+    process.waitFor()
+  } finally {
+    sidecars.stop()
+  }
   outputThread?.join()
   if (isSuccessfulCracCheckpointExit(exit, prepared.command, prepared.layout.workDir)) {
     logger.info("Checkpoint completed; launcher exited with CRaC checkpoint code $exit")

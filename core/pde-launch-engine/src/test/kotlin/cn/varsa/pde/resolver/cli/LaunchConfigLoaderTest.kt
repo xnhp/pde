@@ -177,6 +177,79 @@ class LaunchConfigLoaderTest {
   }
 
   @Test
+  fun launchEntryLoadsSidecars() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      launches:
+        - name: devserver
+          sidecars:
+            - name: editor
+              command: [pnpm, dev]
+              cwd: frontend/org.knime.ui.js
+              env:
+                KNIME_EDITOR_PORT: "30002"
+              readyPattern: 'Local:\s+(http\S+)'
+            - name: plain
+              command: [sleep, "1"]
+      """.trimIndent()
+    )
+
+    val loaded = LaunchConfigLoader.load(configFile.toPath(), root)
+    val sidecars = loaded.config.launches.single().sidecars
+
+    assertEquals(listOf("editor", "plain"), sidecars.map { it.name })
+    val editor = sidecars.first()
+    assertEquals(listOf("pnpm", "dev"), editor.command)
+    assertEquals("frontend/org.knime.ui.js", editor.cwd)
+    assertEquals(mapOf("KNIME_EDITOR_PORT" to "30002"), editor.env)
+    assertEquals("Local:\\s+(http\\S+)", editor.readyPattern)
+    val plain = sidecars.last()
+    assertEquals(null, plain.cwd)
+    assertEquals(emptyMap(), plain.env)
+    assertEquals(null, plain.readyPattern)
+  }
+
+  @Test
+  fun launchEntryRejectsUnknownSidecarKeys() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      launches:
+        - name: devserver
+          sidecars:
+            - name: editor
+              command: [pnpm, dev]
+              port: 3000
+      """.trimIndent()
+    )
+
+    assertFailsWith<IllegalStateException> {
+      LaunchConfigLoader.load(configFile.toPath(), root)
+    }
+  }
+
+  @Test
+  fun launchEntryRejectsSidecarWithoutCommand() {
+    val root: Path = tmp.root.toPath()
+    val configFile = root.resolve("pde.yaml").toFile()
+    configFile.writeText(
+      """
+      launches:
+        - name: devserver
+          sidecars:
+            - name: editor
+      """.trimIndent()
+    )
+
+    assertFailsWith<IllegalStateException> {
+      LaunchConfigLoader.load(configFile.toPath(), root)
+    }
+  }
+
+  @Test
   fun concatenatesBundlesAcrossIncludes() {
     val root: Path = tmp.root.toPath()
     val baseFile = root.resolve("base.yaml").toFile()

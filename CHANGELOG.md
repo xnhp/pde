@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- **launch**: run sidecar processes next to a launch (`launches[].sidecars`)
+
 ## v0.3.2 - 2026-08-27
 
 ### Bug Fixes

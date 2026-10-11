@@ -60,7 +60,20 @@ data class LaunchEntry(
   val configDir: String? = null,
   val workDir: String? = null,
   val env: Map<String, String> = emptyMap(),
-  val envFile: String? = null
+  val envFile: String? = null,
+  val sidecars: List<SidecarEntry> = emptyList()
+)
+
+/**
+ * A process started next to the launched JVM and stopped when the JVM exits.
+ * Typical use: a frontend dev server that talks to the launched backend.
+ */
+data class SidecarEntry(
+  val name: String,
+  val command: List<String>,
+  val cwd: String? = null,
+  val env: Map<String, String> = emptyMap(),
+  val readyPattern: String? = null
 )
 
 data class TestEntry(
@@ -85,7 +98,8 @@ data class LaunchRuntime(
   val dataDir: String? = null,
   val configDir: String? = null,
   val workDir: String? = null,
-  val env: Map<String, String> = emptyMap()
+  val env: Map<String, String> = emptyMap(),
+  val sidecars: List<SidecarEntry> = emptyList()
 )
 
 data class LaunchConfigContext(

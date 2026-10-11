@@ -37,6 +37,20 @@ launches:
       env:
         KNIME_PROFILE: development
         FEATURE_FLAG: "true"
+    - name: devserver
+      application: com.knime.gateway.executor.GATEWAY_DEV_SERVER_APPLICATION
+      programArgs:
+        - -port=30000
+      # processes started next to the JVM and stopped when it exits; output is
+      # relayed with a `[<name>] ` prefix, the first readyPattern match is logged
+      # as `[<name>] ready: <group 1>`
+      sidecars:
+        - name: editor
+          command: [pnpm, dev]
+          cwd: knime-ui/org.knime.ui.js
+          env:
+            KNIME_EDITOR_PORT: "30002"
+          readyPattern: 'Local:\s+(http\S+)'
 # run JUnit Plug-In tests
 tests:
     - className: com.knime.gateway.executor.server.GatewayServerTest
