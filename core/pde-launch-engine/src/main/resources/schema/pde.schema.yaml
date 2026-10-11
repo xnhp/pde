@@ -43,6 +43,37 @@ $defs:
           When omitted, roots are inferred from `build.properties` `output..`
           if present; otherwise defaults to `bin`.
     required: [path]
+  sidecarEntry:
+    type: object
+    description: >-
+      A process started next to the launched JVM and stopped when the JVM exits,
+      for example a frontend dev server that talks to the launched backend.
+    additionalProperties: false
+    properties:
+      name:
+        $ref: "#/$defs/nonEmptyString"
+        description: Sidecar name. Every output line of the sidecar is prefixed with `[<name>] `.
+      command:
+        type: array
+        minItems: 1
+        items:
+          type: string
+        description: Program and arguments, run without a shell.
+      cwd:
+        type: string
+        description: Working directory of the sidecar. Relative paths resolve from the config file.
+      env:
+        $ref: "#/$defs/envVars"
+        description: >-
+          Extra environment variables for the sidecar. Merged on top of the process
+          environment and the launch preset's env.
+      readyPattern:
+        type: string
+        description: >-
+          Java regular expression matched against every output line. On the first match pde
+          logs `[<name>] ready: <capture group 1, or the whole line>`. Use it to surface the
+          URL a dev server prints.
+    required: [name, command]
   launchEntry:
     type: object
     description: >-
@@ -96,6 +127,15 @@ $defs:
         description: >-
           Path to a .env file relative to pde.yaml. Each non-blank, non-comment
           line must be KEY=VALUE. Loaded before inline env, so inline env wins.
+      sidecars:
+        type: array
+        default: []
+        items:
+          $ref: "#/$defs/sidecarEntry"
+        description: >-
+          Processes started after the JVM started and stopped when it exits
+          (destroy, 5 s grace, then destroy forcibly). Their output is relayed line by line
+          with a `[<name>] ` prefix.
     required: [name]
   testEntry:
     type: object
