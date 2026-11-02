@@ -264,12 +264,24 @@ object IjInit {
       ?: issueDir.resolve(".target").resolve("p2")
     val registry = p2Path.resolve("org.eclipse.equinox.p2.engine").resolve("profileRegistry")
     // The installer writes `<id>.Profile`; older installs used `<id>.profile`. The path must match
-    // the on-disk casing exactly — the IJ plugin resolves it on a case-sensitive filesystem.
-    val preferred = registry.resolve("${profileId}.Profile").toAbsolutePath().normalize()
-    if (Files.isDirectory(preferred)) return preferred
-    val lowercase = registry.resolve("${profileId}.profile").toAbsolutePath().normalize()
-    if (Files.isDirectory(lowercase)) return lowercase
-    return preferred
+    // the on-disk casing exactly, since the IJ plugin resolves it on a case-sensitive filesystem.
+    // The casing is read from the directory listing: on a case-insensitive filesystem (Windows,
+    // macOS) `Files.isDirectory` reports either spelling as present.
+    val candidates = listOf("${profileId}.Profile", "${profileId}.profile")
+    val onDisk = profileDirNames(registry)
+    val name = candidates.firstOrNull { it in onDisk } ?: candidates.first()
+    return registry.resolve(name).toAbsolutePath().normalize()
+  }
+
+  private fun profileDirNames(registry: Path): Set<String> {
+    if (!Files.isDirectory(registry)) return emptySet()
+    Files.list(registry).use { stream ->
+      return stream
+        .filter { Files.isDirectory(it) }
+        .map { it.fileName.toString() }
+        .toList()
+        .toSet()
+    }
   }
 
   private fun resolveLauncherJar(context: LaunchConfigContext): Path? {
