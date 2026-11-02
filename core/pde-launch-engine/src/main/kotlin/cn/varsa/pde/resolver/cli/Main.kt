@@ -3992,7 +3992,10 @@ private fun testMain(args: Array<String>): Int {
 internal fun apiBaselineCheckMain(
   args: Array<String>,
   analyzerRuntimeResolver: (outputRoot: Path) -> ApiAnalyzerRuntime? = ::resolvePackagedApiAnalyzerRuntime,
-  analyzerRunner: (ApiAnalyzerInvocation) -> Int = ::runApiAnalyzer
+  analyzerRunner: (ApiAnalyzerInvocation) -> Int = ::runApiAnalyzer,
+  // Where `pde jdt-workspace init` writes workspace data by default, relative to the working
+  // directory; a parameter so tests do not depend on what that directory happens to contain.
+  defaultWorkspaceDataDir: Path = Paths.get(DEFAULT_WORKSPACE_OUTPUT_ROOT, "data")
 ): Int {
   val normalizedArgs = normalizeArgsWithImplicitConfig(args, apiBaselineOptionsRequiringValue)
   val parser = ArgParser("pde api-baseline check ${maturityTag("WIP")}")
@@ -4101,7 +4104,6 @@ internal fun apiBaselineCheckMain(
     logger.severe("--workspace-data does not exist or is not a directory: ${explicitWorkspaceData.toAbsolutePath().normalize()}")
     return 2
   }
-  val defaultWorkspaceDataDir = Paths.get(DEFAULT_WORKSPACE_OUTPUT_ROOT, "data")
   val workspaceDataPath: Path? = when {
     legacyOpt -> {
       if (explicitWorkspaceData != null) {

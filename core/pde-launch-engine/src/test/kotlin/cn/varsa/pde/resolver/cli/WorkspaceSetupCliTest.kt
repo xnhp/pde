@@ -23,10 +23,14 @@ class WorkspaceSetupCliTest {
     createWorkspaceBundle(workspace)
     val configFile = writeConfigFile(baseDir, workspace)
 
+    // An explicit output root keeps the generated workspace out of the working directory, where
+    // it would otherwise satisfy the default-workspace-data lookup of later `api-baseline check` runs.
+    val outputRoot = tmp.newFolder("output").toPath()
+
     val invocations = mutableListOf<EquinoxAppInvocation>()
     val runtimeResolutions = mutableListOf<Path>()
     val exit = workspaceSetupMain(
-      args = arrayOf("--config", configFile.toString()),
+      args = arrayOf("--config", configFile.toString(), "--output-root", outputRoot.toString()),
       equinoxRuntimeResolver = { outputRoot ->
         runtimeResolutions.add(outputRoot)
         fakeEquinoxRuntime(outputRoot)

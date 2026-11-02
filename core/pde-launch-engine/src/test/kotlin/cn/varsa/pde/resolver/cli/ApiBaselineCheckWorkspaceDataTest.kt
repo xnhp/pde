@@ -106,12 +106,41 @@ class ApiBaselineCheckWorkspaceDataTest {
       analyzerRunner = { invocation ->
         invocations += invocation
         0
-      }
+      },
+      defaultWorkspaceDataDir = tmp.root.toPath().resolve("no-workspace-data")
     )
 
     assertEquals(2, exit)
     assertEquals(0, runtimeResolutions.size)
     assertEquals(0, invocations.size)
+  }
+
+  @Test
+  fun `api-baseline check falls back to the default workspace data directory`() {
+    val baseDir = tmp.newFolder("cfg-default-wsdata").toPath()
+    val workspace = tmp.newFolder("workspace-default-wsdata").toPath()
+    val defaultDataDir = tmp.newFolder("default-ws-data").toPath()
+    createProfileWithFramework(baseDir)
+    createWorkspaceBundle(workspace)
+    val configFile = writeConfigFile(baseDir, workspace)
+
+    val invocations = mutableListOf<ApiAnalyzerInvocation>()
+    val exit = apiBaselineCheckMain(
+      args = arrayOf(
+        "--config", configFile.toString(),
+        "--baseline-root", baseDir.resolve("target").resolve("p2").toString()
+      ),
+      analyzerRuntimeResolver = { outputRoot -> fakeAnalyzerRuntime(outputRoot) },
+      analyzerRunner = { invocation ->
+        invocations += invocation
+        0
+      },
+      defaultWorkspaceDataDir = defaultDataDir
+    )
+
+    assertEquals(0, exit)
+    val input = BatchApiAnalyzerInputJson.read(Path.of(invocations.single().valueAfter("--input")))
+    assertEquals(defaultDataDir.toString(), input.workspaceDataDir)
   }
 
   private fun ApiAnalyzerInvocation.valueAfter(option: String): String {
