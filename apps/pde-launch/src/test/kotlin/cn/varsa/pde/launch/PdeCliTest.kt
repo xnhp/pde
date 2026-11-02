@@ -329,6 +329,7 @@ class PdeCliTest {
 
     val output = out.toString()
     assertTrue(output.contains("pde compile"))
+    assertTrue(output.contains("--warnings"))
     assertTrue(!output.contains("--execute"))
     assertTrue(!output.contains("--workspace"))
   }
@@ -357,6 +358,7 @@ class PdeCliTest {
     assertFalse(output.contains("--results-json"))
     assertFalse(output.contains("--bundles-info-out"))
     assertFalse(output.contains("--runtime-out"))
+    assertFalse(output.contains("--warnings"))
     assertFalse(output.contains("configPos"))
   }
 
@@ -382,6 +384,7 @@ class PdeCliTest {
     assertFalse(output.contains("--results-json"))
     assertFalse(output.contains("--bundles-info-out"))
     assertFalse(output.contains("--runtime-out"))
+    assertFalse(output.contains("--warnings"))
   }
 
   @Test
