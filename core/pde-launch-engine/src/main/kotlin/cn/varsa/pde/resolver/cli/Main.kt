@@ -106,6 +106,10 @@ import org.osgi.framework.VersionRange
 internal const val PDE_JUNIT_PLUGIN_TEST_APPLICATION = "org.eclipse.pde.junit.runtime.coretestapplication"
 private const val CRAC_CHECKPOINT_EXIT_CODE = 137
 private const val CRAC_CHECKPOINT_ARG_PREFIX = "-XX:CRaCCheckpointTo="
+// Exit codes with which an Eclipse application asks its launcher to start it again
+// (`IApplication.EXIT_RESTART` and `IApplication.EXIT_RELAUNCH`).
+internal const val ECLIPSE_EXIT_RESTART = 23
+internal const val ECLIPSE_EXIT_RELAUNCH = 24
 internal const val API_BASELINE_PROFILE_ID = "api-baseline-profile"
 internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
@@ -1761,26 +1765,53 @@ private fun executeLaunch(
   } else {
     processBuilder.redirectErrorStream(true)
   }
-  val process = processBuilder
-    .directory(prepared.layout.workDir.toFile())
-    .start()
-  val outputThread = if (outputLog == null) {
-    Thread {
-      process.inputStream.use { input -> input.copyTo(System.out) }
-    }.also { thread ->
-      thread.isDaemon = true
-      thread.start()
+  processBuilder.directory(prepared.layout.workDir.toFile())
+  val exit = runRelaunchingOnRestart { attempt ->
+    if (outputLog != null && attempt > 0) {
+      // A relaunch appends, so the log keeps the output of the run that asked for the restart.
+      processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(outputLog.toFile()))
     }
-  } else {
-    null
+    val process = processBuilder.start()
+    val outputThread = if (outputLog == null) {
+      Thread {
+        process.inputStream.use { input -> input.copyTo(System.out) }
+      }.also { thread ->
+        thread.isDaemon = true
+        thread.start()
+      }
+    } else {
+      null
+    }
+    val code = process.waitFor()
+    outputThread?.join()
+    code
   }
-  val exit = process.waitFor()
-  outputThread?.join()
   if (isSuccessfulCracCheckpointExit(exit, prepared.command, prepared.layout.workDir)) {
     logger.info("Checkpoint completed; launcher exited with CRaC checkpoint code $exit")
     return
   }
   if (exit != 0) error("Launcher exited with code $exit")
+}
+
+/**
+ * Run [launchOnce] until it ends with an exit code other than Eclipse's restart codes, the way the
+ * native Eclipse launcher does, and return that final exit code. [launchOnce] receives the attempt
+ * number, starting at 0.
+ *
+ * An in-application `IWorkbench.restart()` ends the platform with [ECLIPSE_EXIT_RESTART]; without
+ * this loop `pde run` reported it as a launcher failure instead of bringing the application back.
+ * [ECLIPSE_EXIT_RELAUNCH] also re-runs the same command: the native launcher would pick up a new
+ * command line from the exit data (a workspace switch, for example), but that data travels through
+ * the native launcher's shared memory, which a plain `java` launch does not have.
+ */
+internal fun runRelaunchingOnRestart(launchOnce: (attempt: Int) -> Int): Int {
+  var attempt = 0
+  while (true) {
+    val exit = launchOnce(attempt)
+    if (exit != ECLIPSE_EXIT_RESTART && exit != ECLIPSE_EXIT_RELAUNCH) return exit
+    logger.info("Application exited with code $exit (Eclipse restart/relaunch); relaunching")
+    attempt++
+  }
 }
 
 private fun isSuccessfulCracCheckpointExit(exit: Int, command: List<String>, workDir: Path): Boolean {

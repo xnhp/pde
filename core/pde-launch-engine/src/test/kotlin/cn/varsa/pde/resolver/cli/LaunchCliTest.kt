@@ -136,6 +136,35 @@ class LaunchCliTest {
     assertEquals("Launcher exited with code 137", thrown?.message)
   }
 
+  @Test
+  fun restartExitCodeRelaunchesAndKeepsTheLogOfEveryRun() {
+    val root = tmp.root.toPath()
+    val workspace = tmp.newFolder("workspace").also {
+      createBundle(it, "org.example.app", "1.0.0", require = "org.eclipse.osgi")
+    }
+    setupLaunchProfile(root)
+    val marker = root.resolve("restarted")
+    val javaHome = writeFakeJava(
+      root,
+      """
+        #!/bin/sh
+        if [ -e '${marker.toAbsolutePath()}' ]; then
+          echo 'second run'
+          exit 0
+        fi
+        : > '${marker.toAbsolutePath()}'
+        echo 'first run'
+        exit 23
+      """.trimIndent()
+    )
+    val configFile = writeLaunchConfig(root, workspace.toPath(), javaHome, root.resolve("checkpoint"))
+    val log = root.resolve("launch.log")
+
+    launchMain(arrayOf("--config", configFile.toString(), "--log", log.toString()))
+
+    assertEquals(listOf("first run", "second run"), log.readText().lines().filter { it.isNotBlank() })
+  }
+
   private fun createBundle(root: File, bsn: String, version: String, require: String? = null) {
     val metaInf = File(root, "META-INF")
     metaInf.mkdirs()
