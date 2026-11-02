@@ -165,7 +165,8 @@ private val compileOptions = listOf(
   CliOption(listOf("--results-json"), "Write compile results to JSON file", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundles-info-out"), "Write bundles.info reflecting compiled workspace outputs", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--runtime-out"), "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory", takesValue = true, valueLabel = "String")
+  CliOption(listOf("--runtime-out"), "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--warnings"), "Print full compiler warning and info text (default: one summary line per bundle)")
 )
 
 // Mirrors the kotlinx-cli parser in workspaceSetupMain (core/pde-launch-engine Main.kt).
