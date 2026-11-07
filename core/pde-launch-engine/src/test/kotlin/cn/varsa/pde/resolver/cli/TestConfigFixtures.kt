@@ -66,3 +66,27 @@ private fun createFrameworkJar(pluginsDir: Path) {
   }
   JarOutputStream(Files.newOutputStream(pluginsDir.resolve("org.eclipse.osgi_1.0.0.jar")), mf).use { /* empty */ }
 }
+
+/**
+ * Stands in for a target installer run that succeeded: writes a profile snapshot with one installed artifact
+ * to the `-p2Path` and `-profileId` among the installer's [installerArgs], where pde checks for it afterwards.
+ */
+fun writeInstalledProfile(installerArgs: List<String>) {
+  fun valueOf(flag: String) = installerArgs[installerArgs.indexOf(flag) + 1]
+  val profileId = valueOf("-profileId")
+  val registry = Path.of(valueOf("-p2Path"))
+    .resolve("org.eclipse.equinox.p2.engine")
+    .resolve("profileRegistry")
+    .resolve("$profileId.Profile")
+    .createDirectories()
+  registry.resolve("1.profile").writeText(
+    """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <profile id="$profileId" timestamp="1" version="1.0.0">
+        <artifacts size="1">
+          <artifact classifier="osgi.bundle" id="org.example.bundle" version="1.0.0"/>
+        </artifacts>
+      </profile>
+    """.trimIndent()
+  )
+}

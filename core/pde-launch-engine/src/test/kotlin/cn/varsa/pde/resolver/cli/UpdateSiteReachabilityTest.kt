@@ -126,8 +126,9 @@ class UpdateSiteReachabilityTest {
 
     val skipped = targetMain(
       arrayOf("--config", configFile.toString(), "--skip-reachability-check"),
-      runInstallerLauncher = { _, _, _, _, _ ->
+      runInstallerLauncher = { _, args, _, _, _ ->
         launched = true
+        writeInstalledProfile(args)
         0
       }
     )
