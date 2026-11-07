@@ -37,6 +37,7 @@ class TargetInstallInputsTest {
     val exit = targetMain(
       arrayOf("--config", configFile.toString()),
       runInstallerLauncher = { installer, args, workingDir, _, trustAllAuthorities ->
+        writeInstalledProfile(args)
         invokedInstaller = installer
         invokedArgs = args
         invokedWorkingDir = workingDir
@@ -102,6 +103,7 @@ class TargetInstallInputsTest {
     val exit = targetMain(
       arrayOf("--config", configFile.toString()),
       runInstallerLauncher = { _, args, _, _, trustAllAuthorities ->
+        writeInstalledProfile(args)
         invokedArgs = args
         invokedTrustAllAuthorities = trustAllAuthorities
         0

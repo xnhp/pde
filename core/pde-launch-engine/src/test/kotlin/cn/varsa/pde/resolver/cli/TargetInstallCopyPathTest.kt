@@ -57,7 +57,7 @@ class TargetInstallCopyPathTest {
     try {
       val exit = targetMain(
         arrayOf("--config", configFile.toString(), "--copy-path", "--verbose"),
-        runInstallerLauncher = { _, _, _, _, _ -> 0 },
+        runInstallerLauncher = { _, args, _, _, _ -> writeInstalledProfile(args); 0 },
         clipboardCopier = {
           copiedPath = it
           true
@@ -102,7 +102,8 @@ class TargetInstallCopyPathTest {
       System.setProperty("pde.targetInstaller", packagedInstaller.toString())
       val exit = targetMain(
         arrayOf("--config", configFile.toString()),
-        runInstallerLauncher = { installerJar, _, _, _, _ ->
+        runInstallerLauncher = { installerJar, args, _, _, _ ->
+          writeInstalledProfile(args)
           invokedInstaller = installerJar
           0
         }
@@ -147,7 +148,8 @@ class TargetInstallCopyPathTest {
       System.setProperty("java.class.path", appJar.toString())
       val exit = targetMain(
         arrayOf("--config", configFile.toString()),
-        runInstallerLauncher = { installerJar, _, _, _, _ ->
+        runInstallerLauncher = { installerJar, args, _, _, _ ->
+          writeInstalledProfile(args)
           invokedInstaller = installerJar
           0
         }

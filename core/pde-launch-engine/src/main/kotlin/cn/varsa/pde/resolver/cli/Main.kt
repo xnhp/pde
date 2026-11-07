@@ -32,6 +32,7 @@ import cn.varsa.pde.resolver.api.artifact.AnalyzerArtifactMaterializerOptions
 import cn.varsa.pde.resolver.index.TargetPlatformCache
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
+import cn.varsa.pde.resolver.index.findProfileFile
 import cn.varsa.pde.resolver.index.getBundlePoolPath
 import cn.varsa.pde.resolver.launch.*
 import cn.varsa.pde.resolver.manifest.BundleManifest
@@ -2898,6 +2899,24 @@ private fun discoverTargetDefinition(baseDir: Path): Path? {
   }
 }
 
+/**
+ * Fails when the target installer exited with 0 but the profile has no installed artifacts. Installers before
+ * real exit codes reported success when an update site was unreachable or a unit was missing from it, and left
+ * an empty profile behind.
+ */
+private fun verifyInstalledProfile(context: LaunchConfigContext) {
+  val profileDir = resolveProfilePath(context)
+  val snapshot = profileDir?.toFile()?.let(::findProfileFile)
+  val artifactCount = snapshot?.let { parseProfileArtifacts(it.toPath()).size } ?: 0
+  if (artifactCount == 0) {
+    error(
+      "Target installer exited with code 0 but installed nothing: no artifacts in ${profileDir ?: "the target profile"}. " +
+        "The installer output above names the cause, typically an unreachable update site or a unit its repositories lack."
+    )
+  }
+  logger.info("Installed $artifactCount artifacts into $profileDir")
+}
+
 private fun resolveProfilePath(context: LaunchConfigContext): Path? {
   val baseDir = context.baseDir
   val targetConfig = context.config.target
@@ -3552,6 +3571,7 @@ internal fun targetMain(
     targetConfig.trustAllAuthorities == true
   )
   if (exit != 0) error("Target installer exited with code $exit")
+  verifyInstalledProfile(issueContext)
   if (copyPath) {
     val profilePath = resolveProfilePath(issueContext)
     if (profilePath == null) {
