@@ -154,10 +154,11 @@ public class Operation {
         return Optional.of(this);
     }
 
-    public void execute() {
+    /** @return {@code false} when provisioning ended with an error or was cancelled, {@code true} otherwise */
+    public boolean execute() {
         if (doDryRun) {
             System.out.println("Dry run, exiting.");
-            return;
+            return true;
         }
         org.eclipse.equinox.p2.operations.ProvisioningJob job;
         try (var monitor = new Utils.StdOutProgressMonitor("Getting provisioning plan")) {
@@ -167,7 +168,7 @@ public class Operation {
         }
         if (job == null) {
             System.out.println("No job, nothing to do");
-            return;
+            return true;
         }
 
         if (!includeConfigurePhase && job instanceof ProfileModificationJob profileJob) {
@@ -186,7 +187,7 @@ public class Operation {
             if (severity == IStatus.ERROR || severity == IStatus.CANCEL) {
                 System.err.println("Provisioning failed: " + provisionStatus.getMessage());
                 printStatus(provisionStatus);
-                return;
+                return false;
             }
             if (severity == IStatus.WARNING) {
                 // PDE’s P2TargetUtils simply logs non-OK statuses unless they are error/cancel (see resolveWithPlanner),
@@ -196,6 +197,7 @@ public class Operation {
             } else {
                 System.out.println("Successfully executed operation on : " + this.profile);
             }
+            return true;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
