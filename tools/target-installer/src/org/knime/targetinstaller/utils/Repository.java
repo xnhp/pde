@@ -56,6 +56,7 @@ import org.eclipse.equinox.p2.repository.artifact.IArtifactRepositoryManager;
 import org.eclipse.equinox.p2.repository.metadata.IMetadataRepositoryManager;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -66,12 +67,7 @@ public class Repository {
             List<Types.IURef> iuRefs
     ) throws Exception {
 
-        List<IQuery<IInstallableUnit>> referenceQueries = iuRefs.stream().map(
-                iuRef -> {
-                    Version version = Optional.ofNullable(iuRef.version()).map(Version::create).orElse(null);
-                    return QueryUtil.createIUQuery(iuRef.id(), version);
-                }
-        ).toList();
+        List<IQuery<IInstallableUnit>> referenceQueries = iuRefs.stream().map(Repository::referenceQuery).toList();
         // repository might provide more than one IU for a bundle / reference, for example
         /*
         <unit id="com.knime.enterprise.slave" version="0.0.0"/>
@@ -128,6 +124,26 @@ public class Repository {
 //        return resultIUs;
     }
 
+    /**
+     * The references among {@code iuRefs} that none of {@code found} satisfies, in their original order. Uses the
+     * same per-reference query as {@link #queryIUs}, run in memory against the units it returned, so a version of
+     * {@code 0.0.0} or none matches any version here too.
+     *
+     * @param iuRefs the units the target definition requests
+     * @param found the units {@link #queryIUs} returned for them
+     * @return the requested units that were not found
+     */
+    public static List<Types.IURef> unmatchedRefs(List<Types.IURef> iuRefs, List<IInstallableUnit> found) {
+        return iuRefs.stream()
+                .filter(iuRef -> referenceQuery(iuRef).perform(found.iterator()).isEmpty())
+                .toList();
+    }
+
+    private static IQuery<IInstallableUnit> referenceQuery(Types.IURef iuRef) {
+        Version version = Optional.ofNullable(iuRef.version()).map(Version::create).orElse(null);
+        return QueryUtil.createIUQuery(iuRef.id(), version);
+    }
+
     public IMetadataRepositoryManager getMetadataRepoManager() {
         return metadataRepoManager;
     }
@@ -144,7 +160,14 @@ public class Repository {
 
     }
 
-    public void load(Collection<URI> repositoryUris) {
+    /**
+     * Loads every repository, reporting each one that fails.
+     *
+     * @param repositoryUris the metadata and artifact repositories to load
+     * @return the repositories that failed to load
+     */
+    public List<URI> load(Collection<URI> repositoryUris) {
+        List<URI> failed = new ArrayList<>();
         for (URI repo : repositoryUris) {
             try {
                 try (var monitor = new Utils.StdOutProgressMonitor("Loading metadata repository at " + repo)) {
@@ -155,7 +178,9 @@ public class Repository {
                 }
             } catch (Exception e) {
                 System.err.println("Failed to load repository " + repo + ": " + e.getMessage());
+                failed.add(repo);
             }
         }
+        return failed;
     }
 }
