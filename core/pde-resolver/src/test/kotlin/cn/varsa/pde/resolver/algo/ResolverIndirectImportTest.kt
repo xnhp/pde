@@ -227,4 +227,47 @@ class ResolverIndirectImportTest {
     assertTrue("fragment provider selected", "org.frag" in bsns)
     assertTrue("fragment's host selected", "org.host" in bsns)
   }
+
+  @Test
+  fun `missing mandatory external API packages remain diagnostics for entry and closure members`() {
+    for (pkg in listOf("javax.servlet", "jakarta.servlet", "javax.xml.bind", "org.omg.CORBA")) {
+      for (indirect in listOf(false, true)) {
+        val workspace = wsEntry(
+          "Bundle-SymbolicName" to "org.example.app",
+          "Bundle-Version" to "1.0.0",
+          (if (indirect) "Require-Bundle" to "org.library" else "Import-Package" to pkg)
+        )
+        val tp = tpIndex(
+          tpBundle(
+            "org.library",
+            "Bundle-SymbolicName" to "org.library",
+            "Bundle-Version" to "1.0.0",
+            "Import-Package" to pkg
+          )
+        )
+
+        val result = Resolver.resolve(tp, workspace, workspace.first())
+
+        assertTrue("missing $pkg must be reported (indirect=$indirect)",
+          result.problems.any { it.symbol == pkg && it.type == ResolveProblemType.MISSING_PACKAGE })
+        assertTrue(result.unresolved.any {
+          it.bsn == pkg && it.reason == if (indirect) "import-package-indirect" else "import-package"
+        })
+      }
+    }
+  }
+
+  @Test
+  fun `JDK exported packages do not require target providers`() {
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Import-Package" to "java.lang,javax.crypto,javax.xml.parsers,org.w3c.dom,org.xml.sax"
+    )
+
+    val result = Resolver.resolve(tpIndex(), workspace, workspace.first())
+
+    assertTrue(result.unresolved.isEmpty())
+  }
+
 }

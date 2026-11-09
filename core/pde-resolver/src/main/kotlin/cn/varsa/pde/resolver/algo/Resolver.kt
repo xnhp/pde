@@ -11,6 +11,7 @@ import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.manifest.reexportRequiredBundleAndVersion
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
+import java.lang.module.ModuleFinder
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -45,17 +46,17 @@ data class ResolveOptions(
 enum class BundleOrigin { WORKSPACE, TARGET }
 
 /**
- * Packages provided by the JRE / OSGi system bundle (boot classpath), never exported by a regular
- * bundle. The indirect-import closure must skip these — otherwise it records hundreds of bogus
- * `import-package-indirect` unresolved entries for `javax.*`/`jdk.*`/etc.
+ * Public packages provided by the resolver's JDK. There is no resolved system-bundle wiring here,
+ * so use its system modules as the JRE approximation. Match exact exports: the javax/jakarta
+ * namespaces also contain external APIs whose missing mandatory imports must remain diagnostics.
  */
-private val SYSTEM_PACKAGE_PREFIXES = listOf(
-  "java.", "javax.", "jakarta.", "jdk.", "sun.", "com.sun.",
-  "org.w3c.dom", "org.xml.sax", "org.ietf.jgss", "org.omg."
-)
+private val SYSTEM_PACKAGES: Set<String> = ModuleFinder.ofSystem().findAll()
+  .flatMap { it.descriptor().exports() }
+  .filterNot { it.isQualified }
+  .map { it.source() }
+  .toSet()
 
-internal fun isSystemPackage(pkg: String): Boolean =
-  SYSTEM_PACKAGE_PREFIXES.any { pkg == it.trimEnd('.') || pkg.startsWith(it) }
+internal fun isSystemPackage(pkg: String): Boolean = pkg in SYSTEM_PACKAGES
 
 data class ResolvedBundle(
   val bsn: String,
@@ -360,8 +361,8 @@ object Resolver {
     // selected nothing is added, otherwise it joins the selection. Optional imports are followed
     // like Eclipse PDE's INCLUDE_OPTIONAL_DEPENDENCIES build closure; an unsatisfiable optional
     // import is skipped silently. Unsatisfiable JRE/system-package imports (java./jdk./...) are
-    // also skipped silently — they come from the OSGi system bundle via boot delegation, so their
-    // absence from the target index is expected — but a bundle-provided javax.* package (e.g.
+    // also skipped silently when exported by the resolver's JDK system modules, whose packages
+    // need not appear in the target index — but a bundle-provided javax.* package (e.g.
     // javax.servlet) still resolves normally because providers are looked up before the check.
     run {
       val processed = HashSet<String>()
