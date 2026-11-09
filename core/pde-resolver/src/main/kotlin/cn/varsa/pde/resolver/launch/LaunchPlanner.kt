@@ -30,10 +30,10 @@ object LaunchPlanner {
         ?: environment.startLevelProvider?.invoke(bsn)
         ?: options.defaultStartLevel
 
-    fun autoStartFor(bsn: String, level: Int): Boolean =
+    fun autoStartFor(bsn: String, level: Int, lazyActivation: Boolean): Boolean =
       environment.autoStartBundles[bsn]
         ?: environment.autoStartProvider?.invoke(bsn)
-        ?: (options.autoStartDefault && level >= 0)
+        ?: ((options.autoStartDefault || lazyActivation) && level >= 0)
 
     fun recordProblems(scope: String, items: List<ResolveProblem>) {
       if (items.isEmpty()) return
@@ -97,8 +97,8 @@ object LaunchPlanner {
     val bundles = selector.entries().map { rb ->
       val level = levelFor(rb.bsn)
       // Lazy-activation bundles must be armed (started with the activation policy) or Equinox never
-      // runs their activator / DS components. Force auto-start for them regardless of autoStartDefault.
-      val auto = autoStartFor(rb.bsn, level) || rb.lazyActivation
+      // runs their activator / DS components. Explicit startup policies still take precedence.
+      val auto = autoStartFor(rb.bsn, level, rb.lazyActivation)
       startupLevels[rb.bsn] = level
       BundleStartSpec(
         bsn = rb.bsn,
