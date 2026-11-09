@@ -68,60 +68,17 @@ public class Repository {
     ) throws Exception {
 
         List<IQuery<IInstallableUnit>> referenceQueries = iuRefs.stream().map(Repository::referenceQuery).toList();
-        // repository might provide more than one IU for a bundle / reference, for example
-        /*
-        <unit id="com.knime.enterprise.slave" version="0.0.0"/>
-            com.knime.enterprise.slave 5.5.0.v202501221042
-            com.knime.enterprise.slave 5.5.0.v202501151617
-            com.knime.enterprise.slave 5.5.0.v202501101616
-         */
-        // any of these queries can also be executed directly e.g. for debugging -- these are just optimisations
-        var compoundQuery = QueryUtil.createCompoundQuery(referenceQueries, false); // could also query repo manager individually in a loop below.
-        var latestQuery = QueryUtil.createLatestQuery(compoundQuery);
-//        var grouped = new HashMap<String, ArrayList<IInstallableUnit>>();
-//        installableUnits.forEach(iu -> {
-//            grouped.computeIfAbsent(iu.getId(), id -> new ArrayList<>());
-//            grouped.get(iu.getId()).add(iu);
-//        });
-//        var latestIUs = grouped.values().stream()
-//                .map(ius -> ius.stream()
-//                        .sorted((iu1, iu2) -> iu1.compareTo(iu2) * -1)
-//                        .findFirst())
-//                .flatMap(Optional::stream)
-//                .toList();
+        var compoundQuery = QueryUtil.createCompoundQuery(referenceQueries, false);
 
         IQueryResult<IInstallableUnit> queryResult;
         try (var monitor = new Utils.StdOutProgressMonitor("Querying loaded repositories for %s IUs".formatted(iuRefs.size()))) {
-            queryResult = this.getMetadataRepoManager().query(latestQuery, monitor);
+            queryResult = this.getMetadataRepoManager().query(compoundQuery, monitor);
         }
         if (queryResult.isEmpty()) {
             System.err.println("No IUs found");
         }
         return queryResult.stream().toList();
 
-        // the below allows to report when there was no IU found for a (single) entry -- but it is much slower
-        //List<IInstallableUnit> resultIUs = new ArrayList<>();
-//        for (TargetFileParser.IUReference ref : iuRefs) {
-//            org.eclipse.equinox.p2.query.IQuery<IInstallableUnit> query;
-//            if (ref.version() != null) {
-//                // Query by ID and exact Version
-//                query = QueryUtil.createIUQuery(ref.id(), Version.create(ref.version()));
-//            } else {
-//                // Query by ID (any version)
-//                query = QueryUtil.createIUQuery(ref.id(), (Version) null);
-//            }
-//
-//            // Query the combined loaded repositories
-//            IQueryResult<IInstallableUnit> qResult = metadataRepoManager.query(query, new MyProgressMonitor("Querying metadata repositories"));
-//            if (!qResult.isEmpty()) {
-//                Set<IInstallableUnit> found = qResult.toUnmodifiableSet();
-//                resultIUs.addAll(found);
-//            } else {
-//                System.err.println("No IU found for: " + ref);
-//            }
-//        }
-
-//        return resultIUs;
     }
 
     /**
@@ -136,6 +93,14 @@ public class Repository {
     public static List<Types.IURef> unmatchedRefs(List<Types.IURef> iuRefs, List<IInstallableUnit> found) {
         return iuRefs.stream()
                 .filter(iuRef -> referenceQuery(iuRef).perform(found.iterator()).isEmpty())
+                .toList();
+    }
+
+    /** Selects the latest match for each reference, preserving distinct explicitly requested versions. */
+    public static List<IInstallableUnit> selectIUs(List<Types.IURef> iuRefs, List<IInstallableUnit> found) {
+        return iuRefs.stream()
+                .flatMap(ref -> QueryUtil.createLatestQuery(referenceQuery(ref)).perform(found.iterator()).stream())
+                .distinct()
                 .toList();
     }
 

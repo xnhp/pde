@@ -153,7 +153,7 @@ public class Application implements IApplication{
         if (installableUnits.isEmpty()) {
             throw new InstallFailure(EXIT_UNITS_NOT_FOUND, "The target definition lists no units to install.");
         }
-        return installableUnits;
+        return Repository.selectIUs(targetDefinition.iuRefs(), installableUnits);
     }
 
     /**
