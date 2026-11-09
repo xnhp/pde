@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.4.0 - 2026-11-09
+
+### Bug Fixes
+- **compile**: retain attached fragments in isolated classpaths (#99) (209e80d)
+- **resolver**: compile workspace bundles against their dependency versions (#99) (c146636)
+- **resolver**: report missing external API package imports (#99) (51736dc)
+- **resolver**: follow imported package requirement closures (#99) (62b1ea1)
+- **launch**: retain optional startup defaults for installed bundles (#99) (840afe1)
+- **launch**: remove target-specific required startup defaults (#99) (aac8e04)
+- **launch**: load fragment tests through their host bundle (#99) (503d4dc)
+- **launch**: preserve explicit lazy-bundle startup policies (#99) (e3ed734)
+- **launch**: arm lazy bundles in the resolver closure (#99) (ab975e3)
+- **resolver**: preserve traversal precedence through entry cycles (#99) (f5bfd93)
+- **ij-init**: read the profile directory casing from the listing (5a0e47a)
+- make pde-cli and launch-engine tests platform-independent (5cce6d2)
+- make CLI-parsing tests and API-report JSON platform-independent (eae2942)
+- **launch**: relaunch the application on Eclipse restart exit codes (2cc139f)
+- **compile**: count task diagnostics as warnings (#174) (a3b50d4)
+- **cli**: advertise --warnings in pde compile help (7eb64a0)
+- **target-installer**: preserve explicitly requested versions (704db28)
+- **target-install**: fail when the installer reports success but installed nothing (bfed18f)
+- **target-installer**: exit non-zero when an install fails, and keep the old profile until it can succeed (3efc1f2)
+- **target**: recover from case mismatch in target location, notify when missing (573685c)
+- **ij-init**: point target location at the on-disk profile directory casing (1a8b04f)
+
+### Documentation
+- **compile**: move the compile warnings note into the pde compile section (8754a11)
+- **skill**: note first target install, Java version warning, local test scope (6629137)
+
+### Features
+- **mcp**: expose compile warnings through the compile-workspace tool (a271911)
+- **compile**: honor and surface configured Eclipse compile warnings (b1d025a)
+- **init-config**: add --all to include every bundle without diffing (398d01c)
+
+### Other
+- PR-200: remove duplicated gateway dev server quickstart (61f2525)
+
+### Refactoring
+- **resolver**: separate bundle selection from traversal (#99) (8a1b38b)
+
+### Tests
+- **cli**: fix two Windows-only assertions in pde-launch tests (fc54e0f)
+- **api-baseline**: keep the workspace-data tests independent of the working directory (c9b0469)
+
 ## v0.3.2 - 2026-08-27
 
 ### Bug Fixes
