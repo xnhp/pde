@@ -123,7 +123,7 @@ class EcjCompiler : CompilerPort {
       durationMillis = 0,
       skipped = false,
       warnings = listOfNotNull(processorWarning, classfileWarning).map { it.trimEnd() },
-      warningCount = compiler.globalWarningsCount,
+      warningCount = compiler.globalWarningsCount + compiler.globalTasksCount,
       infoCount = compiler.globalInfoCount
     )
   }
