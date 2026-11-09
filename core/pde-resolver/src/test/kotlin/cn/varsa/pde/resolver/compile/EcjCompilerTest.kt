@@ -178,6 +178,25 @@ class EcjCompilerTest {
   private val nlsKey = "org.eclipse.jdt.core.compiler.problem.nonExternalizedStringLiteral"
 
   @Test
+  fun `configured task markers are counted as warnings`() {
+    val spec = nlsSpec("task-warning", mapOf(
+      "org.eclipse.jdt.core.compiler.taskTags" to "TODO",
+      "org.eclipse.jdt.core.compiler.taskPriorities" to "NORMAL",
+      "org.eclipse.jdt.core.compiler.taskCaseSensitive" to "enabled"
+    ))
+    val source = File(spec.sourceRoots.single(), "Nls.java")
+    source.writeText("// TODO finish\n" + source.readText())
+
+    val result = EcjCompiler().compile(spec)
+
+    assertTrue(result.success, result.output)
+    assertEquals(1, result.warningCount, result.output)
+    assertEquals(0, result.infoCount)
+    assertTrue(result.output.contains("WARNING in"), result.output)
+    assertTrue(result.output.contains("TODO finish"), result.output)
+  }
+
+  @Test
   fun `without prefs the ignored-by-default problem stays silent`() {
     val result = EcjCompiler().compile(nlsSpec("nls-silent", emptyMap()))
 
