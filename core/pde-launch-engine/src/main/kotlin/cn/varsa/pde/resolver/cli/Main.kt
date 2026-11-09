@@ -49,6 +49,7 @@ import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
 import cn.varsa.pde.resolver.cli.config.DEFAULT_STARTUP_LEVELS
+import cn.varsa.pde.resolver.cli.config.defaultStartupLevelsForTarget
 import cn.varsa.pde.resolver.cli.config.LaunchLayout
 import cn.varsa.pde.resolver.cli.config.LaunchLayoutResolver
 import cn.varsa.pde.resolver.cli.config.TargetDefinitionStartupParser
@@ -2629,7 +2630,7 @@ private fun prepareLaunch(
   LaunchLayoutResolver.cleanIfRequested(layout, false)
   val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(context)
   val requestedStartupLevels = DEFAULT_STARTUP_LEVELS
-  val combinedStartup = DEFAULT_STARTUP_LEVELS +
+  val combinedStartup = defaultStartupLevelsForTarget(targetIndex.bundlesByBsn().keys) +
     targetDefinitionStartupLevels +
     requestedStartupLevels
   val resolverWhitelist = defaultWhitelistPrefixes()

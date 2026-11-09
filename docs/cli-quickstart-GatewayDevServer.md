@@ -68,13 +68,13 @@ The following warnings seem not problematic and can be ignored for the time bein
 ```
 [WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/master/.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
 [WARN] Using lowercase profile registry path: /home/ben/Desktop/issues/master/.target/p2/org.eclipse.equinox.p2.engine/profileRegistry/profile.profile
-[WARN] Launch plan has unresolved bundles/dependencies; continuing anyway.
-Launch Plan:
-  - [MISSING_BUNDLE] org.eclipse.equinox.ds: startup-level
-  - [MISSING_BUNDLE] org.eclipse.m2e.logback.configuration: startup-level
 CompileCommand: exclude javax/swing/text/GlyphView.getBreakSpot bool exclude = true
 WARNING: Using incubator modules: jdk.incubator.vector
 ```
+
+Legacy Equinox DS and Maven IDE logging bundles are started at their usual levels
+when present in the target; their absence does not produce a startup warning.
+Targets can explicitly require them through `startupLevels.yaml` beside `pde.yaml`.
 
 The server is ready when you see `<PRESS ANY KEY TO TERMINATE>` being logged on stdout.
 
