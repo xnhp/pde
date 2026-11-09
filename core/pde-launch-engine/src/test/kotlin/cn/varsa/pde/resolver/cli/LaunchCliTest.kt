@@ -179,7 +179,65 @@ class LaunchCliTest {
     assertEquals(listOf("first run", "second run"), log.readText().lines().filter { it.isNotBlank() })
   }
 
-  private fun createBundle(root: File, bsn: String, version: String, require: String? = null) {
+  @Test
+  fun fragmentTestPluginUsesHostInLaunchCommand() {
+    val args = captureTestPluginArguments("org.example.fragment")
+
+    assertEquals("org.example.host", args[args.indexOf("-testpluginname") + 1])
+    assertTrue(args.contains("org.example.FragmentTest"))
+  }
+
+  @Test
+  fun ordinaryTestPluginIsUnchangedInLaunchCommand() {
+    val args = captureTestPluginArguments("org.example.host")
+
+    assertEquals("org.example.host", args[args.indexOf("-testpluginname") + 1])
+  }
+
+  @Test
+  fun launchWithoutTestPluginDoesNotAddOne() {
+    val args = captureTestPluginArguments(null)
+
+    assertTrue("-testpluginname" !in args)
+  }
+
+  private fun captureTestPluginArguments(testPlugin: String?): List<String> {
+    assumePosixShell()
+    val root = tmp.root.toPath()
+    val host = tmp.newFolder("host").also { createBundle(it, "org.example.host", "1.0.0") }
+    val fragment = tmp.newFolder("fragment").also {
+      createBundle(it, "org.example.fragment", "1.0.0", fragmentHost = "org.example.host")
+    }
+    setupLaunchProfile(root)
+    val capturedArgs = root.resolve("args.txt")
+    val javaHome = writeFakeJava(root, """
+      #!/bin/sh
+      printf '%s\n' "${'$'}@" > '${capturedArgs.toAbsolutePath()}'
+    """.trimIndent())
+    root.resolve(".env").writeText("JAVA_HOME=${javaHome.toAbsolutePath()}\n")
+    val configFile = root.resolve("pde.yaml")
+    configFile.writeText("""
+      target:
+        profileId: profile
+        p2Path: target/p2
+      bundles:
+        - path: ${host.absolutePath}
+        - path: ${fragment.absolutePath}
+      launches:
+        - name: run
+          application: org.eclipse.pde.junit.runtime.coretestapplication
+          envFile: .env
+          programArgs: ${if (testPlugin == null) "[]" else "[-testpluginname, $testPlugin, -classname, org.example.FragmentTest]"}
+    """.trimIndent())
+
+    launchMain(arrayOf("--config", configFile.toString()))
+
+    return capturedArgs.readText().lines()
+  }
+
+  private fun createBundle(
+    root: File, bsn: String, version: String, require: String? = null, fragmentHost: String? = null
+  ) {
     val metaInf = File(root, "META-INF")
     metaInf.mkdirs()
     val mf = File(metaInf, "MANIFEST.MF")
@@ -188,6 +246,7 @@ class LaunchCliTest {
       appendLine("Bundle-SymbolicName: $bsn")
       appendLine("Bundle-Version: $version")
       if (require != null) appendLine("Require-Bundle: $require")
+      if (fragmentHost != null) appendLine("Fragment-Host: $fragmentHost")
     }
     mf.writeText(headers)
   }
