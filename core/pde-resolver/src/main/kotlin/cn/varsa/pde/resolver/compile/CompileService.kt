@@ -1,5 +1,10 @@
 package cn.varsa.pde.resolver.compile
 
+import cn.varsa.pde.resolver.algo.ResolveOptions
+import cn.varsa.pde.resolver.algo.Resolver
+import cn.varsa.pde.resolver.index.TargetPlatformIndex
+import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
+import org.osgi.framework.VersionRange
 import cn.varsa.pde.resolver.algo.ResolvedBundle
 import cn.varsa.pde.resolver.algo.WorkspaceBundleDescriptor
 import cn.varsa.pde.resolver.launch.LaunchPlanner
@@ -11,6 +16,68 @@ import cn.varsa.pde.resolver.launch.LaunchPlanner
 object CompileService {
 
   data class Output(val specs: List<CompileSpec>)
+
+  /** Build isolated compile closures, including fragments attached to the selected host versions. */
+  fun buildSpecs(
+    plan: LaunchPlanner.PlanResult,
+    workspace: List<WorkspaceBundleDescriptor>,
+    target: TargetPlatformIndex,
+    options: ResolveOptions
+  ): Output {
+    val workspaceByPath = workspace.associateBy { it.path.toAbsolutePath().normalize() }
+    val fragments = plan.selectedBundles.mapNotNull { bundle ->
+      if (bundle.fragmentHost == null && !bundle.isWorkspace) return@mapNotNull null
+      val descriptor = if (bundle.isWorkspace) {
+        workspaceByPath[bundle.path.toAbsolutePath().normalize()]
+      } else {
+        val exact = VersionRange(VersionRange.LEFT_CLOSED, bundle.version, bundle.version, VersionRange.RIGHT_CLOSED)
+        target.get(bundle.bsn, exact)?.let {
+          WorkspaceBundleDescriptor(bundle.path, it.manifest, bundle.classPathEntries)
+        }
+      } ?: return@mapNotNull null
+      val host = descriptor.fragmentHost?.let { it.symbolicName to it.versionRange }
+        ?: descriptor.manifest.fragmentHostAndVersionRange() ?: return@mapNotNull null
+      Triple(bundle, descriptor, host)
+    }
+    val fragmentClosures = mutableMapOf<ResolvedBundle, List<ResolvedBundle>>()
+    val dependencies = plan.workspaceDependencies.toMutableMap()
+    val classpaths = workspace.associate { entry ->
+      val bsn = requireNotNull(entry.manifest.bundleSymbolicName?.key)
+      val bundles = Resolver.resolve(target, workspace, entry, options).bundles.toMutableList()
+      val attached = mutableSetOf<ResolvedBundle>()
+      // A fragment's dependencies can introduce another host. Keep attaching until stable.
+      do {
+        var changed = false
+        fragments.forEach { (fragment, descriptor, host) ->
+          if (fragment in attached || bundles.none {
+              it.bsn == host.first && (host.second?.includes(it.version) != false)
+            }) return@forEach
+          attached += fragment
+          // Preserve each entry's dependency versions when a fragment's closure overlaps them.
+          val closure = fragmentClosures.getOrPut(fragment) {
+            Resolver.resolve(target, workspace, descriptor, options).bundles.map {
+              if (it.bsn == fragment.bsn) fragment else it
+            }
+          }
+          closure.forEach { candidate ->
+            if (bundles.none { it.bsn == candidate.bsn }) bundles += candidate
+          }
+          changed = true
+        }
+      } while (changed)
+      // Fragments already compile after their workspace host. Do not add the reverse edge;
+      // consumers depend on both, while host/fragment source cycles still need a joint compiler.
+      dependencies[bsn] = dependencies[bsn].orEmpty() + bundles
+        .filter { candidate ->
+          candidate.isWorkspace && candidate.bsn != bsn && fragments.none { (fragment, _, host) ->
+            fragment.bsn == candidate.bsn && host.first == bsn
+          }
+        }.map { it.bsn }
+      bsn to bundles.flatMap { it.classPathEntries }
+        .map { it.toAbsolutePath().normalize().toString() }.distinct()
+    }
+    return buildSpecs(plan.copy(workspaceDependencies = dependencies), workspace, classpaths)
+  }
 
   /**
    * @param perEntryClasspath optional per-workspace-bundle compile classpath (BSN -> entries),
