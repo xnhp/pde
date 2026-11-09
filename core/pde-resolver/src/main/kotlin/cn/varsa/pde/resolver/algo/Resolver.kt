@@ -214,7 +214,9 @@ object Resolver {
     // Expand a Require-Bundle closure. Selection is "first constraint wins", with selection split
     // from recursion (via `closureProcessed`) so a pre-selected bundle still has its own
     // requirements expanded.
-    val closureProcessed = HashSet<String>()
+    // The entry and its host are expanded by the merged direct-requirements loop below.
+    // A cycle back to either must not re-enter that loop ahead of its remaining siblings.
+    val closureProcessed = selected.keys.toHashSet()
     fun addRequireWithClosure(bsn: String, range: VersionRange) {
       if (!selected.containsKey(bsn)) {
         val cand = select(bsn, range)

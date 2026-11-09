@@ -32,4 +32,30 @@ class ResolverTraversalTest {
     assertEquals(5, result.bundles.size)
     assertTrue(result.unresolved.isEmpty())
   }
+
+  @Test
+  fun `cycle through entry does not change first constraint precedence`() {
+    fun manifest(bsn: String, version: String, requires: String) = BundleManifest.parse(
+      mapOf("Bundle-SymbolicName" to bsn, "Bundle-Version" to version, "Require-Bundle" to requires)
+    )
+    val entry = WorkspaceBundleDescriptor(Paths.get("/ws/entry"), manifest("entry", "1.0.0", "left,right"))
+    val target = TargetPlatformIndex(
+      listOf(
+        Triple("left", "1.0.0", "entry,library;bundle-version=\"[1,2)\""),
+        Triple("right", "1.0.0", "library;bundle-version=\"[2,3)\""),
+        Triple("library", "1.0.0", ""), Triple("library", "2.0.0", "")
+      ).groupBy { it.first }.mapValues { (_, entries) ->
+        TreeMap<Version, ResolvedBundle>().apply {
+          entries.forEach { (bsn, version, requires) ->
+            put(Version(version), ResolvedBundle(Paths.get("/tp/$bsn-$version"), manifest(bsn, version, requires), true))
+          }
+        }
+      }
+    )
+
+    val result = Resolver.resolve(target, listOf(entry), entry)
+
+    assertEquals(Version("1.0.0"), result.bundles.single { it.bsn == "library" }.version)
+  }
+
 }
