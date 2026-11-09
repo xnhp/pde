@@ -26,6 +26,9 @@ val eclipseSdkDir = providers.gradleProperty("eclipseSdk").map { file(it) }
 val launcherJar = equinoxLauncherJar(eclipseSdkDir)
 
 sourceSets {
+  test {
+    java.setSrcDirs(listOf("tests"))
+  }
   main {
     java.setSrcDirs(listOf("src"))
     resources.setSrcDirs(emptyList<String>())
@@ -41,6 +44,8 @@ configurations.named("compileClasspath") {
 }
 dependencies {
   "compileOnly"(fileTree(eclipseSdkDir.map { it.resolve("plugins") }) { include("*.jar") })
+  testImplementation(libs.junit)
+  testImplementation(fileTree(eclipseSdkDir.map { it.resolve("plugins") }) { include("*.jar") })
 }
 
 val pluginVersion = layout.projectDirectory.file("META-INF/MANIFEST.MF").asFile
