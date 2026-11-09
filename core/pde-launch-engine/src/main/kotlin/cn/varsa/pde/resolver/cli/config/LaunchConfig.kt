@@ -18,7 +18,8 @@ data class LaunchConfig(
   val target: TargetConfig? = null,
   val bundles: List<WorkspaceBundleConfig> = emptyList(),
   val launches: List<LaunchEntry> = emptyList(),
-  val tests: List<TestEntry> = emptyList()
+  val tests: List<TestEntry> = emptyList(),
+  val testStrategy: String? = null
 )
 
 data class TargetConfig(

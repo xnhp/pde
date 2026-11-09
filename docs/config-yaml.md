@@ -63,9 +63,35 @@ tests:
     className: org.knime.gateway.impl.webui.service.GatewayDefaultServiceTests
 ```
 
+### Running many test classes in one platform instance
+
+```yaml
+testStrategy: merged
+tests:
+  - name: persist-paths
+    testPluginName: org.knime.gateway.impl
+    className: org.knime.gateway.impl.PersistPathsTest
+    runner: junit5
+  - name: scope-paths
+    testPluginName: org.knime.gateway.impl
+    className: org.knime.gateway.impl.ScopePathsTest
+    runner: junit5
+```
+
 ## Practical notes
 
 - `pde run` and `pde test` require compiled `.class` files in configured class roots.
+- `testStrategy` decides how `pde test` runs several test entries. The default `isolated` starts one
+  platform instance per entry, which is clean but pays the full startup cost per test class.
+  `merged` runs compatible entries in a single instance, so a suite of many small test classes
+  starts the platform once. Entries are compatible when they agree on the resolved test plugin (a
+  fragment counts as its host, since a fragment's classes load through its host), `runner`,
+  `programArgs`, `vmArgs`, `dataDir`, `configDir`, `workDir` and `debug`; anything else still gets
+  its own instance, as does an entry without a `className`. Merged entries share one JVM, so static
+  state outlives a single test class: a test that passes isolated but fails merged is usually
+  leaking state. Override per run with `pde test --merged` or `pde test --isolated`.
+- `--report junit-xml:<path>` covers the whole run. When a run needs several platform instances,
+  their results are combined into that one file instead of each instance overwriting the previous.
 - `target.eclipseRuntimeCache` can pin where ad-hoc Eclipse runtime archives are cached.
 - `target.p2Repositories` can provide p2 source repositories used by runtime bootstrap provisioning.
 - `target.extraBundles` can add already-installed target/workspace bundles to `pde compile`,
