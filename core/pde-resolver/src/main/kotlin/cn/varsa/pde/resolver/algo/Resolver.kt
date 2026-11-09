@@ -211,23 +211,29 @@ object Resolver {
       }
     }
 
+    // Expand a Require-Bundle closure. Selection is "first constraint wins", with selection split
+    // from recursion (via `closureProcessed`) so a pre-selected bundle still has its own
+    // requirements expanded.
+    val closureProcessed = HashSet<String>()
     fun addRequireWithClosure(bsn: String, range: VersionRange) {
       if (!selected.containsKey(bsn)) {
         val cand = select(bsn, range)
-        if (cand != null) {
-          selected.putIfAbsent(bsn, cand)
-          val requiresAll = if (cand.origin == BundleOrigin.WORKSPACE) {
-            cand.manifest.requiredBundleAndVersion(includeOptional = true) +
-              cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
-          } else {
-            val nav = target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
-            nav + cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
-          }
-          requiresAll.forEach { (childBsn, childRange) -> addRequireWithClosure(childBsn, childRange) }
-        } else {
+        if (cand == null) {
           unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
+          return
         }
+        selected[bsn] = cand
       }
+      if (!closureProcessed.add(bsn)) return
+      val cand = selected[bsn] ?: return
+      val requiresAll = if (cand.origin == BundleOrigin.WORKSPACE) {
+        cand.manifest.requiredBundleAndVersion(includeOptional = true) +
+          cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
+      } else {
+        val nav = target.requiresByBundle()[cand.bsn]?.get(cand.version) ?: emptyMap()
+        nav + cand.manifest.reexportRequiredBundleAndVersion(includeOptional = true)
+      }
+      requiresAll.forEach { (childBsn, childRange) -> addRequireWithClosure(childBsn, childRange) }
     }
 
     val requires = LinkedHashMap(entry.manifest.requiredBundleAndVersion(includeOptional = true))
