@@ -254,8 +254,6 @@ object LaunchConfigLoader {
 internal val DEFAULT_STARTUP_LEVELS = mapOf(
   "org.eclipse.osgi" to 1,
   "org.eclipse.equinox.simpleconfigurator" to 1,
-  // DS runtime is org.apache.felix.scr (below); org.eclipse.equinox.ds was removed from modern
-  // Eclipse. org.eclipse.m2e.logback.configuration is an IDE-only bundle absent from real targets.
   "org.apache.felix.gogo.runtime" to 4,
   "org.eclipse.equinox.event" to 2,
   "org.eclipse.core.runtime" to 4,
@@ -266,3 +264,13 @@ internal val DEFAULT_STARTUP_LEVELS = mapOf(
   "org.eclipse.equinox.console" to 4,
   "org.eclipse.equinox.common" to 2
 )
+
+// Keep legacy DS and IDE logging startup behavior when a target supplies these bundles,
+// without treating them as missing requirements of every target.
+private val TARGET_SPECIFIC_STARTUP_LEVELS = mapOf(
+  "org.eclipse.equinox.ds" to 1,
+  "org.eclipse.m2e.logback.configuration" to 4
+)
+
+internal fun defaultStartupLevelsForTarget(availableBundles: Set<String>): Map<String, Int> =
+  DEFAULT_STARTUP_LEVELS + TARGET_SPECIFIC_STARTUP_LEVELS.filterKeys { it in availableBundles }
