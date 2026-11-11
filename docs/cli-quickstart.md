@@ -48,6 +48,14 @@ We have basic module-level change detection
 `pde compile` reports warnings and infos per the bundle's Eclipse compiler preferences: one
 summary line per bundle by default, full text with `pde compile --warnings`.
 
+`pde compile --runtime-out <dir>` writes `config.ini`, `dev.properties` and `bundles.info` for the
+compiled workspace bundles, so that another launcher can start them. By default that plan holds
+only the workspace bundles and their resolved dependencies. Add `--launch <name>` (a `launches`
+entry, or its 1-based index) to write that launch's plan instead: every target bundle, with the
+workspace bundles in place of their target copies, the way `pde run <name>` starts it. Use it when
+the runtime needs bundles that nothing in the workspace depends on, such as extensions contributed
+through extension points. `--launch` applies to `--bundles-info-out` the same way.
+
 ## Set up and run a PDE Application/Product
 
 ```
