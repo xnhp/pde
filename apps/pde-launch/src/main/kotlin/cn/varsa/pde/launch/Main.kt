@@ -166,6 +166,7 @@ private val compileOptions = listOf(
   CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--bundles-info-out"), "Write bundles.info reflecting compiled workspace outputs", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--runtime-out"), "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--launch"), "Write the plan of this launch (name or 1-based index) for --runtime-out/--bundles-info-out: every target bundle, as pde run starts it (default: the workspace bundles' closure)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--warnings"), "Print full compiler warning and info text (default: one summary line per bundle)")
 )
 

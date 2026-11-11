@@ -111,6 +111,7 @@ private const val CRAC_CHECKPOINT_ARG_PREFIX = "-XX:CRaCCheckpointTo="
 // (`IApplication.EXIT_RESTART` and `IApplication.EXIT_RELAUNCH`).
 internal const val ECLIPSE_EXIT_RESTART = 23
 internal const val ECLIPSE_EXIT_RELAUNCH = 24
+private const val LAUNCH_OPTION = "--launch"
 internal const val API_BASELINE_PROFILE_ID = "api-baseline-profile"
 internal const val P2_METADATA_MIRROR_APPLICATION = "org.eclipse.equinox.p2.metadata.repository.mirrorApplication"
 internal const val P2_ARTIFACT_MIRROR_APPLICATION = "org.eclipse.equinox.p2.artifact.repository.mirrorApplication"
@@ -221,7 +222,7 @@ internal val launchOptionsRequiringValue = setOf(
   "--splash",
   "--framework",
   "--output",
-  "--launch"
+  LAUNCH_OPTION
 )
 internal val testOptionsRequiringValue = setOf(
   "--config",
@@ -241,7 +242,8 @@ internal val compileOptionsRequiringValue = setOf(
   "--results-json",
   "--output-root",
   "--bundles-info-out",
-  "--runtime-out"
+  "--runtime-out",
+  LAUNCH_OPTION
 )
 internal val apiBaselineOptionsRequiringValue = setOf(
   "--config",
@@ -267,7 +269,7 @@ internal val targetRepairOptionsRequiringValue = setOf(
   "--limit",
   "--log",
   "--log-level",
-  "--launch"
+  LAUNCH_OPTION
 )
 
 fun looksLikeYamlFile(arg: String): Boolean {
@@ -2628,6 +2630,40 @@ private fun prepareLaunch(
   val layoutResolution = LaunchLayoutResolver.resolve(context)
   val layout = layoutResolution.layout
   LaunchLayoutResolver.cleanIfRequested(layout, false)
+  val setup = planLaunch(context, targetIndex, workspaceInputs)
+  val planResult = setup.planResult
+  val fallbackConfig = loadExistingConfig(profilePath)
+  writeLaunchArtifacts(context, layout, planResult, setup.options, profilePath, fallbackConfig, setup.extraProperties)
+  val launcherJar = resolveLauncherJar(targetIndex)
+  val command = assembleCommand(
+    context,
+    layout,
+    targetArgs,
+    planResult,
+    launcherJar,
+    extraProgramArgs,
+    includeDevProperties
+  )
+  return PreparedLaunch(command, planResult, layout)
+}
+
+/** The plan of one launch preset, with the options and extra config.ini properties that go with it. */
+private class LaunchPlanSetup(
+  val options: LauncherOptions,
+  val planResult: LaunchPlanner.PlanResult,
+  val extraProperties: Map<String, String>
+)
+
+/**
+ * Plans [context]'s selected launch the way `pde run` starts it: every target bundle is in the plan,
+ * the workspace bundles' resolved closures take precedence over target bundles of the same name, and
+ * the default and target-definition startup levels apply.
+ */
+private fun planLaunch(
+  context: LaunchConfigContext,
+  targetIndex: TargetPlatformIndex,
+  workspaceInputs: WorkspaceInputs
+): LaunchPlanSetup {
   val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(context)
   val requestedStartupLevels = DEFAULT_STARTUP_LEVELS
   val combinedStartup = defaultStartupLevelsForTarget(targetIndex.bundlesByBsn().keys) +
@@ -2675,7 +2711,6 @@ private fun prepareLaunch(
     autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
-  val fallbackConfig = loadExistingConfig(profilePath)
   val extraProperties = buildMap {
     val splash = context.runtime.splash?.takeIf { it.isNotBlank() }
     if (splash != null) {
@@ -2688,18 +2723,7 @@ private fun prepareLaunch(
       }
     }
   }
-  writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig, extraProperties)
-  val launcherJar = resolveLauncherJar(targetIndex)
-  val command = assembleCommand(
-    context,
-    layout,
-    targetArgs,
-    planResult,
-    launcherJar,
-    extraProgramArgs,
-    includeDevProperties
-  )
-  return PreparedLaunch(command, planResult, layout)
+  return LaunchPlanSetup(options, planResult, extraProperties)
 }
 
 /**
@@ -4665,6 +4689,12 @@ fun compileMain(args: Array<String>): Int {
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
   val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
   val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
+  val launchName by parser.option(
+    ArgType.String,
+    fullName = "launch",
+    description = "Write the plan of this launch (name or 1-based index) for --runtime-out/--bundles-info-out: " +
+      "every target bundle, as pde run starts it (default: the workspace bundles' closure)"
+  )
   val showWarnings by parser.option(
     ArgType.Boolean,
     fullName = "warnings",
@@ -4680,11 +4710,15 @@ fun compileMain(args: Array<String>): Int {
   val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
   val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
 
+  launchOptionUsageError(launchName, writesPlan = runtimeOut != null || bundlesInfoOut != null, discoveredConfig)
+    ?.let { logger.severe(it); return 2 }
+
   if (discoveredConfig != null) {
     if (configFile == null) {
       logger.info("Discovered launch config in ${discoveredConfig.toAbsolutePath()} and will use it.")
     }
     val configContext = LaunchConfigLoader.load(discoveredConfig)
+    val launchContext = launchName?.let { selectLaunchConfig(configContext, it, debugJvm = false) ?: return 2 }
     val extraBundles = configuredExtraBundles(configContext)
     val pinnedVersions = configuredPinnedVersions(configContext)
     logActiveExtraBundles(extraBundles)
@@ -4777,11 +4811,18 @@ fun compileMain(args: Array<String>): Int {
     }
     val allOk = results.all { it.success }
     val exitCode = if (allOk) 0 else 1
+    // The compile plan holds only the workspace bundles' closure; a launch's plan holds what pde run
+    // starts. Planned only when an output needs it, since it indexes every target bundle.
+    val launchSetup by lazy {
+      launchContext?.let { planLaunch(it, targetIndex, workspaceInputs) }
+        ?.also { logger.info("Writing the plan of launch '$launchName': ${it.planResult.plan.bundles.size} bundles") }
+    }
+    val writtenPlanResult by lazy { launchSetup?.planResult ?: planResult }
     if (bundlesInfoOut != null) {
       if (!allOk) {
         logger.severe("Skipping bundles.info write because some bundles failed to compile.")
       } else {
-        val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
+        val rewrittenPlan = rewritePlanWithCompiledOutputs(writtenPlanResult.plan, specs)
         val outPath = Paths.get(bundlesInfoOut)
         outPath.parent?.let { Files.createDirectories(it) }
         val text = BundlesInfoRenderer.toText(rewrittenPlan)
@@ -4805,23 +4846,19 @@ fun compileMain(args: Array<String>): Int {
         logger.severe("Skipping runtime layout write because some bundles failed to compile.")
         return exitCode
       }
-      val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
+      val rewrittenPlan = rewritePlanWithCompiledOutputs(writtenPlanResult.plan, specs)
       val outDir = Paths.get(runtimeOut)
       val devProps = buildDevProperties(specs, results)
       val context = LaunchContext(
-        startupLevels = planResult.context.startupLevels,
+        startupLevels = writtenPlanResult.context.startupLevels,
         devProperties = devProps
       )
-    val defaults = RuntimeLayoutWriter.Defaults(
-      installArea = profilePath,
-      instanceArea = outDir.resolve("workspace")
-    )
       RuntimeLayoutWriter.write(
         layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
         plan = rewrittenPlan,
         context = context,
-        options = options,
-        defaults = defaults
+        options = launchSetup?.options ?: options,
+        defaults = runtimeLayoutDefaults(profilePath, outDir, launchSetup)
       )
       logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
     }
@@ -4835,6 +4872,30 @@ fun compileMain(args: Array<String>): Int {
   }
   return 0
 }
+
+/** Why `pde compile`'s `--launch` cannot apply to this invocation, or `null` when it can (or is absent). */
+private fun launchOptionUsageError(launchName: String?, writesPlan: Boolean, config: Path?): String? = when {
+  launchName == null -> null
+  !writesPlan -> "$LAUNCH_OPTION only selects the plan that --runtime-out or --bundles-info-out writes; pass one of them."
+  config == null -> "$LAUNCH_OPTION needs a YAML config with a 'launches' entry; none was given or discovered."
+  else -> null
+}
+
+/**
+ * The defaults of `pde compile --runtime-out`'s layout; with a [launch], also the profile's existing
+ * config.ini and the launch's extra properties, as `pde run` writes them.
+ */
+private fun runtimeLayoutDefaults(profilePath: Path, outDir: Path, launch: LaunchPlanSetup?): RuntimeLayoutWriter.Defaults =
+  if (launch == null) {
+    RuntimeLayoutWriter.Defaults(installArea = profilePath, instanceArea = outDir.resolve("workspace"))
+  } else {
+    RuntimeLayoutWriter.Defaults(
+      installArea = profilePath,
+      instanceArea = outDir.resolve("workspace"),
+      fallbackConfig = loadExistingConfig(profilePath),
+      extraProperties = launch.extraProperties
+    )
+  }
 
 private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCompileResult>): Map<String, List<String>> {
   val success = results.filter { it.success }.map { it.bsn }.toSet()
