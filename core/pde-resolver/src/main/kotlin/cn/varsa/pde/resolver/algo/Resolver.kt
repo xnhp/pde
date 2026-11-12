@@ -58,6 +58,10 @@ private val SYSTEM_PACKAGES: Set<String> = ModuleFinder.ofSystem().findAll()
 
 internal fun isSystemPackage(pkg: String): Boolean = pkg in SYSTEM_PACKAGES
 
+/** The JDK provides [pkg] when it exports it and [range] admits the system bundle's 0.0.0 export. */
+private fun isProvidedByJdk(pkg: String, range: VersionRange): Boolean =
+  isSystemPackage(pkg) && range.includes(Version.emptyVersion)
+
 data class ResolvedBundle(
   val bsn: String,
   val version: Version,
@@ -373,10 +377,14 @@ object Resolver {
     // selected bundle exporting the same package does not mask it — if the provider is already
     // selected nothing is added, otherwise it joins the selection. Optional imports are followed
     // like Eclipse PDE's INCLUDE_OPTIONAL_DEPENDENCIES build closure; an unsatisfiable optional
-    // import is skipped silently. Unsatisfiable JRE/system-package imports (java./jdk./...) are
-    // also skipped silently when exported by the resolver's JDK system modules, whose packages
-    // need not appear in the target index — but a bundle-provided javax.* package (e.g.
-    // javax.servlet) still resolves normally because providers are looked up before the check.
+    // import is skipped silently.
+    // An import of a package the resolver's JDK system modules export is provided by the JDK
+    // when its range admits the system bundle's unversioned (0.0.0) export, as Equinox wires it
+    // at runtime. No target exporter is pulled in for it: an Orbit jar such as javax.xml 1.3.4
+    // on the classpath next to the java.xml module makes ecj report the package as accessible
+    // from more than one module. A range the JDK cannot satisfy (e.g. javax.xml.parsers
+    // [1.3,2.0)) still resolves to a bundle, and a javax.* package the JDK does not export (e.g.
+    // javax.servlet) resolves normally. Unsatisfiable JDK-package imports are skipped silently.
     run {
       val processed = HashSet<String>()
       while (true) {
@@ -404,23 +412,25 @@ object Resolver {
           addRequireWithClosure(bsn, exactVersionRange(cand.version))
 
           val mandatoryImports = manifest.importedPackageAndVersion()
-          manifest.importedPackageAndVersion(includeOptional = true).forEach forEachPkg@{ (pkg, range) ->
-            val provider = findProviderForPackage(pkg, range)
-            if (provider == null) {
-              if (pkg in mandatoryImports && !isSystemPackage(pkg)) {
-                val reason =
-                  if (bsn == entrySymbolicName || bsn == hostPair?.first) "import-package"
-                  else "import-package-indirect"
-                unresolved.add(UnresolvedBundle(pkg, range, reason))
+          manifest.importedPackageAndVersion(includeOptional = true)
+            .filterNot { (pkg, range) -> isProvidedByJdk(pkg, range) }
+            .forEach forEachPkg@{ (pkg, range) ->
+              val provider = findProviderForPackage(pkg, range)
+              if (provider == null) {
+                if (pkg in mandatoryImports && !isSystemPackage(pkg)) {
+                  val reason =
+                    if (bsn == entrySymbolicName || bsn == hostPair?.first) "import-package"
+                    else "import-package-indirect"
+                  unresolved.add(UnresolvedBundle(pkg, range, reason))
+                }
+                return@forEachPkg
               }
-              return@forEachPkg
+              // Only the resolved provider satisfies the import; if it is already selected
+              // (possibly at another version — consistency first) there is nothing to add.
+              if (!selected.containsKey(provider.bsn)) {
+                selected[provider.bsn] = provider
+              }
             }
-            // Only the resolved provider satisfies the import; if it is already selected
-            // (possibly at another version — consistency first) there is nothing to add.
-            if (!selected.containsKey(provider.bsn)) {
-              selected[provider.bsn] = provider
-            }
-          }
         }
       }
     }
