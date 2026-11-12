@@ -74,6 +74,16 @@ fun BundleManifest.exportedPackageAndVersion(): Map<String, Version> =
   exportPackage?.mapKeys { it.key.substringBefore(".*") }
     ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersion() } ?: emptyMap()
 
+/**
+ * Every version each package is exported at. A bundle may export one package several times, e.g.
+ * commons-io 2.x also exports each package at 1.4.9999 for importers of the 1.x range.
+ */
+fun BundleManifest.exportedPackageVersions(): Map<String, List<Version>> =
+  exportPackage?.clauses?.groupBy(
+    { (name, _) -> name.substringBefore(".*") },
+    { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersion() }
+  ) ?: emptyMap()
+
 private fun Map<String, Attrs>.mandatoryClauses(): Map<String, Attrs> =
   filterNot { (_, attrs) -> attrs.directive[RESOLUTION_DIRECTIVE] == RESOLUTION_OPTIONAL }
 
