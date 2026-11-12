@@ -3,12 +3,13 @@ package cn.varsa.pde.resolver.algo
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
 import cn.varsa.pde.resolver.manifest.BundleManifest
-import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.exportedPackageVersions
 import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.importedPackageAndVersion
 import cn.varsa.pde.resolver.manifest.isLazyActivated
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.manifest.reexportRequiredBundleAndVersion
+import org.osgi.framework.Constants.SYSTEM_BUNDLE_SYMBOLICNAME
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
 import java.lang.module.ModuleFinder
@@ -57,6 +58,12 @@ private val SYSTEM_PACKAGES: Set<String> = ModuleFinder.ofSystem().findAll()
   .toSet()
 
 internal fun isSystemPackage(pkg: String): Boolean = pkg in SYSTEM_PACKAGES
+
+/** Bundle the launch uses as the OSGi framework; `system.bundle` is its alias in Require-Bundle. */
+private const val FRAMEWORK_SYMBOLICNAME = "org.eclipse.osgi"
+
+private fun requiredBundleName(bsn: String): String =
+  if (bsn == SYSTEM_BUNDLE_SYMBOLICNAME) FRAMEWORK_SYMBOLICNAME else bsn
 
 data class ResolvedBundle(
   val bsn: String,
@@ -206,9 +213,13 @@ object Resolver {
     val selected = LinkedHashMap<String, Candidate>()
     var fragmentHostCandidate: Candidate? = null
 
-    val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, Version>>()
-    fun exportsOf(manifest: BundleManifest): Map<String, Version> =
-      manifestExportsCache.getOrPut(manifest) { manifest.exportedPackageAndVersion() }
+    val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, List<Version>>>()
+    fun exportsOf(manifest: BundleManifest): Map<String, List<Version>> =
+      manifestExportsCache.getOrPut(manifest) { manifest.exportedPackageVersions() }
+
+    // Any of the bundle's exports of the package counts, as in OSGi wiring.
+    fun exportsInRange(manifest: BundleManifest, pkg: String, range: VersionRange): Boolean =
+      exportsOf(manifest)[pkg]?.any(range::includes) == true
 
     val entrySymbolicName = entry.manifest.bundleSymbolicName?.key
       ?: error("Entry bundle lacks Bundle-SymbolicName header at ${entry.path}")
@@ -234,11 +245,15 @@ object Resolver {
     // The entry and its host are expanded by the merged direct-requirements loop below.
     // A cycle back to either must not re-enter that loop ahead of its remaining siblings.
     val closureProcessed = selected.keys.toHashSet()
-    fun addRequireWithClosure(bsn: String, range: VersionRange) {
+    fun addRequireWithClosure(requiredBsn: String, range: VersionRange) {
+      val bsn = requiredBundleName(requiredBsn)
       if (!selected.containsKey(bsn)) {
         val cand = select(bsn, range)
         if (cand == null) {
-          unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
+          // The framework is always present at runtime, even when the target index lacks it.
+          if (requiredBsn != SYSTEM_BUNDLE_SYMBOLICNAME) {
+            unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
+          }
           return
         }
         selected[bsn] = cand
@@ -266,7 +281,8 @@ object Resolver {
     // first, and this bundle would compile against a newer library than its declared range binds at
     // launch -> NoSuchMethodError. Equinox wires each bundle to its own range, so the compile
     // classpath must match.
-    requires.forEach { (bsn, range) ->
+    requires.forEach { (requiredBsn, range) ->
+      val bsn = requiredBundleName(requiredBsn)
       if (!selected.containsKey(bsn)) {
         select(bsn, range)?.let { selected[bsn] = it }
       }
@@ -330,8 +346,7 @@ object Resolver {
     fun applyPin(candidate: Candidate, pkg: String, range: VersionRange): Candidate? {
       val pinnedVersion = options.pinnedVersions[candidate.bsn] ?: return candidate
       val pinned = selectExact(candidate.bsn, pinnedVersion) ?: return null
-      val exported = exportsOf(pinned.manifest)[pkg] ?: return null
-      return if (range.includes(exported)) pinned else null
+      return if (exportsInRange(pinned.manifest, pkg, range)) pinned else null
     }
 
     // Provider of an imported package: workspace exporters first, then target exporters ordered
@@ -343,10 +358,7 @@ object Resolver {
       if (options.preferWorkspace) {
         val ws = wsProvidersByPkg[pkg]
           ?.asSequence()
-          ?.mapNotNull { provider ->
-            val exported = exportsOf(provider.manifest)[pkg]
-            if (exported != null && range.includes(exported)) provider else null
-          }
+          ?.filter { provider -> exportsInRange(provider.manifest, pkg, range) }
           ?.maxByOrNull { it.version }
         if (ws != null) {
           val pinned = applyPin(providerToCandidate(ws), pkg, range)
@@ -356,8 +368,7 @@ object Resolver {
 
       val providers = target.exportedBundlesByPackage()[pkg] ?: return null
       return providers.asSequence().mapNotNull { rb ->
-        val exported = exportsOf(rb.manifest)[pkg] ?: return@mapNotNull null
-        if (!range.includes(exported)) return@mapNotNull null
+        if (!exportsInRange(rb.manifest, pkg, range)) return@mapNotNull null
         applyPin(candidateFromTarget(rb), pkg, range)
       }.firstOrNull()
     }

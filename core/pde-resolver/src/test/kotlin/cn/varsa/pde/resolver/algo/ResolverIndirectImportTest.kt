@@ -270,4 +270,75 @@ class ResolverIndirectImportTest {
     assertTrue(result.unresolved.isEmpty())
   }
 
+  @Test
+  fun `import is satisfied by any of an exporter's versions of the package`() {
+    // commons-io 2.x exports each package twice: at its own version and at 1.4.9999, so that
+    // bundles importing the 1.x range still wire to it.
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Require-Bundle" to "org.apache.poi.ooxml"
+    )
+    val tp = tpIndex(
+      tpBundle(
+        "org.apache.poi.ooxml",
+        "Bundle-SymbolicName" to "org.apache.poi.ooxml",
+        "Bundle-Version" to "5.4.1",
+        "Import-Package" to "org.apache.commons.io;version=\"[1.4,2.0)\""
+      ),
+      tpBundle(
+        "org.apache.commons.commons-io",
+        "Bundle-SymbolicName" to "org.apache.commons.commons-io",
+        "Bundle-Version" to "2.19.0",
+        "Export-Package" to
+          "org.apache.commons.io;version=\"1.4.9999\",org.apache.commons.io;version=\"2.19.0\""
+      )
+    )
+
+    val result = Resolver.resolve(tp, workspace, workspace.first(), ResolveOptions())
+
+    assertEquals(emptyList<UnresolvedBundle>(), result.unresolved)
+    assertTrue(result.bundles.any { it.bsn == "org.apache.commons.commons-io" })
+  }
+
+  @Test
+  fun `require of system bundle resolves to the framework`() {
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Require-Bundle" to "javax.xml.soap"
+    )
+    val tp = tpIndex(
+      tpBundle(
+        "javax.xml.soap",
+        "Bundle-SymbolicName" to "javax.xml.soap",
+        "Bundle-Version" to "1.2.0",
+        "Require-Bundle" to "system.bundle"
+      ),
+      tpBundle(
+        "org.eclipse.osgi",
+        "Bundle-SymbolicName" to "org.eclipse.osgi",
+        "Bundle-Version" to "3.21.0"
+      )
+    )
+
+    val result = Resolver.resolve(tp, workspace, workspace.first(), ResolveOptions())
+
+    assertEquals(emptyList<UnresolvedBundle>(), result.unresolved)
+    assertTrue(result.bundles.any { it.bsn == "org.eclipse.osgi" })
+  }
+
+  @Test
+  fun `require of system bundle is not reported when the target lacks the framework`() {
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Require-Bundle" to "system.bundle"
+    )
+
+    val result = Resolver.resolve(tpIndex(), workspace, workspace.first(), ResolveOptions())
+
+    assertEquals(emptyList<UnresolvedBundle>(), result.unresolved)
+  }
+
 }
