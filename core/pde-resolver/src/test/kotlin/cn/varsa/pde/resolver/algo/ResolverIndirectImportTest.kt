@@ -270,4 +270,50 @@ class ResolverIndirectImportTest {
     assertTrue(result.unresolved.isEmpty())
   }
 
+  // An Orbit-style bundle re-exporting JDK packages, as BIRT brings into the KNIME 5.8 target.
+  private fun orbitJavaxXml() = tpBundle(
+    "javax.xml",
+    "Bundle-SymbolicName" to "javax.xml",
+    "Bundle-Version" to "1.3.4",
+    "Export-Package" to "javax.xml.parsers;version=\"1.3.4\",org.w3c.dom;version=\"1.3.4\""
+  )
+
+  private fun library() = tpBundle(
+    "org.example.lib",
+    "Bundle-SymbolicName" to "org.example.lib",
+    "Bundle-Version" to "1.0.0",
+    "Export-Package" to "org.example.lib",
+    "Import-Package" to "javax.xml.parsers,org.w3c.dom"
+  )
+
+  @Test
+  fun `JDK packages exported by a target bundle pull no bundle in, a normal package still does`() {
+    // Both the entry's own imports and those of a closure member (org.example.lib).
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Import-Package" to "javax.xml.parsers,org.w3c.dom,org.example.lib"
+    )
+
+    val result = Resolver.resolve(tpIndex(orbitJavaxXml(), library()), workspace, workspace.first())
+
+    val bsns = result.bundles.map { it.bsn }.toSet()
+    assertFalse("JDK packages must not select javax.xml", "javax.xml" in bsns)
+    assertTrue("a normal import still selects its exporter", "org.example.lib" in bsns)
+    assertEquals(emptyList<UnresolvedBundle>(), result.unresolved)
+  }
+
+  @Test
+  fun `JDK package import with a range the JDK cannot satisfy still resolves to a bundle`() {
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Import-Package" to "javax.xml.parsers;version=\"[1.3,2.0)\""
+    )
+
+    val result = Resolver.resolve(tpIndex(orbitJavaxXml()), workspace, workspace.first())
+
+    assertTrue(result.bundles.any { it.bsn == "javax.xml" })
+  }
+
 }
