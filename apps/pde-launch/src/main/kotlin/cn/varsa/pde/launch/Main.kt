@@ -178,7 +178,7 @@ private val compileOptions = listOf(
   CliOption(listOf("--json"), "Emit compile specs as JSON"),
   CliOption(listOf("--debug"), "Emit debug info (lines/vars/source)"),
   CliOption(listOf("--results-json"), "Write compile results to JSON file", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin); pde run/prepare-run find the classes there only if the bundle sets matching classRoots in pde.yaml", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--warnings"), "Print full compiler warning and info text (default: one summary line per bundle)")
 )
 

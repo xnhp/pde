@@ -105,8 +105,9 @@ tests:
   fail config validation. If a pin is outside a requested `Require-Bundle` or fragment-host range,
   pde warns and still uses the pin. For `Import-Package`, the pinned bundle must still export the
   requested package with an export version matching the import range.
-- If `bundles[].classRoots` is omitted, `pde run/test` first infers roots from
-  bundle `build.properties` `output..`, then falls back to `bin`.
+- If `bundles[].classRoots` is omitted, `pde run/test/prepare-run` first infer roots from
+  bundle `build.properties` `output..`, then fall back to `bin`. That is where `pde compile`
+  writes classes, unless it runs with `--output-root`; then set `classRoots` to match.
 - `pde compile` is the explicit ECJ-based compile step.
 - `pde compile` honors each bundle's `.settings/org.eclipse.jdt.core.prefs` diagnostic
   configuration (problem severities, null analysis, task tags), so its warnings, infos, and

@@ -93,6 +93,7 @@ import kotlin.io.path.inputStream
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
+import cn.varsa.pde.resolver.workspace.WorkspaceModuleException
 import cn.varsa.pde.resolver.workspace.WorkspaceSetupInput
 import cn.varsa.pde.resolver.workspace.WorkspaceSetupInputJson
 import cn.varsa.pde.resolver.workspace.WorkspaceSetupService
@@ -671,8 +672,14 @@ fun prepareRunMain(args: Array<String>): Int {
     return 2
   }
   logActiveExtraBundles(configuredExtraBundles(context))
+  val workspaceInputs = try {
+    WorkspaceModuleResolver.resolve(context)
+  } catch (e: WorkspaceModuleException) {
+    logger.severe("${e.message}. Run pde compile first.")
+    return 1
+  }
   val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
-  val setup = planLaunch(context, targetIndex, WorkspaceModuleResolver.resolve(context))
+  val setup = planLaunch(context, targetIndex, workspaceInputs)
   logPlanSummary(setup.planResult)
   val outDir = Paths.get(outputOpt).toAbsolutePath().normalize()
   val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir)
@@ -4886,7 +4893,7 @@ fun compileMain(args: Array<String>): Int {
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
   val debugInfo by parser.option(ArgType.Boolean, fullName = "debug", description = "Emit debug info (lines/vars/source)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results to JSON file")
-  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin); pde run/prepare-run find the classes there only if the bundle sets matching classRoots in pde.yaml")
   val showWarnings by parser.option(
     ArgType.Boolean,
     fullName = "warnings",
