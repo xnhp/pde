@@ -65,6 +65,18 @@ launches:
 ```
 
 
+`pde run` (or `pde run <name>`) writes the launch's `config.ini`, `bundles.info` and `dev.properties` into
+its own configuration directory on every launch and starts it.
+
+### Prepare a launch for another launcher: `pde prepare-run`
+
+When something other than `pde run` starts the runtime, `pde prepare-run <name> --output <dir>` writes the
+same files for that launch into `<dir>` and starts nothing. Point the launcher at it with
+`-configuration <dir>`. The bundles are the ones `pde run` starts: every target bundle, with the workspace
+bundles in place of their target copies. The launch only adds its product, application and splash to
+`config.ini`. Workspace bundles load their classes from their output folders through `osgi.dev`, so run
+`pde compile` first.
+
 ## Set up and run unit tests
 
 Configure a test in `pde.yaml` (see schema definition for guaranteed up-to-date info)

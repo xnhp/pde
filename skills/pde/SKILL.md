@@ -71,6 +71,8 @@ First run in a new issue dir is slow (downloads the target platform into the sha
 
 `pde compile` -- compiles workspace bundles.
 
+`pde prepare-run <launch> --output <dir>` -- writes the launch's `config.ini`, `bundles.info` and `dev.properties` to `<dir>` without starting it, for a launcher other than `pde run` (point it at the directory with `-configuration <dir>`).
+
 ## Troubleshooting
 
 If a bundle declares local jars in `Bundle-ClassPath`, make sure those jars
