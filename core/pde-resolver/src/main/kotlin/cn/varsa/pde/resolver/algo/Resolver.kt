@@ -8,6 +8,7 @@ import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.importedPackageAndVersion
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.manifest.reexportRequiredBundleAndVersion
+import org.osgi.framework.Constants.SYSTEM_BUNDLE_SYMBOLICNAME
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
 import java.lang.module.ModuleFinder
@@ -60,6 +61,12 @@ internal fun isSystemPackage(pkg: String): Boolean = pkg in SYSTEM_PACKAGES
 /** The JDK provides [pkg] when it exports it and [range] admits the system bundle's 0.0.0 export. */
 private fun isProvidedByJdk(pkg: String, range: VersionRange): Boolean =
   isSystemPackage(pkg) && range.includes(Version.emptyVersion)
+
+/** Bundle the launch uses as the OSGi framework; `system.bundle` is its alias in Require-Bundle. */
+private const val FRAMEWORK_SYMBOLICNAME = "org.eclipse.osgi"
+
+private fun requiredBundleName(bsn: String): String =
+  if (bsn == SYSTEM_BUNDLE_SYMBOLICNAME) FRAMEWORK_SYMBOLICNAME else bsn
 
 data class ResolvedBundle(
   val bsn: String,
@@ -235,11 +242,15 @@ object Resolver {
     // The entry and its host are expanded by the merged direct-requirements loop below.
     // A cycle back to either must not re-enter that loop ahead of its remaining siblings.
     val closureProcessed = selected.keys.toHashSet()
-    fun addRequireWithClosure(bsn: String, range: VersionRange) {
+    fun addRequireWithClosure(requiredBsn: String, range: VersionRange) {
+      val bsn = requiredBundleName(requiredBsn)
       if (!selected.containsKey(bsn)) {
         val cand = select(bsn, range)
         if (cand == null) {
-          unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
+          // The framework is always present at runtime, even when the target index lacks it.
+          if (requiredBsn != SYSTEM_BUNDLE_SYMBOLICNAME) {
+            unresolved.add(UnresolvedBundle(bsn, range, "require-bundle"))
+          }
           return
         }
         selected[bsn] = cand
@@ -267,7 +278,8 @@ object Resolver {
     // first, and this bundle would compile against a newer library than its declared range binds at
     // launch -> NoSuchMethodError. Equinox wires each bundle to its own range, so the compile
     // classpath must match.
-    requires.forEach { (bsn, range) ->
+    requires.forEach { (requiredBsn, range) ->
+      val bsn = requiredBundleName(requiredBsn)
       if (!selected.containsKey(bsn)) {
         select(bsn, range)?.let { selected[bsn] = it }
       }
