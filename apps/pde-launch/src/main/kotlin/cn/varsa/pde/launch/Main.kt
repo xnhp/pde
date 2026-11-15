@@ -10,6 +10,7 @@ import cn.varsa.cli.core.CliPositionalArg
 import cn.varsa.cli.core.cliMcpToolsListText
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
+import cn.varsa.pde.resolver.cli.prepareRunMain
 import cn.varsa.pde.resolver.cli.workspaceSetupMain
 import cn.varsa.pde.resolver.cli.jdtBuildMain
 import pde.format.main as formatMain
@@ -51,6 +52,18 @@ private val launchOptions = listOf(
   CliOption(listOf("--dry-run"), "Parse configuration only"),
   CliOption(listOf("--framework"), "Framework BSN", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.osgi"),
   CliOption(listOf("--output", "-o"), "Output directory for config.ini/bundles.info/dev.properties", takesValue = true, valueLabel = "String")
+)
+
+private val prepareRunOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--output", "-o"), "Directory to write config.ini, dev.properties and bundles.info to (required)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--verbose", "-v"), "Enable INFO logging")
+)
+
+private val prepareRunPositionals = listOf(
+  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1"),
+  CliPositionalArg(1, "launchPos", "Launch name or 1-based index (default: the first launch)", "0..1")
 )
 
 private val testPositionals = listOf(
@@ -165,9 +178,7 @@ private val compileOptions = listOf(
   CliOption(listOf("--json"), "Emit compile specs as JSON"),
   CliOption(listOf("--debug"), "Emit debug info (lines/vars/source)"),
   CliOption(listOf("--results-json"), "Write compile results to JSON file", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin)", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--bundles-info-out"), "Write bundles.info reflecting compiled workspace outputs", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--runtime-out"), "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--output-root"), "Override workspace bundle output dir (relative to module root, e.g., bin); pde run/prepare-run find the classes there only if the bundle sets matching classRoots in pde.yaml", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--warnings"), "Print full compiler warning and info text (default: one summary line per bundle)")
 )
 
@@ -376,6 +387,14 @@ internal val pdeCommand = CliCommandGroup(
       mixinStandardHelpOptions = true,
       options = launchOptions,
       positionalArgs = launchPositionals
+    ),
+    CliCommandLeaf(
+      name = "prepare-run",
+      description = "Write a launch's config.ini, bundles.info and dev.properties to a directory without starting it",
+      handler = { args -> prepareRunMain(args) },
+      mixinStandardHelpOptions = true,
+      options = prepareRunOptions,
+      positionalArgs = prepareRunPositionals
     ),
     CliCommandLeaf(
       name = "launch",

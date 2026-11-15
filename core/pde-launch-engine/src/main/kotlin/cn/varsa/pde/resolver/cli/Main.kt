@@ -45,7 +45,6 @@ import cn.varsa.pde.resolver.compile.BundleCompileResult
 import cn.varsa.pde.resolver.compile.CompileExecutor
 import cn.varsa.pde.resolver.compile.CompileService
 import cn.varsa.pde.resolver.compile.CompileSpec
-import cn.varsa.pde.resolver.compile.rewritePlanWithCompiledOutputs
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
@@ -63,6 +62,7 @@ import kotlinx.cli.ArgType
 import kotlinx.cli.default
 import kotlinx.cli.multiple
 import kotlinx.cli.optional
+import kotlinx.cli.required
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.awt.GraphicsEnvironment
@@ -93,6 +93,7 @@ import kotlin.io.path.inputStream
 import kotlin.system.exitProcess
 import cn.varsa.pde.resolver.workspace.WorkspaceBundleLoader
 import cn.varsa.pde.resolver.workspace.WorkspaceDefaults
+import cn.varsa.pde.resolver.workspace.WorkspaceModuleException
 import cn.varsa.pde.resolver.workspace.WorkspaceSetupInput
 import cn.varsa.pde.resolver.workspace.WorkspaceSetupInputJson
 import cn.varsa.pde.resolver.workspace.WorkspaceSetupService
@@ -100,7 +101,6 @@ import cn.varsa.pde.resolver.workspace.JdtBuildInput
 import cn.varsa.pde.resolver.workspace.JdtBuildInputJson
 import cn.varsa.pde.resolver.workspace.toWorkspaceProjectSpec
 import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
-import cn.varsa.pde.resolver.launch.LaunchContext
 import org.osgi.framework.FrameworkUtil
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
@@ -224,6 +224,12 @@ internal val launchOptionsRequiringValue = setOf(
   "--output",
   "--launch"
 )
+internal val prepareRunOptionsRequiringValue = setOf(
+  "--config",
+  "--log-level",
+  "--output",
+  "-o"
+)
 internal val testOptionsRequiringValue = setOf(
   "--config",
   "--log",
@@ -240,9 +246,7 @@ internal val compileOptionsRequiringValue = setOf(
   "-w",
   "--framework",
   "--results-json",
-  "--output-root",
-  "--bundles-info-out",
-  "--runtime-out"
+  "--output-root"
 )
 internal val apiBaselineOptionsRequiringValue = setOf(
   "--config",
@@ -617,6 +621,76 @@ fun launchMain(args: Array<String>, commandName: String = "pde run"): Int {
   } else {
     logger.info("Framework: ${planResult.plan.framework?.bsn ?: "<none>"}; bundles=${planResult.plan.bundles.size}")
   }
+  return 0
+}
+
+/**
+ * `pde prepare-run`: writes the selected launch's config.ini, bundles.info and dev.properties into a directory
+ * and starts nothing. It is for a launcher other than `pde run`, which points the runtime at that directory
+ * (e.g. `-configuration <dir>`). The files are the ones `pde run` writes for the same launch; since such a
+ * launcher passes no `-dev` argument, config.ini also carries `osgi.dev`.
+ */
+fun prepareRunMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, prepareRunOptionsRequiringValue)
+  val parser = ArgParser("pde prepare-run ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Logging level (error|warn|info|debug|trace)"
+  )
+  val verbose by parser.option(ArgType.Boolean, fullName = "verbose", shortName = "v", description = "Enable INFO logging")
+    .default(false)
+  val outputOpt by parser.option(
+    ArgType.String,
+    fullName = "output",
+    shortName = "o",
+    description = "Directory to write config.ini, dev.properties and org.eclipse.equinox.simpleconfigurator/bundles.info to"
+  ).required()
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  val launchPos by parser.argument(ArgType.String, description = "Launch name or 1-based index (default: the first launch)")
+    .optional()
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, false), shouldUseColor())
+
+  val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
+  val launchName = when {
+    configPos != null && !looksLikeYamlFile(configPos!!) -> configPos
+    else -> launchPos
+  }
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("pde prepare-run needs a YAML config with a 'launches' entry; none was given or discovered.")
+    return 2
+  }
+  val context = selectLaunchConfig(LaunchConfigLoader.load(discoveredConfig), launchName, debugJvm = false) ?: return 2
+  val profilePath = resolveProfilePath(context)
+  if (profilePath == null || !Files.exists(profilePath)) {
+    logger.severe(
+      "Target profile ${profilePath ?: "path"} missing; set target.profileId + target.p2Path and run pde target install."
+    )
+    return 2
+  }
+  logActiveExtraBundles(configuredExtraBundles(context))
+  val workspaceInputs = try {
+    WorkspaceModuleResolver.resolve(context)
+  } catch (e: WorkspaceModuleException) {
+    logger.severe("${e.message}. Run pde compile first.")
+    return 1
+  }
+  val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
+  val setup = planLaunch(context, targetIndex, workspaceInputs)
+  logPlanSummary(setup.planResult)
+  val outDir = Paths.get(outputOpt).toAbsolutePath().normalize()
+  val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir)
+  val defaults = RuntimeLayoutWriter.Defaults(
+    installArea = profilePath,
+    instanceArea = context.runtime.dataDir?.let { context.baseDir.resolve(it) } ?: outDir.resolve("workspace"),
+    fallbackConfig = loadExistingConfig(profilePath),
+    extraProperties = setup.extraProperties + ("osgi.dev" to layout.devPropertiesFile.toUri().toString())
+  )
+  RuntimeLayoutWriter.write(layout, setup.planResult.plan, setup.planResult.context, setup.options, defaults)
+  logger.info("Wrote config.ini, dev.properties and bundles.info for ${setup.planResult.plan.bundles.size} bundles under $outDir")
   return 0
 }
 
@@ -2728,6 +2802,40 @@ private fun prepareLaunch(
   val layoutResolution = LaunchLayoutResolver.resolve(context)
   val layout = layoutResolution.layout
   LaunchLayoutResolver.cleanIfRequested(layout, false)
+  val setup = planLaunch(context, targetIndex, workspaceInputs)
+  val planResult = setup.planResult
+  val fallbackConfig = loadExistingConfig(profilePath)
+  writeLaunchArtifacts(context, layout, planResult, setup.options, profilePath, fallbackConfig, setup.extraProperties)
+  val launcherJar = resolveLauncherJar(targetIndex)
+  val command = assembleCommand(
+    context,
+    layout,
+    targetArgs,
+    planResult,
+    launcherJar,
+    extraProgramArgs,
+    includeDevProperties
+  )
+  return PreparedLaunch(command, planResult, layout)
+}
+
+/** The plan of one launch, with the launcher options and extra config.ini properties that go with it. */
+internal class LaunchPlanSetup(
+  val options: LauncherOptions,
+  val planResult: LaunchPlanner.PlanResult,
+  val extraProperties: Map<String, String>
+)
+
+/**
+ * Plans [context]'s selected launch: every target bundle is in the plan, the workspace bundles' resolved
+ * closures take precedence over target bundles of the same name, and the default and target-definition
+ * startup levels apply. `pde run` and `pde prepare-run` both write this plan.
+ */
+internal fun planLaunch(
+  context: LaunchConfigContext,
+  targetIndex: TargetPlatformIndex,
+  workspaceInputs: WorkspaceInputs
+): LaunchPlanSetup {
   val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(context)
   val requestedStartupLevels = DEFAULT_STARTUP_LEVELS
   val combinedStartup = defaultStartupLevelsForTarget(targetIndex.bundlesByBsn().keys) +
@@ -2775,7 +2883,6 @@ private fun prepareLaunch(
     autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
-  val fallbackConfig = loadExistingConfig(profilePath)
   val extraProperties = buildMap {
     val splash = context.runtime.splash?.takeIf { it.isNotBlank() }
     if (splash != null) {
@@ -2788,18 +2895,7 @@ private fun prepareLaunch(
       }
     }
   }
-  writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig, extraProperties)
-  val launcherJar = resolveLauncherJar(targetIndex)
-  val command = assembleCommand(
-    context,
-    layout,
-    targetArgs,
-    planResult,
-    launcherJar,
-    extraProgramArgs,
-    includeDevProperties
-  )
-  return PreparedLaunch(command, planResult, layout)
+  return LaunchPlanSetup(options, planResult, extraProperties)
 }
 
 /**
@@ -4797,9 +4893,7 @@ fun compileMain(args: Array<String>): Int {
   val json by parser.option(ArgType.Boolean, fullName = "json", description = "Emit compile specs as JSON").default(false)
   val debugInfo by parser.option(ArgType.Boolean, fullName = "debug", description = "Emit debug info (lines/vars/source)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results to JSON file")
-  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
-  val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
-  val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
+  val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin); pde run/prepare-run find the classes there only if the bundle sets matching classRoots in pde.yaml")
   val showWarnings by parser.option(
     ArgType.Boolean,
     fullName = "warnings",
@@ -4910,20 +5004,6 @@ fun compileMain(args: Array<String>): Int {
       }
       logCompilerProblemCounts(result, showWarnings)
     }
-    val allOk = results.all { it.success }
-    val exitCode = if (allOk) 0 else 1
-    if (bundlesInfoOut != null) {
-      if (!allOk) {
-        logger.severe("Skipping bundles.info write because some bundles failed to compile.")
-      } else {
-        val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
-        val outPath = Paths.get(bundlesInfoOut)
-        outPath.parent?.let { Files.createDirectories(it) }
-        val text = BundlesInfoRenderer.toText(rewrittenPlan)
-        Files.writeString(outPath, text)
-        logger.info("Wrote bundles.info with compiled workspace outputs to $outPath")
-      }
-    }
     results.forEach { r ->
       if (!r.success) {
         val errorsOnly = extractErrorBlocks(r.output)
@@ -4935,32 +5015,7 @@ fun compileMain(args: Array<String>): Int {
         }
       }
     }
-    if (runtimeOut != null) {
-      if (!allOk) {
-        logger.severe("Skipping runtime layout write because some bundles failed to compile.")
-        return exitCode
-      }
-      val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
-      val outDir = Paths.get(runtimeOut)
-      val devProps = buildDevProperties(specs, results)
-      val context = LaunchContext(
-        startupLevels = planResult.context.startupLevels,
-        devProperties = devProps
-      )
-    val defaults = RuntimeLayoutWriter.Defaults(
-      installArea = profilePath,
-      instanceArea = outDir.resolve("workspace")
-    )
-      RuntimeLayoutWriter.write(
-        layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
-        plan = rewrittenPlan,
-        context = context,
-        options = options,
-        defaults = defaults
-      )
-      logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
-    }
-    return exitCode
+    return if (results.all { it.success }) 0 else 1
   }
 
   if (configFile == null) {
@@ -4969,17 +5024,6 @@ fun compileMain(args: Array<String>): Int {
     logger.severe("Launch config not found at ${Paths.get(configFile).toAbsolutePath()}")
   }
   return 0
-}
-
-private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCompileResult>): Map<String, List<String>> {
-  val success = results.filter { it.success }.map { it.bsn }.toSet()
-  return specs
-    .filter { it.isWorkspace && success.contains(it.bsn) }
-    .associate { spec ->
-      val out = spec.outputDirectory
-        ?: Paths.get(spec.bundlePath).resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR).toString()
-      spec.bsn to listOf(out)
-    }
 }
 
 private fun formatDuration(durationMillis: Long): String {

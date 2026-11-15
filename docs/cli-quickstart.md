@@ -65,6 +65,47 @@ launches:
 ```
 
 
+`pde run` (or `pde run <name>`) writes the launch's `config.ini`, `bundles.info` and `dev.properties` into
+its own configuration directory on every launch and starts it.
+
+### Prepare a launch for another launcher: `pde prepare-run`
+
+When something other than `pde run` starts the runtime, `pde prepare-run <name> --output <dir>` writes the
+same files for that launch into `<dir>` and starts nothing. Point the launcher at it with
+`-configuration <dir>`. The bundles are the ones `pde run` starts: every target bundle, with the workspace
+bundles in place of their target copies. The launch only adds its product, application and splash to
+`config.ini`. Workspace bundles load their classes from their output folders through `osgi.dev`, so run
+`pde compile` first.
+
+#### Example: a KNIME Hub executor started by the executor agent
+
+The executor agent starts the executor from a regular executor installation: it copies the install's
+`knime.ini`, adds the application and VM arguments from the Hub's execution context, and runs
+`start-executor.sh --launcher.ini <that copy> -data <workspace>`. Without a `-configuration` argument the
+executor reads `<install>/configuration`. To run your workspace code in it instead:
+
+```
+launches:
+  - name: executor
+    product: org.knime.product.KNIME_PRODUCT
+    application: com.knime.enterprise.slave.KNIME_REMOTE_APPLICATION
+```
+
+1. `pde compile`
+2. `pde prepare-run executor --output <dir>`
+3. Add two lines before `-vmargs` in `<install>/knime.ini`, or add them as application arguments in the
+   Hub's execution context:
+   ```
+   -configuration
+   <dir>
+   ```
+4. Start or restart the executor through the agent.
+
+The stock `<install>/configuration` stays untouched, so removing the two lines switches back to the
+installed bundles. The install still has to exist: the agent checks its version and features and takes the
+JRE from its `knime.ini`. With `KNIME_CRAC_RESTORE=true` the executor restores a snapshot and ignores all of
+this.
+
 ## Set up and run unit tests
 
 Configure a test in `pde.yaml` (see schema definition for guaranteed up-to-date info)
