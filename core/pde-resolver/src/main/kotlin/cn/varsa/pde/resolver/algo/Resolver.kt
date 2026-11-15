@@ -3,7 +3,7 @@ package cn.varsa.pde.resolver.algo
 import cn.varsa.pde.resolver.index.TargetPlatformIndex
 import cn.varsa.pde.resolver.index.ResolvedBundle as TargetResolvedBundle
 import cn.varsa.pde.resolver.manifest.BundleManifest
-import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.exportedPackageVersions
 import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.importedPackageAndVersion
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
@@ -214,9 +214,13 @@ object Resolver {
     val selected = LinkedHashMap<String, Candidate>()
     var fragmentHostCandidate: Candidate? = null
 
-    val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, Version>>()
-    fun exportsOf(manifest: BundleManifest): Map<String, Version> =
-      manifestExportsCache.getOrPut(manifest) { manifest.exportedPackageAndVersion() }
+    val manifestExportsCache = java.util.IdentityHashMap<BundleManifest, Map<String, List<Version>>>()
+    fun exportsOf(manifest: BundleManifest): Map<String, List<Version>> =
+      manifestExportsCache.getOrPut(manifest) { manifest.exportedPackageVersions() }
+
+    // Any of the bundle's exports of the package counts, as in OSGi wiring.
+    fun exportsInRange(manifest: BundleManifest, pkg: String, range: VersionRange): Boolean =
+      exportsOf(manifest)[pkg]?.any(range::includes) == true
 
     val entrySymbolicName = entry.manifest.bundleSymbolicName?.key
       ?: error("Entry bundle lacks Bundle-SymbolicName header at ${entry.path}")
@@ -343,8 +347,7 @@ object Resolver {
     fun applyPin(candidate: Candidate, pkg: String, range: VersionRange): Candidate? {
       val pinnedVersion = options.pinnedVersions[candidate.bsn] ?: return candidate
       val pinned = selectExact(candidate.bsn, pinnedVersion) ?: return null
-      val exported = exportsOf(pinned.manifest)[pkg] ?: return null
-      return if (range.includes(exported)) pinned else null
+      return if (exportsInRange(pinned.manifest, pkg, range)) pinned else null
     }
 
     // Provider of an imported package: workspace exporters first, then target exporters ordered
@@ -356,10 +359,7 @@ object Resolver {
       if (options.preferWorkspace) {
         val ws = wsProvidersByPkg[pkg]
           ?.asSequence()
-          ?.mapNotNull { provider ->
-            val exported = exportsOf(provider.manifest)[pkg]
-            if (exported != null && range.includes(exported)) provider else null
-          }
+          ?.filter { provider -> exportsInRange(provider.manifest, pkg, range) }
           ?.maxByOrNull { it.version }
         if (ws != null) {
           val pinned = applyPin(providerToCandidate(ws), pkg, range)
@@ -369,8 +369,7 @@ object Resolver {
 
       val providers = target.exportedBundlesByPackage()[pkg] ?: return null
       return providers.asSequence().mapNotNull { rb ->
-        val exported = exportsOf(rb.manifest)[pkg] ?: return@mapNotNull null
-        if (!range.includes(exported)) return@mapNotNull null
+        if (!exportsInRange(rb.manifest, pkg, range)) return@mapNotNull null
         applyPin(candidateFromTarget(rb), pkg, range)
       }.firstOrNull()
     }

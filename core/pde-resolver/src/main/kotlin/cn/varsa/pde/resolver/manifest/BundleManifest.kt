@@ -50,6 +50,14 @@ class BundleManifest private constructor(private val map: HashMap<String, String
 class Parameters(value: String, private val map: MutableMap<String, Attrs> = mutableMapOf()) :
   Map<String, Attrs> by map {
 
+  private val allClauses = mutableListOf<Pair<String, Attrs>>()
+
+  /**
+   * Every clause in header order, including repeated names. The map view keeps only the last
+   * clause per name, but a bundle may export the same package at several versions.
+   */
+  val clauses: List<Pair<String, Attrs>> get() = allClauses
+
   init {
     val qt = QuotedTokenizer(value, ";=,")
     var del: Char
@@ -86,7 +94,10 @@ class Parameters(value: String, private val map: MutableMap<String, Attrs> = mut
         val attrs = Attrs(attribute, directive)
         aliases.forEach { alias ->
           val key = alias.trim()
-          if (key.isNotEmpty()) map[key] = attrs
+          if (key.isNotEmpty()) {
+            map[key] = attrs
+            allClauses += key to attrs
+          }
         }
       }
     } while (del == ',')
