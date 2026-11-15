@@ -111,29 +111,26 @@ class LaunchPlannerTest {
   }
 
   @Test
-  fun lazyActivationRespectsExplicitStartupPolicies() {
+  fun explicitStartupPoliciesStartLazyBundles() {
     val workspace = workspace("lazy.app", "1.0.0", BUNDLE_ACTIVATIONPOLICY to ACTIVATION_LAZY)
     val environment = LaunchEnvironment(targetIndex = tpIndex(), workspaceEntries = listOf(workspace))
     val options = LauncherOptions(autoStartDefault = false)
 
     fun autoStart(env: LaunchEnvironment) = LaunchPlanner.build(env, options).plan.bundles.single().autoStart
 
-    assertFalse("explicit map value wins over lazy activation and provider", autoStart(environment.copy(
-      autoStartBundles = mapOf("lazy.app" to false), autoStartProvider = { true }
-    )))
-    assertFalse("explicit provider value wins over lazy activation", autoStart(environment.copy(
-      autoStartProvider = { false }
-    )))
-    assertTrue("explicit map value still wins over provider", autoStart(environment.copy(
+    assertTrue("explicit map value starts a lazy bundle", autoStart(environment.copy(
       autoStartBundles = mapOf("lazy.app" to true), autoStartProvider = { false }
     )))
-    assertFalse("negative start level still disables default startup", autoStart(environment.copy(
-      startupLevels = mapOf("lazy.app" to -1)
+    assertTrue("provider value starts a lazy bundle", autoStart(environment.copy(
+      autoStartProvider = { true }
+    )))
+    assertFalse("explicit map value still wins over provider", autoStart(environment.copy(
+      autoStartBundles = mapOf("lazy.app" to false), autoStartProvider = { true }
     )))
   }
 
   @Test
-  fun supplementalLazyBundlesAreNotArmed() {
+  fun supplementalLazyBundlesAreNotStarted() {
     val lazyDep = resolved("lazy.dep", "1.0.0", BUNDLE_ACTIVATIONPOLICY to ACTIVATION_LAZY)
     val environment = LaunchEnvironment(
       targetIndex = tpIndex(lazyDep),
@@ -145,14 +142,14 @@ class LaunchPlannerTest {
 
     val result = LaunchPlanner.build(environment, LauncherOptions(autoStartDefault = false))
 
-    assertFalse("unrelated supplemental bundles stay unarmed", result.plan.bundles.single().autoStart)
+    assertFalse("unrelated supplemental bundles stay unstarted", result.plan.bundles.single().autoStart)
   }
 
   @Test
-  fun lazyActivationBundlesAreArmedEvenWhenAutoStartDefaultIsFalse() {
-    // A Bundle-ActivationPolicy: lazy bundle (e.g. org.knime.core) must be started/armed or Equinox
-    // never runs its activator + DS components — which is why `pde test` found 0 tests for the
-    // org.knime.core.workflow.tests fragment. autoStartDefault=false mirrors pde's real launch.
+  fun lazyBundlesInTheWorkspaceClosureStayUnstarted() {
+    // Like a p2 install's bundles.info: Equinox arms a lazy bundle itself when it installs it
+    // (osgi.compatibility.eagerStart.LazyActivation, on by default). Marking it started would make
+    // simpleconfigurator call start(), which activates it eagerly at startup.
     val lazyDep = resolved("lazy.dep", "1.0.0", BUNDLE_ACTIVATIONPOLICY to ACTIVATION_LAZY)
     val eagerDep = resolved("eager.dep", "1.0.0")
     val targetIndex = tpIndex(lazyDep, eagerDep)
@@ -170,7 +167,7 @@ class LaunchPlannerTest {
     val result = LaunchPlanner.build(environment, options)
     val bundles = result.plan.bundles.associateBy { it.bsn }
 
-    assertTrue("lazy bundle is armed so its activator/DS components run", bundles.getValue("lazy.dep").autoStart)
-    assertFalse("non-lazy bundle stays un-started under autoStartDefault=false", bundles.getValue("eager.dep").autoStart)
+    assertFalse("lazy bundle is left to Equinox's activation policy", bundles.getValue("lazy.dep").autoStart)
+    assertFalse("non-lazy bundle stays unstarted under autoStartDefault=false", bundles.getValue("eager.dep").autoStart)
   }
 }

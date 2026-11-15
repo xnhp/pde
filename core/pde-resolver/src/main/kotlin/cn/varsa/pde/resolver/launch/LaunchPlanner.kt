@@ -30,10 +30,10 @@ object LaunchPlanner {
         ?: environment.startLevelProvider?.invoke(bsn)
         ?: options.defaultStartLevel
 
-    fun autoStartFor(bsn: String, level: Int, lazyActivation: Boolean): Boolean =
+    fun autoStartFor(bsn: String, level: Int): Boolean =
       environment.autoStartBundles[bsn]
         ?: environment.autoStartProvider?.invoke(bsn)
-        ?: ((options.autoStartDefault || lazyActivation) && level >= 0)
+        ?: (options.autoStartDefault && level >= 0)
 
     fun recordProblems(scope: String, items: List<ResolveProblem>) {
       if (items.isEmpty()) return
@@ -96,9 +96,9 @@ object LaunchPlanner {
 
     val bundles = selector.entries().map { rb ->
       val level = levelFor(rb.bsn)
-      // Lazy-activation bundles must be armed (started with the activation policy) or Equinox never
-      // runs their activator / DS components. Explicit startup policies still take precedence.
-      val auto = autoStartFor(rb.bsn, level, rb.lazyActivation)
+      // Lazy-activation bundles stay unstarted like in a p2 install: Equinox arms them itself when it
+      // installs them, while simpleconfigurator's plain start() of a started entry activates them eagerly.
+      val auto = autoStartFor(rb.bsn, level)
       startupLevels[rb.bsn] = level
       BundleStartSpec(
         bsn = rb.bsn,
