@@ -358,8 +358,6 @@ class PdeCliTest {
     assertFalse(output.contains("--framework"))
     assertFalse(output.contains("--json"))
     assertFalse(output.contains("--results-json"))
-    assertFalse(output.contains("--bundles-info-out"))
-    assertFalse(output.contains("--runtime-out"))
     assertFalse(output.contains("--warnings"))
     assertFalse(output.contains("configPos"))
   }
@@ -384,8 +382,6 @@ class PdeCliTest {
     assertTrue(output.contains("--framework"))
     assertFalse(output.contains("--json"))
     assertFalse(output.contains("--results-json"))
-    assertFalse(output.contains("--bundles-info-out"))
-    assertFalse(output.contains("--runtime-out"))
     assertFalse(output.contains("--warnings"))
   }
 

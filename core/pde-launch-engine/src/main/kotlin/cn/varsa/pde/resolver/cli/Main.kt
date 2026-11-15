@@ -45,7 +45,6 @@ import cn.varsa.pde.resolver.compile.BundleCompileResult
 import cn.varsa.pde.resolver.compile.CompileExecutor
 import cn.varsa.pde.resolver.compile.CompileService
 import cn.varsa.pde.resolver.compile.CompileSpec
-import cn.varsa.pde.resolver.compile.rewritePlanWithCompiledOutputs
 import cn.varsa.pde.resolver.cli.config.LaunchConfig
 import cn.varsa.pde.resolver.cli.config.LaunchConfigContext
 import cn.varsa.pde.resolver.cli.config.LaunchConfigLoader
@@ -101,7 +100,6 @@ import cn.varsa.pde.resolver.workspace.JdtBuildInput
 import cn.varsa.pde.resolver.workspace.JdtBuildInputJson
 import cn.varsa.pde.resolver.workspace.toWorkspaceProjectSpec
 import cn.varsa.pde.resolver.launch.RuntimeLayoutWriter
-import cn.varsa.pde.resolver.launch.LaunchContext
 import org.osgi.framework.FrameworkUtil
 import org.osgi.framework.Version
 import org.osgi.framework.VersionRange
@@ -247,9 +245,7 @@ internal val compileOptionsRequiringValue = setOf(
   "-w",
   "--framework",
   "--results-json",
-  "--output-root",
-  "--bundles-info-out",
-  "--runtime-out"
+  "--output-root"
 )
 internal val apiBaselineOptionsRequiringValue = setOf(
   "--config",
@@ -4891,8 +4887,6 @@ fun compileMain(args: Array<String>): Int {
   val debugInfo by parser.option(ArgType.Boolean, fullName = "debug", description = "Emit debug info (lines/vars/source)").default(false)
   val resultsJson by parser.option(ArgType.String, fullName = "results-json", description = "Write compile results to JSON file")
   val outputRoot by parser.option(ArgType.String, fullName = "output-root", description = "Override workspace bundle output dir (relative to module root, e.g., bin)")
-  val bundlesInfoOut by parser.option(ArgType.String, fullName = "bundles-info-out", description = "Write bundles.info reflecting compiled workspace outputs")
-  val runtimeOut by parser.option(ArgType.String, fullName = "runtime-out", description = "Write config.ini/dev.properties/bundles.info for compiled outputs under this directory")
   val showWarnings by parser.option(
     ArgType.Boolean,
     fullName = "warnings",
@@ -5003,20 +4997,6 @@ fun compileMain(args: Array<String>): Int {
       }
       logCompilerProblemCounts(result, showWarnings)
     }
-    val allOk = results.all { it.success }
-    val exitCode = if (allOk) 0 else 1
-    if (bundlesInfoOut != null) {
-      if (!allOk) {
-        logger.severe("Skipping bundles.info write because some bundles failed to compile.")
-      } else {
-        val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
-        val outPath = Paths.get(bundlesInfoOut)
-        outPath.parent?.let { Files.createDirectories(it) }
-        val text = BundlesInfoRenderer.toText(rewrittenPlan)
-        Files.writeString(outPath, text)
-        logger.info("Wrote bundles.info with compiled workspace outputs to $outPath")
-      }
-    }
     results.forEach { r ->
       if (!r.success) {
         val errorsOnly = extractErrorBlocks(r.output)
@@ -5028,32 +5008,7 @@ fun compileMain(args: Array<String>): Int {
         }
       }
     }
-    if (runtimeOut != null) {
-      if (!allOk) {
-        logger.severe("Skipping runtime layout write because some bundles failed to compile.")
-        return exitCode
-      }
-      val rewrittenPlan = rewritePlanWithCompiledOutputs(planResult.plan, specs)
-      val outDir = Paths.get(runtimeOut)
-      val devProps = buildDevProperties(specs, results)
-      val context = LaunchContext(
-        startupLevels = planResult.context.startupLevels,
-        devProperties = devProps
-      )
-    val defaults = RuntimeLayoutWriter.Defaults(
-      installArea = profilePath,
-      instanceArea = outDir.resolve("workspace")
-    )
-      RuntimeLayoutWriter.write(
-        layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir),
-        plan = rewrittenPlan,
-        context = context,
-        options = options,
-        defaults = defaults
-      )
-      logger.info("Wrote config.ini, dev.properties, bundles.info under $outDir")
-    }
-    return exitCode
+    return if (results.all { it.success }) 0 else 1
   }
 
   if (configFile == null) {
@@ -5062,17 +5017,6 @@ fun compileMain(args: Array<String>): Int {
     logger.severe("Launch config not found at ${Paths.get(configFile).toAbsolutePath()}")
   }
   return 0
-}
-
-private fun buildDevProperties(specs: List<CompileSpec>, results: List<BundleCompileResult>): Map<String, List<String>> {
-  val success = results.filter { it.success }.map { it.bsn }.toSet()
-  return specs
-    .filter { it.isWorkspace && success.contains(it.bsn) }
-    .associate { spec ->
-      val out = spec.outputDirectory
-        ?: Paths.get(spec.bundlePath).resolve(WorkspaceDefaults.DEFAULT_OUTPUT_DIR).toString()
-      spec.bsn to listOf(out)
-    }
 }
 
 private fun formatDuration(durationMillis: Long): String {
