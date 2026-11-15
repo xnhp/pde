@@ -25,7 +25,7 @@ import com.jetbrains.rd.util.reactive.*
 import jdk.internal.org.jline.utils.AttributedStringBuilder.append
 import org.osgi.framework.*
 import org.osgi.framework.Constants.*
-import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.exportedPackageVersions
 import cn.varsa.pde.resolver.support.parseVersionRange
 import cn.varsa.pde.resolver.support.contains
 import java.awt.*
@@ -719,9 +719,11 @@ class TargetConfigurable(private val project: Project) : SearchableConfigurable,
         bundles.computeIfAbsent(bundle.bundle.bundleSymbolicName) { hashMapOf() }
           .computeIfAbsent(bundle.bundle.bundleVersion) { hashSetOf() } += bundle
 
-        bundle.bundle.manifest?.exportedPackageAndVersion()?.forEach { (packageName, version) ->
-          exportedPackages.computeIfAbsent(packageName) { hashMapOf() }
-            .computeIfAbsent(version) { hashSetOf() } += bundle
+        bundle.bundle.manifest?.exportedPackageVersions()?.forEach { (packageName, versions) ->
+          versions.forEach { version ->
+            exportedPackages.computeIfAbsent(packageName) { hashMapOf() }
+              .computeIfAbsent(version) { hashSetOf() } += bundle
+          }
         }
       }
 
