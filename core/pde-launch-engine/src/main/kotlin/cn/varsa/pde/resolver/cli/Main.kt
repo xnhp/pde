@@ -63,6 +63,7 @@ import kotlinx.cli.ArgType
 import kotlinx.cli.default
 import kotlinx.cli.multiple
 import kotlinx.cli.optional
+import kotlinx.cli.required
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import java.awt.GraphicsEnvironment
@@ -223,6 +224,12 @@ internal val launchOptionsRequiringValue = setOf(
   "--framework",
   "--output",
   "--launch"
+)
+internal val prepareRunOptionsRequiringValue = setOf(
+  "--config",
+  "--log-level",
+  "--output",
+  "-o"
 )
 internal val testOptionsRequiringValue = setOf(
   "--config",
@@ -617,6 +624,70 @@ fun launchMain(args: Array<String>, commandName: String = "pde run"): Int {
   } else {
     logger.info("Framework: ${planResult.plan.framework?.bsn ?: "<none>"}; bundles=${planResult.plan.bundles.size}")
   }
+  return 0
+}
+
+/**
+ * `pde prepare-run`: writes the selected launch's config.ini, bundles.info and dev.properties into a directory
+ * and starts nothing. It is for a launcher other than `pde run`, which points the runtime at that directory
+ * (e.g. `-configuration <dir>`). The files are the ones `pde run` writes for the same launch; since such a
+ * launcher passes no `-dev` argument, config.ini also carries `osgi.dev`.
+ */
+fun prepareRunMain(args: Array<String>): Int {
+  val normalizedArgs = normalizeArgsWithImplicitConfig(args, prepareRunOptionsRequiringValue)
+  val parser = ArgParser("pde prepare-run ${maturityTag("usable")}")
+  val configFileOpt by parser.option(ArgType.String, fullName = "config", description = "YAML launch configuration")
+  val logLevelOpt by parser.option(
+    ArgType.String,
+    fullName = "log-level",
+    description = "Logging level (error|warn|info|debug|trace)"
+  )
+  val verbose by parser.option(ArgType.Boolean, fullName = "verbose", shortName = "v", description = "Enable INFO logging")
+    .default(false)
+  val outputOpt by parser.option(
+    ArgType.String,
+    fullName = "output",
+    shortName = "o",
+    description = "Directory to write config.ini, dev.properties and org.eclipse.equinox.simpleconfigurator/bundles.info to"
+  ).required()
+  val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
+  val launchPos by parser.argument(ArgType.String, description = "Launch name or 1-based index (default: the first launch)")
+    .optional()
+  parser.parse(normalizedArgs)
+  configureLogging(resolveLogLevel(logLevelOpt, verbose, false), shouldUseColor())
+
+  val configFile = configFileOpt ?: configPos?.takeIf { looksLikeYamlFile(it) }
+  val launchName = when {
+    configPos != null && !looksLikeYamlFile(configPos!!) -> configPos
+    else -> launchPos
+  }
+  val discoveredConfig = configFile?.let { Paths.get(it) } ?: discoverConfigFile()
+  if (discoveredConfig == null) {
+    logger.severe("pde prepare-run needs a YAML config with a 'launches' entry; none was given or discovered.")
+    return 2
+  }
+  val context = selectLaunchConfig(LaunchConfigLoader.load(discoveredConfig), launchName, debugJvm = false) ?: return 2
+  val profilePath = resolveProfilePath(context)
+  if (profilePath == null || !Files.exists(profilePath)) {
+    logger.severe(
+      "Target profile ${profilePath ?: "path"} missing; set target.profileId + target.p2Path and run pde target install."
+    )
+    return 2
+  }
+  logActiveExtraBundles(configuredExtraBundles(context))
+  val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
+  val setup = planLaunch(context, targetIndex, WorkspaceModuleResolver.resolve(context))
+  logPlanSummary(setup.planResult)
+  val outDir = Paths.get(outputOpt).toAbsolutePath().normalize()
+  val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir)
+  val defaults = RuntimeLayoutWriter.Defaults(
+    installArea = profilePath,
+    instanceArea = context.runtime.dataDir?.let { context.baseDir.resolve(it) } ?: outDir.resolve("workspace"),
+    fallbackConfig = loadExistingConfig(profilePath),
+    extraProperties = setup.extraProperties + ("osgi.dev" to layout.devPropertiesFile.toUri().toString())
+  )
+  RuntimeLayoutWriter.write(layout, setup.planResult.plan, setup.planResult.context, setup.options, defaults)
+  logger.info("Wrote config.ini, dev.properties and bundles.info for ${setup.planResult.plan.bundles.size} bundles under $outDir")
   return 0
 }
 
@@ -2728,6 +2799,40 @@ private fun prepareLaunch(
   val layoutResolution = LaunchLayoutResolver.resolve(context)
   val layout = layoutResolution.layout
   LaunchLayoutResolver.cleanIfRequested(layout, false)
+  val setup = planLaunch(context, targetIndex, workspaceInputs)
+  val planResult = setup.planResult
+  val fallbackConfig = loadExistingConfig(profilePath)
+  writeLaunchArtifacts(context, layout, planResult, setup.options, profilePath, fallbackConfig, setup.extraProperties)
+  val launcherJar = resolveLauncherJar(targetIndex)
+  val command = assembleCommand(
+    context,
+    layout,
+    targetArgs,
+    planResult,
+    launcherJar,
+    extraProgramArgs,
+    includeDevProperties
+  )
+  return PreparedLaunch(command, planResult, layout)
+}
+
+/** The plan of one launch, with the launcher options and extra config.ini properties that go with it. */
+internal class LaunchPlanSetup(
+  val options: LauncherOptions,
+  val planResult: LaunchPlanner.PlanResult,
+  val extraProperties: Map<String, String>
+)
+
+/**
+ * Plans [context]'s selected launch: every target bundle is in the plan, the workspace bundles' resolved
+ * closures take precedence over target bundles of the same name, and the default and target-definition
+ * startup levels apply. `pde run` and `pde prepare-run` both write this plan.
+ */
+internal fun planLaunch(
+  context: LaunchConfigContext,
+  targetIndex: TargetPlatformIndex,
+  workspaceInputs: WorkspaceInputs
+): LaunchPlanSetup {
   val targetDefinitionStartupLevels = loadTargetDefinitionStartupLevels(context)
   val requestedStartupLevels = DEFAULT_STARTUP_LEVELS
   val combinedStartup = defaultStartupLevelsForTarget(targetIndex.bundlesByBsn().keys) +
@@ -2775,7 +2880,6 @@ private fun prepareLaunch(
     autoStartDefault = false
   )
   val planResult = LaunchPlanner.build(env, options)
-  val fallbackConfig = loadExistingConfig(profilePath)
   val extraProperties = buildMap {
     val splash = context.runtime.splash?.takeIf { it.isNotBlank() }
     if (splash != null) {
@@ -2788,18 +2892,7 @@ private fun prepareLaunch(
       }
     }
   }
-  writeLaunchArtifacts(context, layout, planResult, options, profilePath, fallbackConfig, extraProperties)
-  val launcherJar = resolveLauncherJar(targetIndex)
-  val command = assembleCommand(
-    context,
-    layout,
-    targetArgs,
-    planResult,
-    launcherJar,
-    extraProgramArgs,
-    includeDevProperties
-  )
-  return PreparedLaunch(command, planResult, layout)
+  return LaunchPlanSetup(options, planResult, extraProperties)
 }
 
 /**

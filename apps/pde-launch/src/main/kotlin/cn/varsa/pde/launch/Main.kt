@@ -10,6 +10,7 @@ import cn.varsa.cli.core.CliPositionalArg
 import cn.varsa.cli.core.cliMcpToolsListText
 import cn.varsa.pde.resolver.cli.compileMain
 import cn.varsa.pde.resolver.cli.launchMain
+import cn.varsa.pde.resolver.cli.prepareRunMain
 import cn.varsa.pde.resolver.cli.workspaceSetupMain
 import cn.varsa.pde.resolver.cli.jdtBuildMain
 import pde.format.main as formatMain
@@ -51,6 +52,18 @@ private val launchOptions = listOf(
   CliOption(listOf("--dry-run"), "Parse configuration only"),
   CliOption(listOf("--framework"), "Framework BSN", takesValue = true, valueLabel = "String", defaultValue = "org.eclipse.osgi"),
   CliOption(listOf("--output", "-o"), "Output directory for config.ini/bundles.info/dev.properties", takesValue = true, valueLabel = "String")
+)
+
+private val prepareRunOptions = listOf(
+  CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--output", "-o"), "Directory to write config.ini, dev.properties and bundles.info to (required)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--verbose", "-v"), "Enable INFO logging")
+)
+
+private val prepareRunPositionals = listOf(
+  CliPositionalArg(0, "configPos", "YAML launch configuration (positional)", "0..1"),
+  CliPositionalArg(1, "launchPos", "Launch name or 1-based index (default: the first launch)", "0..1")
 )
 
 private val testPositionals = listOf(
@@ -376,6 +389,14 @@ internal val pdeCommand = CliCommandGroup(
       mixinStandardHelpOptions = true,
       options = launchOptions,
       positionalArgs = launchPositionals
+    ),
+    CliCommandLeaf(
+      name = "prepare-run",
+      description = "Write a launch's config.ini, bundles.info and dev.properties to a directory without starting it",
+      handler = { args -> prepareRunMain(args) },
+      mixinStandardHelpOptions = true,
+      options = prepareRunOptions,
+      positionalArgs = prepareRunPositionals
     ),
     CliCommandLeaf(
       name = "launch",
