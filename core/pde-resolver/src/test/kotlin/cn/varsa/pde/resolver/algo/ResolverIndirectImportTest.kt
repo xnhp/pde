@@ -316,4 +316,44 @@ class ResolverIndirectImportTest {
     assertTrue(result.bundles.any { it.bsn == "javax.xml" })
   }
 
+  @Test
+  fun `require of system bundle resolves to the framework`() {
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Require-Bundle" to "javax.xml.soap"
+    )
+    val tp = tpIndex(
+      tpBundle(
+        "javax.xml.soap",
+        "Bundle-SymbolicName" to "javax.xml.soap",
+        "Bundle-Version" to "1.2.0",
+        "Require-Bundle" to "system.bundle"
+      ),
+      tpBundle(
+        "org.eclipse.osgi",
+        "Bundle-SymbolicName" to "org.eclipse.osgi",
+        "Bundle-Version" to "3.21.0"
+      )
+    )
+
+    val result = Resolver.resolve(tp, workspace, workspace.first(), ResolveOptions())
+
+    assertEquals(emptyList<UnresolvedBundle>(), result.unresolved)
+    assertTrue(result.bundles.any { it.bsn == "org.eclipse.osgi" })
+  }
+
+  @Test
+  fun `require of system bundle is not reported when the target lacks the framework`() {
+    val workspace = wsEntry(
+      "Bundle-SymbolicName" to "org.example.app",
+      "Bundle-Version" to "1.0.0",
+      "Require-Bundle" to "system.bundle"
+    )
+
+    val result = Resolver.resolve(tpIndex(), workspace, workspace.first(), ResolveOptions())
+
+    assertEquals(emptyList<UnresolvedBundle>(), result.unresolved)
+  }
+
 }
