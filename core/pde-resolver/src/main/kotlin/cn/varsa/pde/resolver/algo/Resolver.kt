@@ -6,7 +6,6 @@ import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
 import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.importedPackageAndVersion
-import cn.varsa.pde.resolver.manifest.isLazyActivated
 import cn.varsa.pde.resolver.manifest.requiredBundleAndVersion
 import cn.varsa.pde.resolver.manifest.reexportRequiredBundleAndVersion
 import org.osgi.framework.Version
@@ -67,9 +66,7 @@ data class ResolvedBundle(
   val sourceEntries: List<Path> = emptyList(),
   val fragmentHost: String? = null,
   val isHost: Boolean = false,
-  val reexport: Boolean = false,
-  /** Bundle declares `Bundle-ActivationPolicy: lazy` — must be armed (started) for DS/activator to run. */
-  val lazyActivation: Boolean = false
+  val reexport: Boolean = false
 ) {
   val isWorkspace: Boolean get() = origin == BundleOrigin.WORKSPACE
 }
@@ -441,8 +438,7 @@ object Resolver {
       classPathEntries = c.classPathEntries,
       sourceEntries = c.sourceEntries,
       fragmentHost = c.fragmentHost,
-      isHost = c.isHost,
-      lazyActivation = c.manifest.isLazyActivated()
+      isHost = c.isHost
     )
 
     val bundles = mutableListOf<ResolvedBundle>()
