@@ -5,7 +5,7 @@ import cn.varsa.pde.resolver.manifest.BundleManifest
 import cn.varsa.pde.resolver.manifest.ECLIPSE_EXTENSIBLE_API
 import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.isFragmentHost
-import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.exportedPackageVersions
 import cn.varsa.pde.resolver.support.VersionRangeAny
 import cn.varsa.pde.resolver.support.contains
 import cn.varsa.pde.resolver.support.parseVersion
@@ -482,7 +482,7 @@ object ImportPackageParser : HeaderParser by BasePackageParser {
               tpService.findBundleByPath(jarFile)?.manifest?.also { containers += it }
             }
 
-          containers.mapNotNull { it.exportedPackageAndVersion()[packageName] }.distinct().sorted().also { versions ->
+          containers.flatMap { it.exportedPackageVersions()[packageName].orEmpty() }.distinct().sorted().also { versions ->
               versions.none { it in versionRange }.ifTrue {
                 holder.createError(
                   message(

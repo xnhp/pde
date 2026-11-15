@@ -11,7 +11,7 @@ import cn.varsa.idea.pde.partial.plugin.i18n.EclipsePDEPartialBundles.message
 import cn.varsa.idea.pde.partial.plugin.support.*
 import cn.varsa.pde.resolver.manifest.fragmentHostAndVersionRange
 import cn.varsa.pde.resolver.manifest.isFragmentHost
-import cn.varsa.pde.resolver.manifest.exportedPackageAndVersion
+import cn.varsa.pde.resolver.manifest.exportedPackageVersions
 import cn.varsa.pde.resolver.manifest.isPackageImported
 import cn.varsa.pde.resolver.manifest.isBundleRequired
 import cn.varsa.pde.resolver.support.contains
@@ -137,18 +137,18 @@ abstract class PackageAccessibilityInspection : AbstractBaseJavaLocalInspectionT
 
         val exportedPackageVersions = hashSetOf<Version>()
 
-        exporter.exportedPackageAndVersion()[packageName]?.also { exportedPackageVersions += it }
-        exporterHost?.exportedPackageAndVersion()?.get(packageName)?.also { exportedPackageVersions += it }
+        exporter.exportedPackageVersions()[packageName]?.also { exportedPackageVersions += it }
+        exporterHost?.exportedPackageVersions()?.get(packageName)?.also { exportedPackageVersions += it }
 
         tpService.getBundlesByBSN(exporterBSN)?.mapValues { it.value.manifest }
-          ?.mapValues { it.value?.exportedPackageAndVersion()?.get(packageName) }?.also {
+          ?.mapValues { it.value?.exportedPackageVersions()?.get(packageName) }?.also {
             exporterVersions += it.keys
-            exportedPackageVersions += it.values.filterNotNull()
+            exportedPackageVersions += it.values.filterNotNull().flatten()
           }
         exporterHostBSN?.let { tpService.getBundlesByBSN(it) }?.mapValues { it.value.manifest }
-          ?.mapValues { it.value?.exportedPackageAndVersion()?.get(packageName) }?.also {
+          ?.mapValues { it.value?.exportedPackageVersions()?.get(packageName) }?.also {
             exporterHostVersions += it.keys
-            exportedPackageVersions += it.values.filterNotNull()
+            exportedPackageVersions += it.values.filterNotNull().flatten()
           }
 
         if (exportedPackageVersions.isEmpty()) {

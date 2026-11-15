@@ -60,10 +60,6 @@ fun BundleManifest.importedPackageAndVersion(includeOptional: Boolean = false): 
   importPackage?.clauses(includeOptional)
     ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersionRange() } ?: emptyMap()
 
-fun BundleManifest.exportedPackageAndVersion(): Map<String, Version> =
-  exportPackage?.mapKeys { it.key.substringBefore(".*") }
-    ?.mapValues { (_, attrs) -> attrs.attribute[VERSION_ATTRIBUTE].parseVersion() } ?: emptyMap()
-
 /**
  * Every version each package is exported at. A bundle may export one package several times, e.g.
  * commons-io 2.x also exports each package at 1.4.9999 for importers of the 1.x range.
