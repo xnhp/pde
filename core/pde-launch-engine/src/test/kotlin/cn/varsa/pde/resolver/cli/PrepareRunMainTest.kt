@@ -70,6 +70,29 @@ class PrepareRunMainTest {
     assertFalse(Files.exists(fixture.outDir.resolve("config.ini")))
   }
 
+  @Test
+  fun `falls back to the launch's configDir when --output is omitted`() {
+    val fixture = Fixture()
+
+    val exitCode = prepareRunMain(arrayOf("--config", fixture.configFile.toString(), "withConfigDir"))
+
+    assertEquals(0, exitCode)
+    val configIni = Properties().apply {
+      Files.newInputStream(fixture.baseDir.resolve("configdir-output/config.ini")).use { load(it) }
+    }
+    assertEquals("org.example.app", configIni.getProperty("eclipse.application"))
+  }
+
+  @Test
+  fun `fails when neither --output nor the launch's configDir is set`() {
+    val fixture = Fixture()
+
+    val exitCode = prepareRunMain(arrayOf("--config", fixture.configFile.toString(), "app"))
+
+    assertEquals(2, exitCode)
+    assertFalse(Files.exists(fixture.outDir.resolve("config.ini")))
+  }
+
   /** A profile with the framework and one bundle nothing depends on, and a workspace bundle with two launches. */
   private class Fixture {
     val baseDir: Path = Files.createTempDirectory("cfg")
@@ -114,6 +137,9 @@ class PrepareRunMainTest {
               application: org.example.app
             - name: other
               application: org.example.other
+            - name: withConfigDir
+              application: org.example.app
+              configDir: configdir-output
         """.trimIndent() + "\n"
       )
     }

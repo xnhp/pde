@@ -54,6 +54,9 @@ launches:
       FEATURE_FLAG: "true"
 ```
 
+`configDir` also doubles as `pde prepare-run`'s output directory when its `--output` flag is omitted —
+set it once here instead of repeating `--output <dir>` on every `prepare-run` call for that launch.
+
 ### Test preset
 
 ```yaml

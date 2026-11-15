@@ -71,7 +71,7 @@ First run in a new issue dir is slow (downloads the target platform into the sha
 
 `pde compile` -- compiles workspace bundles.
 
-`pde prepare-run <launch> --output <dir>` -- writes the launch's `config.ini`, `bundles.info` and `dev.properties` to `<dir>` without starting it, for a launcher other than `pde run` (point it at the directory with `-configuration <dir>`).
+`pde prepare-run <launch> --output <dir>` -- writes the launch's `config.ini`, `bundles.info` and `dev.properties` to `<dir>` without starting it, for a launcher other than `pde run` (point it at the directory with `-configuration <dir>`). `--output` can be omitted if the launch sets `configDir` in `pde.yaml`.
 
 ## Troubleshooting
 
