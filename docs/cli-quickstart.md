@@ -77,6 +77,10 @@ bundles in place of their target copies. The launch only adds its product, appli
 `config.ini`. Workspace bundles load their classes from their output folders through `osgi.dev`, so run
 `pde compile` first.
 
+`--output` can be omitted if the launch sets `configDir` in `pde.yaml`; `prepare-run` then writes there
+instead, the same `configDir` `pde run`/`pde test` already use. Set it once alongside the rest of the
+launch instead of passing `--output <dir>` on every invocation.
+
 #### Example: a KNIME Hub executor started by the executor agent
 
 The executor agent starts the executor from a regular executor installation: it copies the install's
@@ -89,10 +93,12 @@ launches:
   - name: executor
     product: org.knime.product.KNIME_PRODUCT
     application: com.knime.enterprise.slave.KNIME_REMOTE_APPLICATION
+    configDir: <dir>
 ```
 
 1. `pde compile`
-2. `pde prepare-run executor --output <dir>`
+2. `pde prepare-run executor` (writes to the `configDir` above; pass `--output <dir>` instead if you'd
+   rather not add it to `pde.yaml`)
 3. Add two lines before `-vmargs` in `<install>/knime.ini`, or add them as application arguments in the
    Hub's execution context:
    ```

@@ -645,8 +645,9 @@ fun prepareRunMain(args: Array<String>): Int {
     ArgType.String,
     fullName = "output",
     shortName = "o",
-    description = "Directory to write config.ini, dev.properties and org.eclipse.equinox.simpleconfigurator/bundles.info to"
-  ).required()
+    description = "Directory to write config.ini, dev.properties and org.eclipse.equinox.simpleconfigurator/bundles.info to " +
+      "(defaults to the launch's configDir)"
+  )
   val configPos by parser.argument(ArgType.String, description = "YAML launch configuration (positional)").optional()
   val launchPos by parser.argument(ArgType.String, description = "Launch name or 1-based index (default: the first launch)")
     .optional()
@@ -681,7 +682,14 @@ fun prepareRunMain(args: Array<String>): Int {
   val targetIndex = TargetPlatformCache.buildWithCache(listOf(profilePath))
   val setup = planLaunch(context, targetIndex, workspaceInputs)
   logPlanSummary(setup.planResult)
-  val outDir = Paths.get(outputOpt).toAbsolutePath().normalize()
+  val outDir = (outputOpt ?: context.runtime.configDir)?.let { context.baseDir.resolve(it) }?.toAbsolutePath()?.normalize()
+  if (outDir == null) {
+    logger.severe(
+      "pde prepare-run needs --output, or a configDir on the selected launch in $discoveredConfig " +
+        "(a temporary directory would be useless here since nothing starts from it)."
+    )
+    return 2
+  }
   val layout = RuntimeLayoutWriter.LayoutPaths.fromConfigDir(outDir)
   val defaults = RuntimeLayoutWriter.Defaults(
     installArea = profilePath,

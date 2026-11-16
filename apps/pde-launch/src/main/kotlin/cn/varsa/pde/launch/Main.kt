@@ -56,7 +56,7 @@ private val launchOptions = listOf(
 
 private val prepareRunOptions = listOf(
   CliOption(listOf("--config"), "YAML launch configuration", takesValue = true, valueLabel = "String"),
-  CliOption(listOf("--output", "-o"), "Directory to write config.ini, dev.properties and bundles.info to (required)", takesValue = true, valueLabel = "String"),
+  CliOption(listOf("--output", "-o"), "Directory to write config.ini, dev.properties and bundles.info to (defaults to the launch's configDir)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--log-level"), "Logging level (error|warn|info|debug|trace)", takesValue = true, valueLabel = "String"),
   CliOption(listOf("--verbose", "-v"), "Enable INFO logging")
 )
