@@ -96,6 +96,10 @@ val publishSdkP2Repo by tasks.registering(Exec::class) {
 
 val generateReleaseInfo by tasks.registering {
   notCompatibleWithConfigurationCache("Uses git CLI to compute release metadata")
+  // The real input is the repo's current HEAD and tags, which Gradle can't express as a
+  // file/property input; without this, a version.txt/notes.md left over from an earlier
+  // invocation makes the task UP-TO-DATE and silently reuses the stale release info.
+  outputs.upToDateWhen { false }
   outputs.file(layout.buildDirectory.file("release/version.txt"))
   outputs.file(layout.buildDirectory.file("release/notes.md"))
   doLast {
