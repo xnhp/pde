@@ -132,7 +132,7 @@ class WorkspaceSetupCliTest {
       """.trimIndent()
     )
     dir.resolve("src").createDirectories()
-    dir.resolve("build.properties").writeText("output.. = bin\n")
+    dir.resolve("build.properties").writeText("source.. = src/\noutput.. = bin\n")
     dir.resolve("bin/org/example").createDirectories()
     dir.resolve("bin/org/example/Dummy.class").toFile().writeBytes(byteArrayOf(0xCA.toByte(), 0xFE.toByte()))
   }

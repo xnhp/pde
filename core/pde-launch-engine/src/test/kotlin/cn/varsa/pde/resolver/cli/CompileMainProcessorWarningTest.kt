@@ -78,6 +78,7 @@ class CompileMainProcessorWarningTest {
         Bundle-ClassPath: $bundleClassPath
       """.trimIndent() + "\n"
     )
+    dir.resolve("build.properties").writeText("source.. = src/\n")
     dir.resolve("src").createDirectories().resolve("Dummy.java").writeText("class Dummy {}")
   }
 

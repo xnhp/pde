@@ -91,13 +91,10 @@ object WorkspaceBundleLoader {
     return java.util.Properties().apply { file.inputStream().use { load(it) } }
   }
 
+  // Tycho and PDE Build take source folders only from source.* keys and compile nothing without one.
   private fun computeSourceRoots(base: Path, props: java.util.Properties?): List<Path> {
-    if (props == null) return listOf(base.resolve("src")).filter { it.toFile().exists() }
+    if (props == null) return emptyList()
     val sourceKeys = props.stringPropertyNames().filter { it.startsWith("source.") }
-    if (sourceKeys.isEmpty()) {
-      val candidate = base.resolve("src")
-      return listOf(candidate).filter { it.toFile().exists() }
-    }
     return sourceKeys.flatMap { key ->
       props.getProperty(key)?.split(',')?.map { it.trim() } ?: emptyList()
     }.filter { it.isNotEmpty() }

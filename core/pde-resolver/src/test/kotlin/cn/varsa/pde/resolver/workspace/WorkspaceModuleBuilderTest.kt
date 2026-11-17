@@ -65,6 +65,7 @@ class WorkspaceModuleBuilderTest {
         "Bundle-Version: 1.0.0\n\n"
     )
     File(moduleDir.toFile(), "src").mkdirs()
+    File(moduleDir.toFile(), "build.properties").writeText("source.. = src/\n")
     val outDir = File(moduleDir.toFile(), "bin")
     outDir.mkdirs()
 
