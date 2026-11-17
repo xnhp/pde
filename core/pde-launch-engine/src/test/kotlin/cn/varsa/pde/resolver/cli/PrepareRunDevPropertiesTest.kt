@@ -36,6 +36,16 @@ class PrepareRunDevPropertiesTest {
     assertFalse(Files.exists(fixture.outDir))
   }
 
+  @Test
+  fun `accepts a bundle without source keys whose output folder holds no classes`() {
+    val fixture = Fixture("bin.includes = META-INF/,dist/\n", javaSource = false)
+    fixture.bundle.resolve("src/main.ts").writeText("export {}\n")
+
+    assertEquals(0, compileMain(arrayOf("--config", fixture.configFile.toString())))
+    fixture.bundle.resolve("bin").createDirectories()
+    assertEquals(0, prepareRunMain(arrayOf("--config", fixture.configFile.toString(), "--output", fixture.outDir.toString())))
+  }
+
   private fun assertDevPropertiesFindCompiledClasses(buildProperties: String, expectedRoot: String) {
     val fixture = Fixture(buildProperties)
     val configFile = fixture.configFile
@@ -51,8 +61,8 @@ class PrepareRunDevPropertiesTest {
     assertTrue(Files.isRegularFile(classFile), "pde compile should have written $classFile")
   }
 
-  /** A profile with only the framework, and one workspace bundle with a Java source and the given build.properties. */
-  private class Fixture(buildProperties: String) {
+  /** A profile with only the framework, and one workspace bundle with (optionally) a Java source and the given build.properties. */
+  private class Fixture(buildProperties: String, javaSource: Boolean = true) {
     val baseDir: Path = Files.createTempDirectory("cfg")
     val bundle: Path = Files.createTempDirectory("ws")
     val outDir: Path = baseDir.resolve("runtime")
@@ -70,8 +80,8 @@ class PrepareRunDevPropertiesTest {
         """.trimIndent() + "\n"
       )
       bundle.resolve("build.properties").writeText(buildProperties)
-      bundle.resolve("src/org/example").createDirectories().resolve("Foo.java")
-        .writeText("package org.example;\npublic class Foo {}\n")
+      bundle.resolve("src/org/example").createDirectories()
+      if (javaSource) bundle.resolve("src/org/example/Foo.java").writeText("package org.example;\npublic class Foo {}\n")
       configFile = writeConfigFile(baseDir, bundle)
       configFile.appendText("\nlaunches:\n  - name: app\n    application: org.example.app\n")
     }

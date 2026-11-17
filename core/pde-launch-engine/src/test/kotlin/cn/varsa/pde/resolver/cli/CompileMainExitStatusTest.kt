@@ -39,6 +39,7 @@ class CompileMainExitStatusTest {
         Bundle-ClassPath: .
       """.trimIndent()
     )
+    dir.resolve("build.properties").writeText("source.. = src/\n")
     val src = dir.resolve("src").createDirectories()
     return src
   }
